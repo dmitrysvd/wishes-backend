@@ -1,15 +1,12 @@
-from pydantic import BaseModel
 from decimal import Decimal
+
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy import ForeignKey, String, create_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 from sqlalchemy.types import DECIMAL
-from sqlalchemy.orm import (
-    DeclarativeBase,
-    Mapped,
-    mapped_column,
-    sessionmaker,
-)
+
 from schemas import WishCreateSchema, WishUpdateSchema
 
 
