@@ -10,7 +10,7 @@ from sqlalchemy.orm import (
     mapped_column,
     sessionmaker,
 )
-from schemas import WishCreateSchema
+from schemas import WishCreateSchema, WishUpdateSchema
 
 
 class Base(DeclarativeBase):
@@ -85,7 +85,21 @@ def add_wish(
         session.commit()
 
 
+@app.put('/wishes/{wish_id}')
+def update_wish(
+    wish_id: int,
+    wish_data: WishUpdateSchema,
+):
+    with SessionLocal() as session:
+        wish = session.query(Wish).get(wish_id)
+        wish.name = wish_data.name
+        wish.description = wish_data.description
+        wish.price = wish_data.price
+        session.add(wish)
+        session.commit()
+
+
 @app.delete('/wishes/{wish_id}')
-def delete(wish_id: int):
+def delete_wish(wish_id: int):
     with SessionLocal() as session:
         session.query(Wish).filter(id == wish_id).delete()

@@ -9,3 +9,12 @@ class WishCreateSchema(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class WishUpdateSchema(BaseModel):
+    name: str|None = None
+    description: str|None = None
+    price: Decimal|None = None
+
+    class Config:
+        orm_mode = True
