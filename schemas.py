@@ -1,10 +1,11 @@
 from decimal import Decimal
+from typing import Optional
 from pydantic import BaseModel
 
 
 class WishCreateSchema(BaseModel):
     name: str
-    description: str|None
+    description: Optional[str]
     price: Decimal
 
     class Config:
@@ -12,9 +13,9 @@ class WishCreateSchema(BaseModel):
 
 
 class WishUpdateSchema(BaseModel):
-    name: str|None = None
-    description: str|None = None
-    price: Decimal|None = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[Decimal] = None
 
     class Config:
         orm_mode = True
