@@ -12,6 +12,17 @@ pydantic = {extras = ["email"], version = "^2.5.1"}
 gunicorn = "^21.2.0"
 uvicorn = "^0.24.0.post1"
 
+[tool.poetry.group.dev.dependencies]
+black = "^23.11.0"
+isort = "^5.12.0"
+pre-commit = "^3.5.0"
+
+[tool.black]
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
