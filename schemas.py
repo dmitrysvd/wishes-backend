@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import AnyUrl, BaseModel
 
 
 class WishReadSchema(BaseModel):
@@ -20,7 +20,10 @@ class WishWriteSchema(BaseModel):
 
 
 class UserSchema(BaseModel):
-    name: str
+    first_name: str
+    last_name: str
+    photo_url: AnyUrl
 
-    class Config:
-        orm_mode = True
+
+class AuthSchema(BaseModel):
+    access_token: str
