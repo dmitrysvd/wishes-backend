@@ -216,7 +216,7 @@ def auth_vk_complete(request: Request):
 
 
 @app.get('/auth-vk/')
-def auth_vk(request: Request, response_class=templates.TemplateResponse):
+def auth_vk(request: Request):
     return templates.TemplateResponse(
         "registration.html",
         {
