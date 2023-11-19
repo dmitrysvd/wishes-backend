@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta http-equiv="X-UA-Compatible" content="ie=edge" />
-    <title>My Website</title>
+    <title>Хотелки</title>
     {#
         <link rel="stylesheet" href="./style.css" />
         <link rel="icon" href="./favicon.ico" type="image/x-icon" />
@@ -12,8 +12,9 @@
   </head>
   <body>
     <main>
-      <h1>Registration page</h1>
+      <div id='vk-auth-button'></div>
     </main>
+
     <script>
         window.appId = {{ vk_app_id }};
         window.authRedirectUrl = "{{ auth_redirect_url }}";
