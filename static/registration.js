@@ -26,7 +26,7 @@ const oneTapButton = Connect.buttonOneTapAuth({
     switch (type) {
       case ConnectEvents.OneTapAuthEventsSDK.LOGIN_SUCCESS: // = 'VKSDKOneTapAuthLoginSuccess'
         console.log(e);
-        return Connect.redirectAuth({ url: authRedirectUrl });
+        return false
       // Для этих событий нужно открыть полноценный VK ID чтобы
       // пользователь дорегистрировался или подтвердил телефон
       case ConnectEvents.OneTapAuthEventsSDK.FULL_AUTH_NEEDED: //  = 'VKSDKOneTapAuthFullAuthNeeded'
