@@ -1,4 +1,4 @@
-const { Connect, Config } = window.SuperAppKit;
+const { Connect, Config, ConnectEvents } = window.SuperAppKit;
 
 const appId = window.appId;
 const authRedirectUrl = window.authRedirectUrl;
