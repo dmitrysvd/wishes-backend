@@ -8,6 +8,7 @@ from typing import Optional
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.security import HTTPBasic
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -58,7 +59,7 @@ class User(Base):
     last_name: Mapped[str] = mapped_column(String(30), nullable=False)
     vk_id: Mapped[str] = mapped_column(String(15), unique=True)
     photo_url: Mapped[str] = mapped_column(String(200))
-    access_token: Mapped[str] = mapped_column(String(100), unique=True)
+    vk_access_token: Mapped[str] = mapped_column(String(100), unique=True)
 
     wishes: Mapped[list['Wish']] = relationship(
         back_populates='user', cascade='all, delete-orphan'
@@ -115,7 +116,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
             )
         return user
 
-    user = db.query(User).filter(User.access_token == token).first()
+    user = db.query(User).filter(User.vk_access_token == token).first()
     if not user:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
@@ -199,7 +200,7 @@ def auth_vk_complete(request: Request):
         access_token, vk_user_id = exchange_tokens(silent_token, uuid)
         user = db.query(User).filter(User.vk_id == vk_user_id).first()
         if user:
-            user.access_token = access_token
+            user.vk_access_token = access_token
             db.add(user)
         else:
             user = User(
