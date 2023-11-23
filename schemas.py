@@ -25,5 +25,9 @@ class UserSchema(BaseModel):
     photo_url: AnyUrl
 
 
-class AuthSchema(BaseModel):
+class RequestFirebaseAuthSchema(BaseModel):
+    id_token: str
+
+
+class ResponseAuthSchema(BaseModel):
     access_token: str

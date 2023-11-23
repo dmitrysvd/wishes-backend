@@ -1,95 +1,36 @@
 import json
-import os
 from dataclasses import dataclass
-from decimal import Decimal
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.security import HTTPBasic
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy import Boolean, ForeignKey, String, create_engine
-from sqlalchemy.orm import (
-    DeclarativeBase,
-    Mapped,
-    Session,
-    mapped_column,
-    relationship,
-    sessionmaker,
-)
-from sqlalchemy.types import DECIMAL
+from sqlalchemy.orm import Session
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-from schemas import AuthSchema, UserSchema, WishReadSchema, WishWriteSchema
+from config import settings
+from db import SessionLocal, User, Wish
+from schemas import (
+    RequestFirebaseAuthSchema,
+    ResponseAuthSchema,
+    UserSchema,
+    WishReadSchema,
+    WishWriteSchema,
+)
 
 
 @dataclass(frozen=True)
-class ExtraUserData:
+class _ExtraUserData:
     first_name: str
     last_name: str
     photo_url: str
 
 
-class Settings(BaseSettings):
-    IS_DEBUG: bool
-    VK_SERVICE_KEY: str
-    VK_PROTECTED_KEY: str
-    VK_APP_ID: int
-    TEST_TOKEN: Optional[str] = None
-
-    model_config = SettingsConfigDict(env_file=".env")
-
-
-settings = Settings()  # type: ignore
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class User(Base):
-    __tablename__ = 'user'
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    first_name: Mapped[str] = mapped_column(String(30), nullable=False)
-    last_name: Mapped[str] = mapped_column(String(30), nullable=False)
-    vk_id: Mapped[str] = mapped_column(String(15), unique=True)
-    photo_url: Mapped[str] = mapped_column(String(200))
-    vk_access_token: Mapped[str] = mapped_column(String(100), unique=True)
-
-    wishes: Mapped[list['Wish']] = relationship(
-        back_populates='user', cascade='all, delete-orphan'
-    )
-
-
-class Wish(Base):
-    __tablename__ = 'wish'
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('user.id'))
-    name: Mapped[str] = mapped_column(String(50))
-    description: Mapped[str] = mapped_column(String(1000), nullable=True)
-    price: Mapped[Decimal] = mapped_column(DECIMAL(precision=2), nullable=True)
-    is_active: Mapped[Boolean] = mapped_column(Boolean(), default=False)
-
-    user: Mapped['User'] = relationship(back_populates='wishes')
-
-
-BASE_DIR = Path(__file__).parent
-
-engine = create_engine(
-    'sqlite:///db.sqlite',
-    echo=settings.IS_DEBUG,
-    connect_args={"check_same_thread": False},
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
+BASE_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / 'static'), name="static")
 
 
@@ -124,7 +65,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
-def get_user_data_by_silent_token(silent_token: str, uuid: str) -> ExtraUserData:
+def get_user_data_by_silent_token(silent_token: str, uuid: str) -> _ExtraUserData:
     response = httpx.post(
         'https://api.vk.com/method/auth.getProfileInfoBySilentToken',
         params={
@@ -142,7 +83,7 @@ def get_user_data_by_silent_token(silent_token: str, uuid: str) -> ExtraUserData
     photo_url = response_json['response']['success'][0]['photo_200']
     first_name = response_json['response']['success'][0]['first_name']
     last_name = response_json['response']['success'][0]['last_name']
-    return ExtraUserData(
+    return _ExtraUserData(
         photo_url=photo_url,
         first_name=first_name,
         last_name=last_name,
@@ -186,9 +127,8 @@ def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, str]:
     return access_token, str(vk_user_id)
 
 
-@app.get('/auth-vk-complete/', response_model=AuthSchema)
-def auth_vk_complete(request: Request):
-    payload = request.query_params['payload']
+@app.get('/auth/vk/web/', response_model=ResponseAuthSchema)
+def complete_auth_vk_web(request: Request, payload: str):
     auth_payload = json.loads(payload)
     assert auth_payload['type'] == 'silent_token'
     silent_token = auth_payload['token']
@@ -215,14 +155,20 @@ def auth_vk_complete(request: Request):
     return {'access_token': access_token}
 
 
-@app.get('/auth-vk/')
-def auth_vk(request: Request):
+@app.post('auth/firebase/', response_model=ResponseAuthSchema)
+def auth_firebase(firebase_auth: RequestFirebaseAuthSchema):
+    id_token = firebase_auth.id_token
+    return {'access_token': 'very_secret_token'}
+
+
+@app.get('/auth/vk/index.html')
+def auth_vk_page(request: Request):
     return templates.TemplateResponse(
         "registration.html",
         {
             "request": request,
             "vk_app_id": settings.VK_APP_ID,
-            "auth_redirect_url": 'https://hotelki.pro/auth-vk-complete/',
+            "auth_redirect_url": request.url_for('complete_auth_vk_web'),
         },
     )
 
@@ -232,7 +178,7 @@ def main(request: Request):
     try:
         get_current_user(request, db=SessionLocal())
     except HTTPException:
-        return RedirectResponse('/auth-vk')
+        return RedirectResponse(request.url_for('auth_vk_page'))
     return ['You are authenticated']
 
 
