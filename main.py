@@ -155,7 +155,7 @@ def complete_auth_vk_web(request: Request, payload: str):
     return {'access_token': access_token}
 
 
-@app.post('auth/firebase/', response_model=ResponseAuthSchema)
+@app.post('/auth/firebase/', response_model=ResponseAuthSchema)
 def auth_firebase(firebase_auth: RequestFirebaseAuthSchema):
     id_token = firebase_auth.id_token
     return {'access_token': 'very_secret_token'}
