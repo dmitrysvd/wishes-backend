@@ -14,7 +14,7 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from config import settings
 from db import SessionLocal, User, Wish
-from firebase import firebase_app
+from firebase import get_firebase_app
 from schemas import (
     RequestFirebaseAuthSchema,
     ResponseAuthSchema,
@@ -161,8 +161,9 @@ def complete_auth_vk_web(request: Request, payload: str):
 @app.post('/auth/firebase/', response_model=ResponseAuthSchema)
 def auth_firebase(firebase_auth: RequestFirebaseAuthSchema):
     id_token = firebase_auth.id_token
+    push_token = firebase_auth.push_token
     try:
-        decoded_token = verify_id_token(id_token, app=firebase_app)
+        decoded_token = verify_id_token(id_token, app=get_firebase_app())
     except FirebaseError as ex:
         raise HTTPException(status_code=403, detail="Not authenticated")
     uid = decoded_token['uid']

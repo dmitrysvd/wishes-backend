@@ -27,8 +27,9 @@ class UserSchema(BaseModel):
 
 class RequestFirebaseAuthSchema(BaseModel):
     id_token: str
+    push_token: str
 
 
 class ResponseAuthSchema(BaseModel):
     access_token: str
-    debug: Optional[str]
+    debug: Optional[str] = None
