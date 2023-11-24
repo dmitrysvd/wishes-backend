@@ -31,3 +31,4 @@ class RequestFirebaseAuthSchema(BaseModel):
 
 class ResponseAuthSchema(BaseModel):
     access_token: str
+    debug: Optional[str]

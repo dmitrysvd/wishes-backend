@@ -7,11 +7,14 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from firebase_admin.auth import verify_id_token
+from firebase_admin.exceptions import FirebaseError
 from sqlalchemy.orm import Session
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 from config import settings
 from db import SessionLocal, User, Wish
+from firebase import firebase_app
 from schemas import (
     RequestFirebaseAuthSchema,
     ResponseAuthSchema,
@@ -158,7 +161,12 @@ def complete_auth_vk_web(request: Request, payload: str):
 @app.post('/auth/firebase/', response_model=ResponseAuthSchema)
 def auth_firebase(firebase_auth: RequestFirebaseAuthSchema):
     id_token = firebase_auth.id_token
-    return {'access_token': 'very_secret_token'}
+    try:
+        decoded_token = verify_id_token(id_token, app=firebase_app)
+    except FirebaseError as ex:
+        raise HTTPException(status_code=403, detail="Not authenticated")
+    uid = decoded_token['uid']
+    return {'access_token': 'some_secret_token', 'debug': f'Your uid = {uid}'}
 
 
 @app.get('/auth/vk/index.html')
