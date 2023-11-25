@@ -196,7 +196,9 @@ def custom_openapi():
             'in': 'header',
         }
     }
-    openapi_schema['security'] = {'ApiKey': []}
+    openapi_schema['security'] = [
+        {'ApiKey': []},
+    ]
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
