@@ -104,6 +104,7 @@ def auth_vk_via_silent_token(silent_token: str, uuid: str) -> ResponseAuthSchema
         db.commit()
 
     return ResponseAuthSchema(
+        vk_access_token=vk_user.access_token,
         firebase_uid=firebase_uid,
         firebase_token=firebase_token,
     )

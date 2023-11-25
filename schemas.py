@@ -49,5 +49,6 @@ class VkAuthViaSilentTokenSchema(BaseModel):
 
 
 class ResponseAuthSchema(BaseModel):
+    vk_access_token: str
     firebase_uid: str
     firebase_token: str
