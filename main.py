@@ -181,6 +181,14 @@ def users_me(user: User = Depends(get_current_user)) -> PrivateUserSchema:
     return PrivateUserSchema.model_validate(user, from_attributes=True)
 
 
+@app.post('/delete_own_account/')
+def delete_own_account(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> PrivateUserSchema:
+    db.query(User).filter(User.id == user.id).delete()
+    db.commit()
+
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
