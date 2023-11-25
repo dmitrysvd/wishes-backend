@@ -37,7 +37,6 @@ def get_or_create_firebase_user(
             email_verified=False,
             display_name=display_name,
             photo_url=photo_url,
-            phone_number=phone,
         )
     return user.uid  # type: ignore
 
