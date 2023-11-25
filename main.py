@@ -4,6 +4,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -178,3 +179,26 @@ def delete_wish(wish_id: int):
 @app.get('/users/me/')
 def users_me(user: User = Depends(get_current_user)) -> PrivateUserSchema:
     return PrivateUserSchema.model_validate(user, from_attributes=True)
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title='Хотелки',
+        version='0.0.1',
+        routes=app.routes,
+    )
+    openapi_schema['components']['securitySchemes'] = {
+        'ApiKey': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+        }
+    }
+    openapi_schema['security'] = {'ApiKey': []}
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
