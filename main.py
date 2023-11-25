@@ -116,6 +116,8 @@ def complete_auth_vk_web(payload: str):
 
     Открывается либо редиректом, либо при нажатии по кнопке скриптом js.
     payload передавается в том виде, в котором получен из Vk SDK.
+
+    Возвращает данные для аутентификации в firebase.
     Создаст пользователя в firebase, если не существовал.
     """
     auth_payload = json.loads(payload)
@@ -132,6 +134,8 @@ def auth_vk_mobile(schema: VkAuthViaSilentTokenSchema):
 
     Нужно передать silent_token, чтобы бэк смог получить
     данные пользователя при обмене silent_token на access_token.
+
+    Возвращает данные для аутентификации в firebase.
     Создаст пользователя в firebase, если не существовал.
     """
     return auth_vk_via_silent_token(
