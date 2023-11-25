@@ -1,7 +1,7 @@
 from typing import Optional
 
 import firebase_admin
-from firebase_admin import App, messaging
+from firebase_admin import App, auth, messaging
 
 from config import settings
 
@@ -23,3 +23,7 @@ def send_push(push_token: str, title: str, body: str):
         token=push_token,
     )
     messaging.send(message)
+
+
+def create_user():
+    auth.create_user()

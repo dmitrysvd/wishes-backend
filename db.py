@@ -24,6 +24,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     first_name: Mapped[str] = mapped_column(String(30), nullable=False)
     last_name: Mapped[str] = mapped_column(String(30), nullable=False)
+    phone: Mapped[str] = mapped_column(String(15), nullable=False)
+    email: Mapped[str] = mapped_column(String(100), nullable=False)
     photo_url: Mapped[str] = mapped_column(String(200))
 
     vk_id: Mapped[str] = mapped_column(String(15), unique=True)

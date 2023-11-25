@@ -19,10 +19,18 @@ class WishWriteSchema(BaseModel):
     price: Optional[Decimal] = None
 
 
-class UserSchema(BaseModel):
+class PublicUserSchema(BaseModel):
     first_name: str
     last_name: str
     photo_url: AnyUrl
+
+
+class PrivateUserSchema(BaseModel):
+    first_name: str
+    last_name: str
+    photo_url: AnyUrl
+    phone: str
+    email: str
 
 
 class RequestFirebaseAuthSchema(BaseModel):

@@ -16,20 +16,13 @@ from config import settings
 from db import SessionLocal, User, Wish
 from firebase import get_firebase_app
 from schemas import (
+    PrivateUserSchema,
     RequestFirebaseAuthSchema,
     ResponseAuthSchema,
-    UserSchema,
     WishReadSchema,
     WishWriteSchema,
 )
-
-
-@dataclass(frozen=True)
-class _ExtraUserData:
-    first_name: str
-    last_name: str
-    photo_url: str
-
+from vk import auth_vk_user_by_silent_token
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -68,94 +61,31 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
-def get_user_data_by_silent_token(silent_token: str, uuid: str) -> _ExtraUserData:
-    response = httpx.post(
-        'https://api.vk.com/method/auth.getProfileInfoBySilentToken',
-        params={
-            "v": "5.108",
-            "access_token": settings.VK_SERVICE_KEY,
-            "token": [silent_token],
-            "uuid": [uuid],
-            "event": [""],
-        },
-    )
-    response.raise_for_status()
-    response_json = response.json()
-    if response_json['response'].get('errors', []):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    photo_url = response_json['response']['success'][0]['photo_200']
-    first_name = response_json['response']['success'][0]['first_name']
-    last_name = response_json['response']['success'][0]['last_name']
-    return _ExtraUserData(
-        photo_url=photo_url,
-        first_name=first_name,
-        last_name=last_name,
-    )
-
-
-def get_user_data(vk_id: str, access_token: str):
-    response = httpx.get(
-        'https://api.vk.com/method/users.get',
-        params={
-            'v': '5.131',
-            'access_token': settings.VK_SERVICE_KEY,
-            'user_ids': [vk_id],
-        },
-    )
-    data = response.json()
-    print()
-    return data
-
-
-def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, str]:
-    response = httpx.post(
-        'https://api.vk.com/method/auth.exchangeSilentAuthToken',
-        data={
-            'v': '5.131',
-            'token': silent_token,
-            'access_token': settings.VK_SERVICE_KEY,
-            'uuid': uuid,
-        },
-    )
-    response.raise_for_status()
-    response_json = response.json()
-    if 'error' in response_json:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    response.raise_for_status()
-    response_json = response.json()
-    if 'error' in response_json:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    access_token = response_json['response']['access_token']
-    vk_user_id = response_json['response']['user_id']
-    return access_token, str(vk_user_id)
-
-
 @app.get('/auth/vk/web/', response_model=ResponseAuthSchema)
 def complete_auth_vk_web(request: Request, payload: str):
     auth_payload = json.loads(payload)
     assert auth_payload['type'] == 'silent_token'
     silent_token = auth_payload['token']
     uuid = auth_payload['uuid']
+    vk_user = auth_vk_user_by_silent_token(silent_token, uuid)
     with SessionLocal() as db:
-        extra_user_data = get_user_data_by_silent_token(
-            silent_token=silent_token, uuid=uuid
-        )
-        access_token, vk_user_id = exchange_tokens(silent_token, uuid)
-        user = db.query(User).filter(User.vk_id == vk_user_id).first()
+        user = db.query(User).filter(User.vk_id == vk_user.id).first()
         if user:
-            user.vk_access_token = access_token
+            user.vk_access_token = vk_user.access_token
             db.add(user)
         else:
             user = User(
-                vk_id=vk_user_id,
-                access_token=access_token,
-                first_name=extra_user_data.first_name,
-                last_name=extra_user_data.last_name,
-                photo_url=extra_user_data.photo_url,
+                vk_id=vk_user.id,
+                access_token=vk_user.access_token,
+                first_name=vk_user.first_name,
+                last_name=vk_user.last_name,
+                photo_url=vk_user.photo_url,
+                phone=vk_user.phone,
+                email=vk_user.email,
             )
             db.add(user)
         db.commit()
-    return {'access_token': access_token}
+    return {'access_token': vk_user.access_token}
 
 
 @app.post('/auth/firebase/', response_model=ResponseAuthSchema)
@@ -246,5 +176,5 @@ def delete_wish(wish_id: int):
 
 
 @app.get('/users/me/')
-def users_me(user: User = Depends(get_current_user)) -> UserSchema:
-    return UserSchema.model_validate(user, from_attributes=True)
+def users_me(user: User = Depends(get_current_user)) -> PrivateUserSchema:
+    return PrivateUserSchema.model_validate(user, from_attributes=True)
