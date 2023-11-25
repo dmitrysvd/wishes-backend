@@ -111,6 +111,13 @@ def auth_vk_via_silent_token(silent_token: str, uuid: str) -> ResponseAuthSchema
 
 @app.get('/auth/vk/web/', response_model=ResponseAuthSchema)
 def complete_auth_vk_web(payload: str):
+    """
+    Аутентификация через ВК в браузере.
+
+    Открывается либо редиректом, либо при нажатии по кнопке скриптом js.
+    payload передавается в том виде, в котором получен из Vk SDK.
+    Создаст пользователя в firebase, если не существовал.
+    """
     auth_payload = json.loads(payload)
     assert auth_payload['type'] == 'silent_token'
     silent_token = auth_payload['token']
@@ -120,6 +127,13 @@ def complete_auth_vk_web(payload: str):
 
 @app.post('/auth/vk/mobile/', response_model=ResponseAuthSchema)
 def auth_vk_mobile(schema: VkAuthViaSilentTokenSchema):
+    """
+    Аутентификация через ВК на мобильных устройствах.
+
+    Нужно передать silent_token, чтобы бэк смог получить
+    данные пользователя при обмене silent_token на access_token.
+    Создаст пользователя в firebase, если не существовал.
+    """
     return auth_vk_via_silent_token(
         silent_token=schema.silent_token,
         uuid=schema.uuid,
@@ -131,9 +145,11 @@ def auth_firebase(
     firebase_auth_schema: RequestFirebaseAuthSchema, db: Session = Depends(get_db)
 ):
     """
-    Аутентификация через firebase.
+    Аутентификация через firebase Google.
 
-    Создает аккаунт пользователя с данными из firebase.
+    Клиент уже должен быть залогинен в firebase.
+    Если пользователя с email из firebase нет в БД, создаст его.
+    Если пользователь уже есть, ничего не делает.
     """
     id_token = firebase_auth_schema.id_token
     try:
@@ -166,7 +182,11 @@ def save_push_token(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Сохранить токен для отправки пушей на мобилки."""
+    """
+    Сохранить токен для отправки пушей на мобилки.
+
+    Вызывается после аутентификации через vk или firebase.
+    """
     user.firebase_push_token = schema.push_token
     db.add(user)
     db.commit()
