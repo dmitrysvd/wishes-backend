@@ -76,7 +76,7 @@ def complete_auth_vk_web(request: Request, payload: str):
         else:
             user = User(
                 vk_id=vk_user.id,
-                access_token=vk_user.access_token,
+                vk_access_token=vk_user.access_token,
                 first_name=vk_user.first_name,
                 last_name=vk_user.last_name,
                 photo_url=vk_user.photo_url,
