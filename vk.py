@@ -83,6 +83,6 @@ def auth_vk_user_by_silent_token(silent_token: str, uuid: str) -> VkUserData:
         photo_url=user_data_by_silent_token['photo_200'],
         first_name=user_data_by_silent_token['first_name'],
         last_name=user_data_by_silent_token['last_name'],
-        phone='test-no-phone',
+        phone='79991122345',  # Тестовый номер
         email=exchange_token_response['email'],
     )
