@@ -72,11 +72,6 @@ def complete_auth_vk_web(request: Request, payload: str):
         user = db.query(User).filter(User.vk_id == vk_user.id).first()
         if user:
             user.vk_access_token = vk_user.access_token
-            user.first_name = vk_user.first_name
-            user.last_name = vk_user.last_name
-            user.photo_url = vk_user.photo_url
-            user.phone = vk_user.phone
-            user.email = vk_user.email
             db.add(user)
         else:
             user = User(
