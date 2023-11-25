@@ -35,9 +35,17 @@ class PrivateUserSchema(BaseModel):
 
 class RequestFirebaseAuthSchema(BaseModel):
     id_token: str
+
+
+class SavePushTokenSchema(BaseModel):
     push_token: str
 
 
+class VkAuthViaSilentTokenSchema(BaseModel):
+    uuid: str
+    silent_token: str
+
+
 class ResponseAuthSchema(BaseModel):
-    access_token: str
-    debug: Optional[str] = None
+    firebase_uid: str
+    firebase_token: str

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     VK_PROTECTED_KEY: str
     VK_APP_ID: int
     FIREBASE_KEY_PATH: Path
-    TEST_TOKEN: Optional[str] = None
+    TEST_TOKEN: str
 
     model_config = SettingsConfigDict(env_file=".env")
 

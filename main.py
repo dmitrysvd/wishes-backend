@@ -5,7 +5,7 @@ from pathlib import Path
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from firebase_admin.auth import verify_id_token
@@ -15,11 +15,17 @@ from starlette.status import HTTP_401_UNAUTHORIZED
 
 from config import settings
 from db import SessionLocal, User, Wish
-from firebase import get_firebase_app
+from firebase import (
+    create_custom_firebase_token,
+    get_firebase_app,
+    get_or_create_firebase_user,
+)
 from schemas import (
     PrivateUserSchema,
     RequestFirebaseAuthSchema,
     ResponseAuthSchema,
+    SavePushTokenSchema,
+    VkAuthViaSilentTokenSchema,
     WishReadSchema,
     WishWriteSchema,
 )
@@ -54,7 +60,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
             )
         return user
 
-    user = db.query(User).filter(User.vk_access_token == token).first()
+    decoded_token = verify_id_token(token, app=get_firebase_app())
+    uid = decoded_token['uid']
+    user = db.query(User).filter(User.firebase_uid == uid).first()
     if not user:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
@@ -62,19 +70,20 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
-@app.get('/auth/vk/web/', response_model=ResponseAuthSchema)
-def complete_auth_vk_web(request: Request, payload: str):
-    auth_payload = json.loads(payload)
-    assert auth_payload['type'] == 'silent_token'
-    silent_token = auth_payload['token']
-    uuid = auth_payload['uuid']
+def auth_vk_via_silent_token(silent_token: str, uuid: str) -> ResponseAuthSchema:
     vk_user = auth_vk_user_by_silent_token(silent_token, uuid)
+    firebase_uid = get_or_create_firebase_user(
+        email=vk_user.email,
+        display_name=f'{vk_user.first_name} {vk_user.last_name}',
+        photo_url=vk_user.photo_url,
+        phone=vk_user.phone,
+    )
+    firebase_token = create_custom_firebase_token(firebase_uid)
+
     with SessionLocal() as db:
         user = db.query(User).filter(User.vk_id == vk_user.id).first()
-        if user:
-            user.vk_access_token = vk_user.access_token
-            db.add(user)
-        else:
+        is_new_user = not bool(user)
+        if is_new_user:
             user = User(
                 vk_id=vk_user.id,
                 vk_access_token=vk_user.access_token,
@@ -83,22 +92,47 @@ def complete_auth_vk_web(request: Request, payload: str):
                 photo_url=vk_user.photo_url,
                 phone=vk_user.phone,
                 email=vk_user.email,
+                firebase_uid=firebase_uid,
             )
             db.add(user)
+        else:
+            user.vk_access_token = vk_user.access_token
+            db.add(user)
         db.commit()
-    return {'access_token': vk_user.access_token}
+
+    return ResponseAuthSchema(
+        firebase_uid=firebase_uid,
+        firebase_token=firebase_token,
+    )
 
 
-@app.post('/auth/firebase/', response_model=ResponseAuthSchema)
-def auth_firebase(firebase_auth: RequestFirebaseAuthSchema):
-    id_token = firebase_auth.id_token
-    push_token = firebase_auth.push_token
-    try:
-        decoded_token = verify_id_token(id_token, app=get_firebase_app())
-    except FirebaseError as ex:
-        raise HTTPException(status_code=403, detail="Not authenticated")
-    uid = decoded_token['uid']
-    return {'access_token': 'some_secret_token', 'debug': f'Your uid = {uid}'}
+@app.get('/auth/vk/web/', response_model=ResponseAuthSchema)
+def complete_auth_vk_web(payload: str):
+    auth_payload = json.loads(payload)
+    assert auth_payload['type'] == 'silent_token'
+    silent_token = auth_payload['token']
+    uuid = auth_payload['uuid']
+    return auth_vk_via_silent_token(silent_token, uuid)
+
+
+@app.post('/auth/vk/mobile/', response_model=ResponseAuthSchema)
+def auth_vk_mobile(schema: VkAuthViaSilentTokenSchema):
+    return auth_vk_via_silent_token(
+        silent_token=schema.silent_token,
+        uuid=schema.uuid,
+    )
+
+
+@app.post('/save_push_token/', response_class=Response)
+def save_push_token(
+    schema: SavePushTokenSchema,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Сохранить токен для отправки пушей на мобилки."""
+    user.firebase_push_token = schema.push_token
+    db.add(user)
+    db.commit()
 
 
 @app.get('/auth/vk/index.html')
@@ -119,7 +153,7 @@ def main(request: Request):
         get_current_user(request, db=SessionLocal())
     except HTTPException:
         return RedirectResponse(request.url_for('auth_vk_page'))
-    return ['You are authenticated']
+    return 'You are authenticated'
 
 
 @app.get('/wishes')

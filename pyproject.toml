@@ -21,6 +21,7 @@ firebase-admin = "^6.2.0"
 black = "^23.11.0"
 isort = "^5.12.0"
 pre-commit = "^3.5.0"
+pyright = "^1.1.337"
 
 [tool.black]
 skip-string-normalization = true

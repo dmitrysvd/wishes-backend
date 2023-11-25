@@ -1,7 +1,8 @@
-from typing import Optional
+from typing import Optional, cast
 
 import firebase_admin
 from firebase_admin import App, auth, messaging
+from firebase_admin.auth import UserRecord
 
 from config import settings
 
@@ -25,5 +26,22 @@ def send_push(push_token: str, title: str, body: str):
     messaging.send(message)
 
 
-def create_user():
-    auth.create_user()
+def get_or_create_firebase_user(
+    email: str, display_name: str, photo_url: str, phone: str
+) -> str:
+    try:
+        user: UserRecord = auth.get_user_by_email(email)
+    except auth.UserNotFoundError:
+        user: UserRecord = auth.create_user(
+            email=email,
+            email_verified=False,
+            display_name=display_name,
+            photo_url=photo_url,
+            phone=phone,
+        )
+    return user.uid  # type: ignore
+
+
+def create_custom_firebase_token(uid: str) -> str:
+    custom_token = auth.create_custom_token(uid)
+    return custom_token.decode()
