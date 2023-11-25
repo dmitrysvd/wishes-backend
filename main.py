@@ -2,12 +2,14 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+import firebase_admin
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from firebase_admin import auth as firebase_auth
 from firebase_admin.auth import verify_id_token
 from firebase_admin.exceptions import FirebaseError
 from sqlalchemy.orm import Session
@@ -18,6 +20,7 @@ from db import SessionLocal, User, Wish
 from firebase import (
     create_custom_firebase_token,
     get_firebase_app,
+    get_firebase_user_data,
     get_or_create_firebase_user,
 )
 from schemas import (
@@ -89,15 +92,15 @@ def auth_vk_via_silent_token(silent_token: str, uuid: str) -> ResponseAuthSchema
                 vk_access_token=vk_user.access_token,
                 first_name=vk_user.first_name,
                 last_name=vk_user.last_name,
+                display_name=f'{vk_user.first_name} {vk_user.last_name}',
                 photo_url=vk_user.photo_url,
                 phone=vk_user.phone,
                 email=vk_user.email,
                 firebase_uid=firebase_uid,
             )
-            db.add(user)
         else:
             user.vk_access_token = vk_user.access_token
-            db.add(user)
+        db.add(user)
         db.commit()
 
     return ResponseAuthSchema(
@@ -121,6 +124,40 @@ def auth_vk_mobile(schema: VkAuthViaSilentTokenSchema):
         silent_token=schema.silent_token,
         uuid=schema.uuid,
     )
+
+
+@app.post('/auth/firebase/', response_class=Response)
+def auth_firebase(
+    firebase_auth_schema: RequestFirebaseAuthSchema, db: Session = Depends(get_db)
+):
+    """
+    Аутентификация через firebase.
+
+    Создает аккаунт пользователя с данными из firebase.
+    """
+    id_token = firebase_auth_schema.id_token
+    try:
+        decoded_token = verify_id_token(id_token, app=get_firebase_app())
+    except FirebaseError as ex:
+        raise HTTPException(status_code=403, detail="Not authenticated")
+    uid = decoded_token['uid']
+    firebase_user = get_firebase_user_data(uid)
+
+    user = db.query(User).filter(User.firebase_uid == uid).first()
+    if not user and firebase_user.email_verified:
+        user = db.query(User).filter(User.email == firebase_user.email).first()
+
+    is_new_user = not bool(user)
+    if is_new_user:
+        user = User(
+            display_name=firebase_user.display_name,
+            photo_url=firebase_user.photo_url,
+            phone=firebase_user.phone_number,
+            email=firebase_user.email,
+            firebase_uid=uid,
+        )
+        db.add(user)
+        db.commit()
 
 
 @app.post('/save_push_token/', response_class=Response)

@@ -45,3 +45,7 @@ def get_or_create_firebase_user(
 def create_custom_firebase_token(uid: str) -> str:
     custom_token = auth.create_custom_token(uid)
     return custom_token.decode()
+
+
+def get_firebase_user_data(uid: str) -> UserRecord:
+    return auth.get_user(uid)

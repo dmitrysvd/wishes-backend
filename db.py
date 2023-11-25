@@ -22,14 +22,15 @@ class User(Base):
     __tablename__ = 'user'
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    first_name: Mapped[str] = mapped_column(String(30), nullable=False)
-    last_name: Mapped[str] = mapped_column(String(30), nullable=False)
-    phone: Mapped[str] = mapped_column(String(15), nullable=False)
-    email: Mapped[str] = mapped_column(String(100), nullable=False)
+    first_name: Mapped[str] = mapped_column(String(30), nullable=True)
+    last_name: Mapped[str] = mapped_column(String(30), nullable=True)
+    display_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    phone: Mapped[str] = mapped_column(String(15), nullable=True)
+    email: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     photo_url: Mapped[str] = mapped_column(String(200))
 
-    vk_id: Mapped[str] = mapped_column(String(15), unique=True)
-    vk_access_token: Mapped[str] = mapped_column(String(100), unique=True)
+    vk_id: Mapped[Optional[str]] = mapped_column(String(15), unique=False)
+    vk_access_token: Mapped[Optional[str]] = mapped_column(String(100), unique=False)
     firebase_uid: Mapped[Optional[str]] = mapped_column(
         String(100), unique=True, nullable=True
     )

@@ -20,16 +20,18 @@ class WishWriteSchema(BaseModel):
 
 
 class PublicUserSchema(BaseModel):
-    first_name: str
-    last_name: str
+    first_name: Optional[str]
+    last_name: Optional[str]
+    display_name: str
     photo_url: AnyUrl
 
 
 class PrivateUserSchema(BaseModel):
-    first_name: str
-    last_name: str
+    first_name: Optional[str]
+    last_name: Optional[str]
+    display_name: str
     photo_url: AnyUrl
-    phone: str
+    phone: Optional[str]
     email: str
 
 
