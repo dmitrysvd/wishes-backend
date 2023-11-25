@@ -184,7 +184,7 @@ def users_me(user: User = Depends(get_current_user)) -> PrivateUserSchema:
 @app.post('/delete_own_account/')
 def delete_own_account(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
-) -> PrivateUserSchema:
+):
     db.query(User).filter(User.id == user.id).delete()
     db.commit()
 
