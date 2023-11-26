@@ -1,7 +1,15 @@
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, String, create_engine
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    ForeignKey,
+    String,
+    Table,
+    create_engine,
+)
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -16,6 +24,15 @@ from config import settings
 
 class Base(DeclarativeBase):
     pass
+
+
+user_following_table = Table(
+    'user_following',
+    Base.metadata,
+    Column('follower_id', ForeignKey('user.id', ondelete='CASCADE'), primary_key=True),
+    Column('followed_id', ForeignKey('user.id', ondelete='CASCADE'), primary_key=True),
+    CheckConstraint('follower_id <> followed_id'),
+)
 
 
 class User(Base):
@@ -40,6 +57,18 @@ class User(Base):
 
     wishes: Mapped[list['Wish']] = relationship(
         back_populates='user', cascade='all, delete-orphan'
+    )
+    follows: Mapped[list['User']] = relationship(
+        secondary=user_following_table,
+        primaryjoin=(id == user_following_table.c.follower_id),
+        secondaryjoin=(id == user_following_table.c.followed_id),
+        back_populates='followed_by',
+    )
+    followed_by: Mapped[list['User']] = relationship(
+        secondary=user_following_table,
+        primaryjoin=(id == user_following_table.c.followed_id),
+        secondaryjoin=(id == user_following_table.c.follower_id),
+        back_populates='follows',
     )
 
 

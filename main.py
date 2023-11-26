@@ -24,7 +24,8 @@ from firebase import (
     get_or_create_firebase_user,
 )
 from schemas import (
-    PrivateUserSchema,
+    CurrentUserSchema,
+    OtherUserSchema,
     RequestFirebaseAuthSchema,
     ResponseAuthSchema,
     SavePushTokenSchema,
@@ -177,8 +178,10 @@ def auth_firebase(
             email=firebase_user.email,
             firebase_uid=uid,
         )
-        db.add(user)
-        db.commit()
+    else:
+        user.firebase_uid = uid
+    db.add(user)
+    db.commit()
 
 
 @app.post('/save_push_token/', response_class=Response)
@@ -210,44 +213,47 @@ def auth_vk_page(request: Request):
 
 
 @app.get('/')
-def main(request: Request):
+def main(request: Request, db: Session = Depends(get_db)):
     try:
-        get_current_user(request, db=SessionLocal())
+        get_current_user(request)
     except HTTPException:
         return RedirectResponse(request.url_for('auth_vk_page'))
     return 'You are authenticated'
 
 
 @app.get('/wishes')
-def my_wishes(user: User = Depends(get_current_user)) -> list[WishReadSchema]:
-    with SessionLocal() as session:
-        wishes = session.query(Wish).filter(Wish.user == user)
+def my_wishes(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> list[WishReadSchema]:
+    wishes = db.query(Wish).filter(Wish.user == user)
     return [
         WishReadSchema.model_validate(wish, from_attributes=True) for wish in wishes
     ]
 
 
 @app.get('/wishes/user/{user_id}')
-def user_wishes(user_id: int) -> list[WishReadSchema]:
-    with SessionLocal() as session:
-        user = session.query(User).get(user_id)
-        wishes = session.query(Wish).filter(Wish.user == user)
+def user_wishes(user_id: int, db: Session = Depends(get_db)) -> list[WishReadSchema]:
+    user = db.query(User).get(user_id)
+    wishes = db.query(Wish).filter(Wish.user == user)
     return [
         WishReadSchema.model_validate(wish, from_attributes=True) for wish in wishes
     ]
 
 
 @app.post('/wishes')
-def add_wish(wish_data: WishWriteSchema, user: User = Depends(get_current_user)):
-    with SessionLocal() as session:
-        wish = Wish(
-            user_id=user.id,
-            name=wish_data.name,
-            description=wish_data.description,
-            price=wish_data.price,
-        )
-        session.add(wish)
-        session.commit()
+def add_wish(
+    wish_data: WishWriteSchema,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    wish = Wish(
+        user_id=user.id,
+        name=wish_data.name,
+        description=wish_data.description,
+        price=wish_data.price,
+    )
+    db.add(wish)
+    db.commit()
 
 
 @app.put('/wishes/{wish_id}')
@@ -272,9 +278,17 @@ def delete_wish(wish_id: int):
         session.query(Wish).filter(Wish.id == wish_id).delete()
 
 
+@app.get('/users/')
+def users(db: Session = Depends(get_db)) -> list[OtherUserSchema]:
+    users = db.query(User).all()
+    return [
+        OtherUserSchema.model_validate(user, from_attributes=True) for user in users
+    ]
+
+
 @app.get('/users/me/')
-def users_me(user: User = Depends(get_current_user)) -> PrivateUserSchema:
-    return PrivateUserSchema.model_validate(user, from_attributes=True)
+def users_me(user: User = Depends(get_current_user)) -> CurrentUserSchema:
+    return CurrentUserSchema.model_validate(user, from_attributes=True)
 
 
 @app.post('/delete_own_account/')
@@ -283,6 +297,32 @@ def delete_own_account(
 ):
     db.query(User).filter(User.id == user.id).delete()
     db.commit()
+
+
+@app.post('/follow/{follow_user_id}')
+def follow_user(
+    follow_user_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    follow_user = db.query(User).filter(User.id == follow_user_id).first()
+    if not follow_user:
+        raise Exception('Не найден пользователь для добавления в follows')
+    user.follows.append(follow_user)
+    print()
+    db.commit()
+
+
+@app.post('/unfollow/{unfollow_user_id}')
+def unfollow_user(
+    unfollow_user_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    unfollow_user = db.query(User).filter(User.id == unfollow_user_id).first()
+    if not unfollow_user:
+        raise Exception('Не найден пользователь для удаления из follows')
+    user.follows.remove(unfollow_user)
 
 
 def custom_openapi():
