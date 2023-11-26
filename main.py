@@ -221,23 +221,15 @@ def main(request: Request, db: Session = Depends(get_db)):
     return 'You are authenticated'
 
 
-@app.get('/wishes')
-def my_wishes(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
-) -> list[WishReadSchema]:
-    wishes = db.query(Wish).filter(Wish.user == user)
-    return [
-        WishReadSchema.model_validate(wish, from_attributes=True) for wish in wishes
-    ]
+@app.get('/wishes', response_model=list[WishReadSchema])
+def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    return db.query(Wish).filter(Wish.user == user)
 
 
-@app.get('/wishes/user/{user_id}')
-def user_wishes(user_id: int, db: Session = Depends(get_db)) -> list[WishReadSchema]:
+@app.get('/wishes/user/{user_id}', response_model=list[WishReadSchema])
+def user_wishes(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).get(user_id)
-    wishes = db.query(Wish).filter(Wish.user == user)
-    return [
-        WishReadSchema.model_validate(wish, from_attributes=True) for wish in wishes
-    ]
+    return db.query(Wish).filter(Wish.user == user)
 
 
 @app.post('/wishes')
@@ -278,17 +270,14 @@ def delete_wish(wish_id: int):
         session.query(Wish).filter(Wish.id == wish_id).delete()
 
 
-@app.get('/users/')
-def users(db: Session = Depends(get_db)) -> list[OtherUserSchema]:
-    users = db.query(User).all()
-    return [
-        OtherUserSchema.model_validate(user, from_attributes=True) for user in users
-    ]
+@app.get('/users/', response_model=list[OtherUserSchema])
+def users(db: Session = Depends(get_db)):
+    return db.query(User).all()
 
 
-@app.get('/users/me/')
-def users_me(user: User = Depends(get_current_user)) -> CurrentUserSchema:
-    return CurrentUserSchema.model_validate(user, from_attributes=True)
+@app.get('/users/me/', response_model=CurrentUserSchema)
+def users_me(user: User = Depends(get_current_user)):
+    return user
 
 
 @app.post('/delete_own_account/')
@@ -309,7 +298,6 @@ def follow_user(
     if not follow_user:
         raise Exception('Не найден пользователь для добавления в follows')
     user.follows.append(follow_user)
-    print()
     db.commit()
 
 
