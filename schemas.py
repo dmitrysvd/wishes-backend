@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import AnyUrl, BaseModel
+from pydantic import AnyUrl, BaseModel, EmailStr
 
 
 class WishReadSchema(BaseModel):
@@ -34,7 +34,7 @@ class CurrentUserSchema(BaseModel):
     display_name: str
     photo_url: AnyUrl
     phone: Optional[str]
-    email: str
+    email: EmailStr
     follows: list['OtherUserSchema']
     followed_by: list['OtherUserSchema']
 
