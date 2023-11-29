@@ -1,40 +1,41 @@
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional, Union
 
-from pydantic import AnyUrl, BaseModel, EmailStr
+from pydantic import AnyUrl, BaseModel, EmailStr, Field
 
 
-class WishReadSchema(BaseModel):
-    id: int
-    user_id: int
+class BaseWishSchema(BaseModel):
     name: str
     description: Optional[str]
-    price: Optional[Decimal]
+    # price: Union[Annotated[Decimal, Field(decimal_places=2)], None]
+    price: Optional[int]
+
+
+class WishReadSchema(BaseWishSchema):
+    id: int
+    user_id: int
     is_active: bool
 
 
-class WishWriteSchema(BaseModel):
-    name: str
-    description: Optional[str]
-    price: Optional[Decimal] = None
+class WishWriteSchema(BaseWishSchema):
+    pass
 
 
-class OtherUserSchema(BaseModel):
+class BaseUserSchema(BaseModel):
     id: int
-    # first_name: Optional[str]
-    # last_name: Optional[str]
     display_name: str
     photo_url: AnyUrl
+    wishes: list[WishReadSchema]
 
 
-class CurrentUserSchema(BaseModel):
-    id: int
-    # first_name: Optional[str]
-    # last_name: Optional[str]
-    display_name: str
-    photo_url: AnyUrl
+class OtherUserSchema(BaseUserSchema):
+    pass
+
+
+class CurrentUserSchema(BaseUserSchema):
     phone: Optional[str]
     email: EmailStr
+    reserved_wishes: list[WishReadSchema]
     follows: list['OtherUserSchema']
     followed_by: list['OtherUserSchema']
 

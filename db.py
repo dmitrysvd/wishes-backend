@@ -56,7 +56,13 @@ class User(Base):
     )
 
     wishes: Mapped[list['Wish']] = relationship(
-        back_populates='user', cascade='all, delete-orphan'
+        back_populates='user',
+        cascade='all, delete-orphan',
+        foreign_keys='[Wish.user_id]',
+    )
+    reserved_wishes: Mapped[list['Wish']] = relationship(
+        back_populates='reserved_by',
+        foreign_keys='Wish.reserved_by_id',
     )
     follows: Mapped[list['User']] = relationship(
         secondary=user_following_table,
@@ -71,18 +77,35 @@ class User(Base):
         back_populates='follows',
     )
 
+    def __str__(self) -> str:
+        return f'User(id={self.id}, display_name="{self.display_name}")'
+
 
 class Wish(Base):
     __tablename__ = 'wish'
+    __table_args__ = (
+        CheckConstraint(
+            'user_id <> reserved_by_id', name='wish_user_not_equal_reserved_by'
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey('user.id'))
+    reserved_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey('user.id'), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(50))
     description: Mapped[str] = mapped_column(String(1000), nullable=True)
     price: Mapped[Decimal] = mapped_column(DECIMAL(precision=2), nullable=True)
     is_active: Mapped[Boolean] = mapped_column(Boolean(), default=False)
 
-    user: Mapped['User'] = relationship(back_populates='wishes')
+    user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
+    reserved_by: Mapped[Optional['User']] = relationship(
+        back_populates='reserved_wishes', foreign_keys=[reserved_by_id]
+    )
+
+    def __str__(self) -> str:
+        return f'Wish(id={self.id}, name="{self.name}")'
 
 
 engine = create_engine(

@@ -1,6 +1,8 @@
 import json
 from dataclasses import dataclass
+from decimal import getcontext
 from pathlib import Path
+from typing import Optional
 
 import firebase_admin
 import httpx
@@ -12,11 +14,16 @@ from fastapi.templating import Jinja2Templates
 from firebase_admin import auth as firebase_auth
 from firebase_admin.auth import verify_id_token
 from firebase_admin.exceptions import FirebaseError
+from sqladmin import Admin, ModelView
 from sqlalchemy.orm import Session
-from starlette.status import HTTP_401_UNAUTHORIZED
+from starlette.status import (
+    HTTP_401_UNAUTHORIZED,
+    HTTP_403_FORBIDDEN,
+    HTTP_404_NOT_FOUND,
+)
 
 from config import settings
-from db import SessionLocal, User, Wish
+from db import SessionLocal, User, Wish, engine
 from firebase import (
     create_custom_firebase_token,
     get_firebase_app,
@@ -40,6 +47,21 @@ templates = Jinja2Templates(directory="templates")
 BASE_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / 'static'), name="static")
 
+admin = Admin(app, engine)
+
+
+class UserAdmin(ModelView, model=User):
+    column_list = [User.id, User.display_name]
+
+
+class WishAdmin(ModelView, model=Wish):
+    column_list = [Wish.id, Wish.name]
+
+
+if settings.IS_DEBUG:
+    admin.add_view(UserAdmin)
+    admin.add_view(WishAdmin)
+
 
 def get_db():
     db = SessionLocal()
@@ -56,8 +78,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
             status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
         )
 
-    if settings.IS_DEBUG and token == settings.TEST_TOKEN:
-        user = db.query(User).first()
+    if settings.IS_DEBUG and token.startswith(settings.TEST_TOKEN):
+        user_id = int(token.split(':')[-1])
+        user = db.query(User).get(user_id)
         if not user:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
@@ -230,6 +253,48 @@ def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_
 def user_wishes(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).get(user_id)
     return db.query(Wish).filter(Wish.user == user)
+
+
+@app.post('/wishes/user/{user_id}/reserve/{wish_id}', response_class=Response)
+def reserve_wish(
+    user_id: int,
+    wish_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    other_user: Optional[User] = db.query(User).get(user_id)
+    if not other_user:
+        raise HTTPException(HTTP_404_NOT_FOUND, 'User not found')
+    wish = db.query(Wish).filter(Wish.user == other_user, Wish.id == wish_id).first()
+    if not wish:
+        raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
+    if wish.reserved_by and wish.reserved_by != current_user:
+        raise HTTPException(HTTP_403_FORBIDDEN, 'Reserved by someone else')
+    wish.reserved_by = current_user
+    db.add(wish)
+    db.commit()
+
+
+@app.post(
+    '/wishes/user/{user_id}/cancel_reservation/{wish_id}', response_class=Response
+)
+def cancel_wish_reservation(
+    user_id: int,
+    wish_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    other_user: Optional[User] = db.query(User).get(user_id)
+    if not other_user:
+        raise HTTPException(404, 'User not found')
+    wish = db.query(Wish).filter(Wish.user == other_user, Wish.id == wish_id).first()
+    if not wish:
+        raise HTTPException(404, 'Wish not found')
+    if wish.reserved_by and wish.reserved_by != current_user:
+        raise HTTPException(HTTP_403_FORBIDDEN, 'Reserved by someone else')
+    wish.reserved_by = None
+    db.add(wish)
+    db.commit()
 
 
 @app.post('/wishes')
