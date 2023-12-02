@@ -103,7 +103,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
-def auth_vk(access_token: str, vk_extra_data: VkUserExtraData) -> tuple[str, str]:
+def auth_vk(
+    access_token: str, vk_extra_data: VkUserExtraData, db: Session
+) -> tuple[str, str]:
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
     firebase_uid = get_or_create_firebase_user(
@@ -114,32 +116,31 @@ def auth_vk(access_token: str, vk_extra_data: VkUserExtraData) -> tuple[str, str
     )
     firebase_token = create_custom_firebase_token(firebase_uid)
 
-    with SessionLocal() as db:
-        user = db.query(User).filter(User.vk_id == vk_basic_data.id).first()
-        is_new_user = not bool(user)
-        if is_new_user:
-            friends_data = get_vk_user_friends(access_token)
-            user = User(
-                vk_id=vk_basic_data.id,
-                vk_access_token=access_token,
-                display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
-                photo_url=vk_basic_data.photo_url,
-                phone=vk_extra_data.phone,
-                email=vk_extra_data.email,
-                firebase_uid=firebase_uid,
-                gender=vk_basic_data.gender,
-                vk_friends_data=friends_data,
-            )
-        else:
-            user.vk_access_token = access_token
-        db.add(user)
-        db.commit()
+    user = db.query(User).filter(User.vk_id == vk_basic_data.id).first()
+    is_new_user = not bool(user)
+    if is_new_user:
+        friends_data = get_vk_user_friends(access_token)
+        user = User(
+            vk_id=vk_basic_data.id,
+            vk_access_token=access_token,
+            display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
+            photo_url=vk_basic_data.photo_url,
+            phone=vk_extra_data.phone,
+            email=vk_extra_data.email,
+            firebase_uid=firebase_uid,
+            gender=vk_basic_data.gender,
+            vk_friends_data=friends_data,
+        )
+    else:
+        user.vk_access_token = access_token
+    db.add(user)
+    db.commit()
 
     return firebase_uid, firebase_token
 
 
 @app.get('/auth/vk/web/')
-def auth_vk_web(payload: str) -> ResponseVkAuthWebSchema:
+def auth_vk_web(payload: str, db: Session = Depends(get_db)) -> ResponseVkAuthWebSchema:
     """
     Аутентификация через ВК в браузере.
 
@@ -154,7 +155,7 @@ def auth_vk_web(payload: str) -> ResponseVkAuthWebSchema:
     silent_token = auth_payload['token']
     uuid = auth_payload['uuid']
     access_token, vk_extra_data = exchange_tokens(silent_token, uuid)
-    firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data)
+    firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data, db)
     return ResponseVkAuthWebSchema(
         vk_access_token=access_token,
         firebase_uid=firebase_uid,
@@ -163,7 +164,9 @@ def auth_vk_web(payload: str) -> ResponseVkAuthWebSchema:
 
 
 @app.post('/auth/vk/mobile/')
-def auth_vk_mobile(auth_data: RequestVkAuthMobileSchema) -> ResponseVkAuthMobileSchema:
+def auth_vk_mobile(
+    auth_data: RequestVkAuthMobileSchema, db: Session = Depends(get_db)
+) -> ResponseVkAuthMobileSchema:
     """
     Аутентификация через ВК на мобильных устройствах.
 
@@ -172,7 +175,7 @@ def auth_vk_mobile(auth_data: RequestVkAuthMobileSchema) -> ResponseVkAuthMobile
     """
     access_token = auth_data.access_token
     vk_extra_data = VkUserExtraData(email=auth_data.email, phone=auth_data.phone)
-    firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data)
+    firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data, db)
     return ResponseVkAuthMobileSchema(
         firebase_uid=firebase_uid,
         firebase_token=firebase_token,
@@ -328,22 +331,21 @@ def add_wish(
 def update_wish(
     wish_id: int,
     wish_data: WishWriteSchema,
+    db: Session = Depends(get_db),
 ):
-    with SessionLocal() as session:
-        wish = session.query(Wish).get(wish_id)
-        if not wish:
-            raise Exception
-        wish.name = wish_data.name
-        wish.description = wish_data.description
-        wish.price = wish_data.price
-        session.add(wish)
-        session.commit()
+    wish = db.query(Wish).get(wish_id)
+    if not wish:
+        raise Exception
+    wish.name = wish_data.name
+    wish.description = wish_data.description
+    wish.price = wish_data.price
+    db.add(wish)
+    db.commit()
 
 
 @app.delete('/wishes/{wish_id}')
-def delete_wish(wish_id: int):
-    with SessionLocal() as session:
-        session.query(Wish).filter(Wish.id == wish_id).delete()
+def delete_wish(wish_id: int, db: Session = Depends(get_db)):
+    db.query(Wish).filter(Wish.id == wish_id).delete()
 
 
 @app.get('/users/', response_model=list[OtherUserSchema])
