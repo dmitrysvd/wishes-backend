@@ -136,6 +136,7 @@ def auth_vk(
         )
     else:
         user.vk_access_token = access_token
+        user.firebase_uid = firebase_uid
     db.add(user)
     db.commit()
 
