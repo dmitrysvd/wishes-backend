@@ -269,6 +269,14 @@ def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_
     return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
+@app.get('/wishes/{user_id}', response_model=WishReadSchema)
+def get_wish(wish_id: int, db: Session = Depends(get_db)):
+    wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
+    if not wish:
+        return HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
+    return wish
+
+
 @app.get('/wishes/user/{user_id}', response_model=list[WishReadSchema])
 def user_wishes(user_id: int, db: Session = Depends(get_db)):
     user = db.execute(select(User).where(User.id == user_id)).scalar_one()
@@ -367,6 +375,14 @@ def users(db: Session = Depends(get_db)):
     return db.execute(select(User)).scalars()
 
 
+@app.get('/users/{user_id}', response_model=OtherUserSchema)
+def get_user(user_id: int, db: Session = Depends(get_db)):
+    user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
+    if not user:
+        return HTTPException(HTTP_404_NOT_FOUND, 'User not found')
+    return user
+
+
 @app.get('/users/search/', response_model=list[OtherUserSchema])
 def search_users(
     q: str,
@@ -397,6 +413,7 @@ def users_me(user: User = Depends(get_current_user)):
 def delete_own_account(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
+    # TODO: удалять пользователя firebase и сбрасывать access_token.
     db.execute(delete(User).where(User.id == user.id))
     db.commit()
 
