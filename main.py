@@ -352,9 +352,17 @@ def users(db: Session = Depends(get_db)):
 
 
 @app.get('/users/search/', response_model=list[OtherUserSchema])
-def search_users(q: str, db: Session = Depends(get_db)):
+def search_users(
+    q: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Поиск пользователей по имени, email и номеру. Возвращает первые 20 результатов."""
     return (
         db.query(User)
+        .filter(
+            User.id != user.id,
+        )
         .filter(
             User.display_name.icontains(q)
             | User.email.icontains(q)
