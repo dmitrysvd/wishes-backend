@@ -48,12 +48,18 @@ class SavePushTokenSchema(BaseModel):
     push_token: str
 
 
-class VkAuthViaSilentTokenSchema(BaseModel):
-    uuid: str
-    silent_token: str
+class RequestVkAuthMobileSchema(BaseModel):
+    access_token: str
+    email: EmailStr
+    phone: Optional[str]
 
 
-class ResponseAuthSchema(BaseModel):
+class ResponseVkAuthWebSchema(BaseModel):
     vk_access_token: str
+    firebase_uid: str
+    firebase_token: str
+
+
+class ResponseVkAuthMobileSchema(BaseModel):
     firebase_uid: str
     firebase_token: str

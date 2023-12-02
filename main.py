@@ -34,13 +34,21 @@ from schemas import (
     CurrentUserSchema,
     OtherUserSchema,
     RequestFirebaseAuthSchema,
-    ResponseAuthSchema,
+    RequestVkAuthMobileSchema,
+    ResponseVkAuthMobileSchema,
+    ResponseVkAuthWebSchema,
     SavePushTokenSchema,
-    VkAuthViaSilentTokenSchema,
     WishReadSchema,
     WishWriteSchema,
 )
-from vk import auth_vk_user_by_silent_token
+from vk import (
+    VkUserBasicData,
+    VkUserExtraData,
+    auth_vk_user_by_silent_token,
+    exchange_tokens,
+    get_extra_user_data_by_silent_token,
+    get_vk_user_data_by_access_token,
+)
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -97,45 +105,42 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
-def auth_vk_via_silent_token(silent_token: str, uuid: str) -> ResponseAuthSchema:
-    vk_user = auth_vk_user_by_silent_token(silent_token, uuid)
+def auth_vk(access_token: str, vk_extra_data: VkUserExtraData) -> tuple[str, str]:
+    vk_basic_data = get_vk_user_data_by_access_token(access_token)
+
     firebase_uid = get_or_create_firebase_user(
-        email=vk_user.email,
-        display_name=f'{vk_user.first_name} {vk_user.last_name}',
-        photo_url=vk_user.photo_url,
-        phone=vk_user.phone,
+        email=vk_extra_data.email,
+        display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
+        photo_url=vk_basic_data.photo_url,
+        phone=vk_extra_data.phone,
     )
     firebase_token = create_custom_firebase_token(firebase_uid)
 
     with SessionLocal() as db:
-        user = db.query(User).filter(User.vk_id == vk_user.id).first()
+        user = db.query(User).filter(User.vk_id == vk_basic_data.id).first()
         is_new_user = not bool(user)
         if is_new_user:
             user = User(
-                vk_id=vk_user.id,
-                vk_access_token=vk_user.access_token,
-                first_name=vk_user.first_name,
-                last_name=vk_user.last_name,
-                display_name=f'{vk_user.first_name} {vk_user.last_name}',
-                photo_url=vk_user.photo_url,
-                phone=vk_user.phone,
-                email=vk_user.email,
+                vk_id=vk_basic_data.id,
+                vk_access_token=access_token,
+                first_name=vk_basic_data.first_name,
+                last_name=vk_basic_data.last_name,
+                display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
+                photo_url=vk_basic_data.photo_url,
+                phone=vk_extra_data.phone,
+                email=vk_extra_data.email,
                 firebase_uid=firebase_uid,
             )
         else:
-            user.vk_access_token = vk_user.access_token
+            user.vk_access_token = access_token
         db.add(user)
         db.commit()
 
-    return ResponseAuthSchema(
-        vk_access_token=vk_user.access_token,
-        firebase_uid=firebase_uid,
-        firebase_token=firebase_token,
-    )
+    return firebase_uid, firebase_token
 
 
-@app.get('/auth/vk/web/', response_model=ResponseAuthSchema)
-def complete_auth_vk_web(payload: str):
+@app.get('/auth/vk/web/')
+def auth_vk_web(payload: str) -> ResponseVkAuthWebSchema:
     """
     Аутентификация через ВК в браузере.
 
@@ -149,23 +154,29 @@ def complete_auth_vk_web(payload: str):
     assert auth_payload['type'] == 'silent_token'
     silent_token = auth_payload['token']
     uuid = auth_payload['uuid']
-    return auth_vk_via_silent_token(silent_token, uuid)
+    access_token, vk_extra_data = exchange_tokens(silent_token, uuid)
+    firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data)
+    return ResponseVkAuthWebSchema(
+        vk_access_token=access_token,
+        firebase_uid=firebase_uid,
+        firebase_token=firebase_token,
+    )
 
 
-@app.post('/auth/vk/mobile/', response_model=ResponseAuthSchema)
-def auth_vk_mobile(schema: VkAuthViaSilentTokenSchema):
+@app.post('/auth/vk/mobile/')
+def auth_vk_mobile(auth_data: RequestVkAuthMobileSchema) -> ResponseVkAuthMobileSchema:
     """
     Аутентификация через ВК на мобильных устройствах.
 
-    Нужно передать silent_token, чтобы бэк смог получить
-    данные пользователя при обмене silent_token на access_token.
-
+    Создаст пользователя в firebase и на сервере, если не существовал.
     Возвращает данные для аутентификации в firebase.
-    Создаст пользователя в firebase, если не существовал.
     """
-    return auth_vk_via_silent_token(
-        silent_token=schema.silent_token,
-        uuid=schema.uuid,
+    access_token = auth_data.access_token
+    vk_extra_data = VkUserExtraData(email=auth_data.email, phone=auth_data.phone)
+    firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data)
+    return ResponseVkAuthMobileSchema(
+        firebase_uid=firebase_uid,
+        firebase_token=firebase_token,
     )
 
 

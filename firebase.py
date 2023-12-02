@@ -27,7 +27,7 @@ def send_push(push_token: str, title: str, body: str):
 
 
 def get_or_create_firebase_user(
-    email: str, display_name: str, photo_url: str, phone: str
+    email: str, display_name: str, photo_url: str, phone: Optional[str]
 ) -> str:
     try:
         user: UserRecord = auth.get_user_by_email(email)
