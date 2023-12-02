@@ -12,7 +12,7 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from firebase_admin import auth as firebase_auth
-from firebase_admin.auth import verify_id_token
+from firebase_admin.auth import ExpiredIdTokenError, verify_id_token
 from firebase_admin.exceptions import FirebaseError
 from sqladmin import Admin, ModelView
 from sqlalchemy import delete, select
@@ -94,7 +94,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
             )
         return user
 
-    decoded_token = verify_id_token(token, app=get_firebase_app())
+    try:
+        decoded_token = verify_id_token(token, app=get_firebase_app())
+    except ExpiredIdTokenError:
+        raise HTTPException(HTTP_401_UNAUTHORIZED, 'Token expired')
     uid = decoded_token['uid']
     user = db.execute(select(User).where(User.firebase_uid == uid)).scalar_one_or_none()
     if not user:
