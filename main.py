@@ -241,7 +241,7 @@ def auth_vk_page(request: Request):
         {
             "request": request,
             "vk_app_id": settings.VK_APP_ID,
-            "auth_redirect_url": request.url_for('complete_auth_vk_web'),
+            "auth_redirect_url": request.url_for('auth_vk_web'),
         },
     )
 
