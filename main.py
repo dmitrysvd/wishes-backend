@@ -95,7 +95,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
     decoded_token = verify_id_token(token, app=get_firebase_app())
     uid = decoded_token['uid']
-    user = db.query(User).filter(User.firebase_uid == uid).first()
+    user = db.query(User).where(User.firebase_uid == uid).first()
     if not user:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
@@ -116,7 +116,7 @@ def auth_vk(
     )
     firebase_token = create_custom_firebase_token(firebase_uid)
 
-    user = db.query(User).filter(User.vk_id == vk_basic_data.id).first()
+    user = db.query(User).where(User.vk_id == vk_basic_data.id).first()
     is_new_user = not bool(user)
     if is_new_user:
         friends_data = get_vk_user_friends(access_token)
@@ -202,9 +202,9 @@ def auth_firebase(
     uid = decoded_token['uid']
     firebase_user = get_firebase_user_data(uid)
 
-    user = db.query(User).filter(User.firebase_uid == uid).first()
+    user = db.query(User).where(User.firebase_uid == uid).first()
     if not user and firebase_user.email_verified:
-        user = db.query(User).filter(User.email == firebase_user.email).first()
+        user = db.query(User).where(User.email == firebase_user.email).first()
 
     is_new_user = not bool(user)
     if is_new_user:
@@ -260,13 +260,13 @@ def main(request: Request, db: Session = Depends(get_db)):
 
 @app.get('/wishes', response_model=list[WishReadSchema])
 def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(Wish).filter(Wish.user == user)
+    return db.query(Wish).where(Wish.user == user)
 
 
 @app.get('/wishes/user/{user_id}', response_model=list[WishReadSchema])
 def user_wishes(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).get(user_id)
-    return db.query(Wish).filter(Wish.user == user)
+    return db.query(Wish).where(Wish.user == user)
 
 
 @app.post('/wishes/user/{user_id}/reserve/{wish_id}', response_class=Response)
@@ -279,7 +279,7 @@ def reserve_wish(
     other_user: Optional[User] = db.query(User).get(user_id)
     if not other_user:
         raise HTTPException(HTTP_404_NOT_FOUND, 'User not found')
-    wish = db.query(Wish).filter(Wish.user == other_user, Wish.id == wish_id).first()
+    wish = db.query(Wish).where(Wish.user == other_user, Wish.id == wish_id).first()
     if not wish:
         raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     if wish.reserved_by and wish.reserved_by != current_user:
@@ -301,7 +301,7 @@ def cancel_wish_reservation(
     other_user: Optional[User] = db.query(User).get(user_id)
     if not other_user:
         raise HTTPException(404, 'User not found')
-    wish = db.query(Wish).filter(Wish.user == other_user, Wish.id == wish_id).first()
+    wish = db.query(Wish).where(Wish.user == other_user, Wish.id == wish_id).first()
     if not wish:
         raise HTTPException(404, 'Wish not found')
     if wish.reserved_by and wish.reserved_by != current_user:
@@ -345,7 +345,7 @@ def update_wish(
 
 @app.delete('/wishes/{wish_id}')
 def delete_wish(wish_id: int, db: Session = Depends(get_db)):
-    db.query(Wish).filter(Wish.id == wish_id).delete()
+    db.query(Wish).where(Wish.id == wish_id).delete()
 
 
 @app.get('/users/', response_model=list[OtherUserSchema])
@@ -362,10 +362,10 @@ def search_users(
     """Поиск пользователей по имени, email и номеру. Возвращает первые 20 результатов."""
     return (
         db.query(User)
-        .filter(
+        .where(
             User.id != user.id,
         )
-        .filter(
+        .where(
             User.display_name.icontains(q)
             | User.email.icontains(q)
             | User.phone.icontains(q)
@@ -384,7 +384,7 @@ def users_me(user: User = Depends(get_current_user)):
 def delete_own_account(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    db.query(User).filter(User.id == user.id).delete()
+    db.query(User).where(User.id == user.id).delete()
     db.commit()
 
 
@@ -394,7 +394,7 @@ def follow_user(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    follow_user = db.query(User).filter(User.id == follow_user_id).first()
+    follow_user = db.query(User).where(User.id == follow_user_id).first()
     if not follow_user:
         raise Exception('Не найден пользователь для добавления в follows')
     user.follows.append(follow_user)
@@ -407,7 +407,7 @@ def unfollow_user(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    unfollow_user = db.query(User).filter(User.id == unfollow_user_id).first()
+    unfollow_user = db.query(User).where(User.id == unfollow_user_id).first()
     if not unfollow_user:
         raise Exception('Не найден пользователь для удаления из follows')
     user.follows.remove(unfollow_user)
@@ -421,7 +421,7 @@ def possible_friends(
     if not user.vk_friends_data:
         return []
     vk_friend_ids = [vk_friend_data['id'] for vk_friend_data in user.vk_friends_data]
-    return db.query(User).filter(User.vk_id.in_(vk_friend_ids))
+    return db.query(User).where(User.vk_id.in_(vk_friend_ids))
 
 
 def custom_openapi():
