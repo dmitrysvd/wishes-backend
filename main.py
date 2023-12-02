@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from decimal import getcontext
+from decimal import Decimal, getcontext
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +15,7 @@ from firebase_admin import auth as firebase_auth
 from firebase_admin.auth import verify_id_token
 from firebase_admin.exceptions import FirebaseError
 from sqladmin import Admin, ModelView
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 from starlette.status import (
     HTTP_401_UNAUTHORIZED,
@@ -86,7 +87,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
     if settings.IS_DEBUG and token.startswith(settings.TEST_TOKEN):
         user_id = int(token.split(':')[-1])
-        user = db.query(User).get(user_id)
+        user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
         if not user:
             raise HTTPException(
                 status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
@@ -95,7 +96,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
     decoded_token = verify_id_token(token, app=get_firebase_app())
     uid = decoded_token['uid']
-    user = db.query(User).where(User.firebase_uid == uid).first()
+    user = db.execute(select(User).where(User.firebase_uid == uid)).scalar_one_or_none()
     if not user:
         raise HTTPException(
             status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
@@ -116,7 +117,9 @@ def auth_vk(
     )
     firebase_token = create_custom_firebase_token(firebase_uid)
 
-    user = db.query(User).where(User.vk_id == vk_basic_data.id).first()
+    user = db.execute(
+        select(User).where(User.vk_id == vk_basic_data.id)
+    ).scalar_one_or_none()
     is_new_user = not bool(user)
     if is_new_user:
         friends_data = get_vk_user_friends(access_token)
@@ -202,9 +205,11 @@ def auth_firebase(
     uid = decoded_token['uid']
     firebase_user = get_firebase_user_data(uid)
 
-    user = db.query(User).where(User.firebase_uid == uid).first()
+    user = db.execute(select(User).where(User.firebase_uid == uid)).scalar_one_or_none()
     if not user and firebase_user.email_verified:
-        user = db.query(User).where(User.email == firebase_user.email).first()
+        user = db.execute(
+            select(User).where(User.email == firebase_user.email)
+        ).scalar_one_or_none()
 
     is_new_user = not bool(user)
     if is_new_user:
@@ -260,13 +265,13 @@ def main(request: Request, db: Session = Depends(get_db)):
 
 @app.get('/wishes', response_model=list[WishReadSchema])
 def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(Wish).where(Wish.user == user)
+    return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
 @app.get('/wishes/user/{user_id}', response_model=list[WishReadSchema])
 def user_wishes(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).get(user_id)
-    return db.query(Wish).where(Wish.user == user)
+    user = db.execute(select(User).where(User.id == user_id)).scalar_one()
+    return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
 @app.post('/wishes/user/{user_id}/reserve/{wish_id}', response_class=Response)
@@ -276,10 +281,14 @@ def reserve_wish(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    other_user: Optional[User] = db.query(User).get(user_id)
+    other_user: Optional[User] = db.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one()
     if not other_user:
         raise HTTPException(HTTP_404_NOT_FOUND, 'User not found')
-    wish = db.query(Wish).where(Wish.user == other_user, Wish.id == wish_id).first()
+    wish = db.execute(
+        select(Wish).where(Wish.user == other_user, Wish.id == wish_id)
+    ).scalar_one_or_none()
     if not wish:
         raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     if wish.reserved_by and wish.reserved_by != current_user:
@@ -298,10 +307,14 @@ def cancel_wish_reservation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    other_user: Optional[User] = db.query(User).get(user_id)
+    other_user: Optional[User] = db.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one_or_none()
     if not other_user:
         raise HTTPException(404, 'User not found')
-    wish = db.query(Wish).where(Wish.user == other_user, Wish.id == wish_id).first()
+    wish = db.execute(
+        select(Wish).where(Wish.user == other_user, Wish.id == wish_id)
+    ).scalar_one_or_none()
     if not wish:
         raise HTTPException(404, 'Wish not found')
     if wish.reserved_by and wish.reserved_by != current_user:
@@ -333,24 +346,24 @@ def update_wish(
     wish_data: WishWriteSchema,
     db: Session = Depends(get_db),
 ):
-    wish = db.query(Wish).get(wish_id)
+    wish = db.execute(select(Wish).where(Wish.id == wish_id)).scalar_one_or_none()
     if not wish:
-        raise Exception
+        raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     wish.name = wish_data.name
     wish.description = wish_data.description
-    wish.price = wish_data.price
+    wish.price = Decimal(wish_data.price) if wish_data.price else None
     db.add(wish)
     db.commit()
 
 
 @app.delete('/wishes/{wish_id}')
 def delete_wish(wish_id: int, db: Session = Depends(get_db)):
-    db.query(Wish).where(Wish.id == wish_id).delete()
+    db.execute(delete(Wish).where(Wish.id == wish_id))
 
 
 @app.get('/users/', response_model=list[OtherUserSchema])
 def users(db: Session = Depends(get_db)):
-    return db.query(User).all()
+    return db.execute(select(User)).scalars()
 
 
 @app.get('/users/search/', response_model=list[OtherUserSchema])
@@ -360,8 +373,8 @@ def search_users(
     user: User = Depends(get_current_user),
 ):
     """Поиск пользователей по имени, email и номеру. Возвращает первые 20 результатов."""
-    return (
-        db.query(User)
+    return db.execute(
+        select(User)
         .where(
             User.id != user.id,
         )
@@ -371,8 +384,7 @@ def search_users(
             | User.phone.icontains(q)
         )
         .limit(20)
-        .all()
-    )
+    ).scalars()
 
 
 @app.get('/users/me/', response_model=CurrentUserSchema)
@@ -384,7 +396,7 @@ def users_me(user: User = Depends(get_current_user)):
 def delete_own_account(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
-    db.query(User).where(User.id == user.id).delete()
+    db.execute(delete(User).where(User.id == user.id))
     db.commit()
 
 
@@ -394,9 +406,7 @@ def follow_user(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    follow_user = db.query(User).where(User.id == follow_user_id).first()
-    if not follow_user:
-        raise Exception('Не найден пользователь для добавления в follows')
+    follow_user = db.execute(select(User).where(User.id == follow_user_id)).scalar_one()
     user.follows.append(follow_user)
     db.commit()
 
@@ -407,9 +417,9 @@ def unfollow_user(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    unfollow_user = db.query(User).where(User.id == unfollow_user_id).first()
-    if not unfollow_user:
-        raise Exception('Не найден пользователь для удаления из follows')
+    unfollow_user = db.execute(
+        select(User).where(User.id == unfollow_user_id)
+    ).scalar_one()
     user.follows.remove(unfollow_user)
 
 
@@ -421,7 +431,7 @@ def possible_friends(
     if not user.vk_friends_data:
         return []
     vk_friend_ids = [vk_friend_data['id'] for vk_friend_data in user.vk_friends_data]
-    return db.query(User).where(User.vk_id.in_(vk_friend_ids))
+    return db.execute(select(User).where(User.vk_id.in_(vk_friend_ids))).scalars()
 
 
 def custom_openapi():

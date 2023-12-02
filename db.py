@@ -98,8 +98,10 @@ class Wish(Base):
         ForeignKey('user.id'), nullable=True
     )
     name: Mapped[str] = mapped_column(String(50))
-    description: Mapped[str] = mapped_column(String(1000), nullable=True)
-    price: Mapped[Decimal] = mapped_column(DECIMAL(precision=2), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    price: Mapped[Optional[Decimal]] = mapped_column(
+        DECIMAL(precision=2), nullable=True
+    )
     is_active: Mapped[Boolean] = mapped_column(Boolean(), default=False)
 
     user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
