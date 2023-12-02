@@ -1,7 +1,7 @@
 """Initial
 
 Revision ID: d7db9b0db77c
-Revises: 
+Revises:
 Create Date: 2023-12-02 18:28:30.425894
 
 """
@@ -29,7 +29,7 @@ def upgrade() -> None:
         sa.Column('gender', sa.Enum('male', 'female', name='gender'), nullable=False),
         sa.Column('photo_url', sa.String(length=200), nullable=False),
         sa.Column('vk_id', sa.String(length=15), nullable=False),
-        sa.Column('vk_access_token', sa.String(length=100), nullable=False),
+        sa.Column('vk_access_token', sa.String(length=500), nullable=False),
         sa.Column('vk_friends_data', sa.JSON(), nullable=False),
         sa.Column('firebase_uid', sa.String(length=100), nullable=False),
         sa.Column('firebase_push_token', sa.String(length=100), nullable=True),

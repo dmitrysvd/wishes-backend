@@ -97,8 +97,8 @@ def get_vk_user_friends(access_token: str):
         },
     )
     response.raise_for_status()
-    response_data = response.json()
-    return response_data
+    friends_data = response.json()['response']['items']
+    return friends_data
 
 
 def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]:

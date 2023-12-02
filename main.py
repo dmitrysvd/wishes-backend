@@ -389,6 +389,17 @@ def unfollow_user(
     user.follows.remove(unfollow_user)
 
 
+@app.post('/possible_friends', response_model=list[OtherUserSchema])
+def possible_friends(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not user.vk_friends_data:
+        return []
+    vk_friend_ids = [vk_friend_data['id'] for vk_friend_data in user.vk_friends_data]
+    return db.query(User).filter(User.vk_id.in_(vk_friend_ids))
+
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema

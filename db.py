@@ -50,7 +50,7 @@ class User(Base):
 
     vk_id: Mapped[str] = mapped_column(String(15), unique=True, nullable=False)
     vk_access_token: Mapped[str] = mapped_column(
-        String(100),
+        String(500),
         unique=True,
         nullable=False,
     )
