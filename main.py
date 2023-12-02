@@ -351,6 +351,20 @@ def users(db: Session = Depends(get_db)):
     return db.query(User).all()
 
 
+@app.get('/users/search/', response_model=list[OtherUserSchema])
+def search_users(q: str, db: Session = Depends(get_db)):
+    return (
+        db.query(User)
+        .filter(
+            User.display_name.icontains(q)
+            | User.email.icontains(q)
+            | User.phone.icontains(q)
+        )
+        .limit(20)
+        .all()
+    )
+
+
 @app.get('/users/me/', response_model=CurrentUserSchema)
 def users_me(user: User = Depends(get_current_user)):
     return user
@@ -389,7 +403,7 @@ def unfollow_user(
     user.follows.remove(unfollow_user)
 
 
-@app.post('/possible_friends', response_model=list[OtherUserSchema])
+@app.post('/possible_friends/', response_model=list[OtherUserSchema])
 def possible_friends(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
