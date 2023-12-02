@@ -1,10 +1,12 @@
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Column,
+    Enum,
     ForeignKey,
     String,
     Table,
@@ -20,6 +22,7 @@ from sqlalchemy.orm import (
 from sqlalchemy.types import DECIMAL
 
 from config import settings
+from constants import Gender
 
 
 class Base(DeclarativeBase):
@@ -39,21 +42,21 @@ class User(Base):
     __tablename__ = 'user'
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    first_name: Mapped[str] = mapped_column(String(30), nullable=True)
-    last_name: Mapped[str] = mapped_column(String(30), nullable=True)
     display_name: Mapped[str] = mapped_column(String(50), nullable=False)
-    phone: Mapped[str] = mapped_column(String(15), nullable=True)
     email: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    phone: Mapped[str] = mapped_column(String(15), nullable=True)
+    gender: Mapped[Gender] = mapped_column(Enum(Gender))
     photo_url: Mapped[str] = mapped_column(String(200))
 
-    vk_id: Mapped[Optional[str]] = mapped_column(String(15), unique=False)
-    vk_access_token: Mapped[Optional[str]] = mapped_column(String(100), unique=False)
-    firebase_uid: Mapped[Optional[str]] = mapped_column(
-        String(100), unique=True, nullable=True
+    vk_id: Mapped[str] = mapped_column(String(15), unique=True, nullable=False)
+    vk_access_token: Mapped[str] = mapped_column(
+        String(100),
+        unique=True,
+        nullable=False,
     )
-    firebase_push_token: Mapped[Optional[str]] = mapped_column(
-        String(100), nullable=True
-    )
+    vk_friends_data: Mapped[Any] = mapped_column(JSON, nullable=False)
+    firebase_uid: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    firebase_push_token: Mapped[str] = mapped_column(String(100), nullable=True)
 
     wishes: Mapped[list['Wish']] = relationship(
         back_populates='user',

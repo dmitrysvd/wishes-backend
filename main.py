@@ -42,12 +42,10 @@ from schemas import (
     WishWriteSchema,
 )
 from vk import (
-    VkUserBasicData,
     VkUserExtraData,
-    auth_vk_user_by_silent_token,
     exchange_tokens,
-    get_extra_user_data_by_silent_token,
     get_vk_user_data_by_access_token,
+    get_vk_user_friends,
 )
 
 app = FastAPI()
@@ -120,16 +118,17 @@ def auth_vk(access_token: str, vk_extra_data: VkUserExtraData) -> tuple[str, str
         user = db.query(User).filter(User.vk_id == vk_basic_data.id).first()
         is_new_user = not bool(user)
         if is_new_user:
+            friends_data = get_vk_user_friends(access_token)
             user = User(
                 vk_id=vk_basic_data.id,
                 vk_access_token=access_token,
-                first_name=vk_basic_data.first_name,
-                last_name=vk_basic_data.last_name,
                 display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
                 photo_url=vk_basic_data.photo_url,
                 phone=vk_extra_data.phone,
                 email=vk_extra_data.email,
                 firebase_uid=firebase_uid,
+                gender=vk_basic_data.gender,
+                vk_friends_data=friends_data,
             )
         else:
             user.vk_access_token = access_token
@@ -180,9 +179,10 @@ def auth_vk_mobile(auth_data: RequestVkAuthMobileSchema) -> ResponseVkAuthMobile
     )
 
 
-@app.post('/auth/firebase/', response_class=Response)
+# @app.post('/auth/firebase/', response_class=Response)
 def auth_firebase(
-    firebase_auth_schema: RequestFirebaseAuthSchema, db: Session = Depends(get_db)
+    firebase_auth_schema: RequestFirebaseAuthSchema,
+    db: Session = Depends(get_db),
 ):
     """
     Аутентификация через firebase Google.

@@ -1,18 +1,15 @@
 import enum
 from dataclasses import dataclass
+from datetime import date, datetime
 from typing import Any, Optional
 
 import httpx
 from fastapi import HTTPException
 
 from config import settings
+from constants import Gender
 
 VK_API_VERSION = '5.191'
-
-
-class Gender(enum.Enum):
-    male = enum.auto()
-    female = enum.auto()
 
 
 def get_gender(vk_gender: int) -> Gender:
@@ -31,6 +28,7 @@ class VkUserBasicData:
     last_name: str
     photo_url: str
     gender: Gender
+    birthdate: date
 
 
 @dataclass(frozen=True)
@@ -72,17 +70,35 @@ def get_vk_user_data_by_access_token(access_token: str) -> VkUserBasicData:
         params={
             'v': VK_API_VERSION,
             'access_token': access_token,
-            'fields': 'photo_200, sex',
+            'fields': 'photo_200, sex, bdate',
         },
     )
     user_data = response.json()['response'][0]
+    birthdate = datetime.strptime(user_data['bdate'], '%d.%m.%Y').date()
     return VkUserBasicData(
         id=user_data['id'],
         first_name=user_data['first_name'],
         last_name=user_data['last_name'],
         photo_url=user_data['photo_200'],
         gender=get_gender(user_data['sex']),
+        birthdate=birthdate,
     )
+
+
+def get_vk_user_friends(access_token: str):
+    response = httpx.get(
+        'https://api.vk.com/method/friends.get',
+        params={
+            'v': VK_API_VERSION,
+            'access_token': access_token,
+            'order': 'hints',  # по рейтингу
+            # нужно использовать любое поле, чтобы возвращались объекты, а не id-шники.
+            'fields': 'bdate',
+        },
+    )
+    response.raise_for_status()
+    response_data = response.json()
+    return response_data
 
 
 def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]:
@@ -110,16 +126,3 @@ def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]
         email=exchange_token_response['email'],
     )
     return access_token, vk_user_extra
-
-
-def auth_vk_user_by_silent_token(silent_token: str, uuid: str) -> VkUserBasicData:
-    # Deprecated
-    return VkUserBasicData(
-        id=exchange_token_response['user_id'],
-        access_token=exchange_token_response['access_token'],
-        photo_url=user_data_by_silent_token['photo_200'],
-        first_name=user_data_by_silent_token['first_name'],
-        last_name=user_data_by_silent_token['last_name'],
-        phone='79991122345',  # Тестовый номер
-        email=exchange_token_response['email'],
-    )
