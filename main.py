@@ -1,3 +1,4 @@
+import enum
 import json
 from dataclasses import dataclass
 from decimal import Decimal, getcontext
@@ -68,6 +69,15 @@ class WishAdmin(ModelView, model=Wish):
 if settings.IS_DEBUG:
     admin.add_view(UserAdmin)
     admin.add_view(WishAdmin)
+
+
+class HolidayEvent(enum.Enum):
+    NEW_YEAR = 'new_year'
+
+
+PUSH_MESSAGES = {HolidayEvent.NEW_YEAR: ('🎄🎄🎄Скоро Новый год!🎄🎄🎄')}
+
+BODY_MESSAGE = 'Заполните свой список желаний, чтобы друзья знали, что вам подарить'
 
 
 def get_db():
@@ -347,7 +357,7 @@ def add_wish(
         name=wish_data.name,
         description=wish_data.description,
         price=wish_data.price,
-        link=str(wish_data.link),
+        link=str(wish_data.link) if wish_data.link else None,
     )
     db.add(wish)
     db.commit()
@@ -365,7 +375,7 @@ def update_wish(
     wish.name = wish_data.name
     wish.description = wish_data.description
     wish.price = Decimal(wish_data.price) if wish_data.price else None
-    wish.link = str(wish_data.link)
+    wish.link = str(wish_data.link) if wish_data.link else None
     db.add(wish)
     db.commit()
 
