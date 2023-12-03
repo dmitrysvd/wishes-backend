@@ -457,7 +457,7 @@ def unfollow_user(
     user.follows.remove(unfollow_user)
 
 
-@app.post('/possible_friends/', response_model=list[OtherUserSchema])
+@app.get('/possible_friends/', response_model=list[OtherUserSchema])
 def possible_friends(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
