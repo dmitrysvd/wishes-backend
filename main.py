@@ -425,7 +425,6 @@ def upload_wish_image(
 
 @app.delete('/wishes/{wish_id}/image')
 def delete_wish_image(
-    file: UploadFile,
     wish: Wish = Depends(get_current_user_wish),
     db: Session = Depends(get_db),
 ):
