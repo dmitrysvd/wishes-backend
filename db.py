@@ -103,7 +103,8 @@ class Wish(Base):
     price: Mapped[Optional[Decimal]] = mapped_column(
         DECIMAL(precision=2), nullable=True
     )
-    is_active: Mapped[Boolean] = mapped_column(Boolean(), default=False)
+    image: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_active: Mapped[Boolean] = mapped_column(Boolean(), default=True)
 
     user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
     reserved_by: Mapped[Optional['User']] = relationship(

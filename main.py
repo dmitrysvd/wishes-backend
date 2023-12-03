@@ -1,13 +1,15 @@
 import enum
 import json
+import re
 from dataclasses import dataclass
 from decimal import Decimal, getcontext
+from hashlib import md5
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
 import firebase_admin
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -16,7 +18,7 @@ from firebase_admin import auth as firebase_auth
 from firebase_admin.auth import ExpiredIdTokenError, verify_id_token
 from firebase_admin.exceptions import FirebaseError
 from sqladmin import Admin, ModelView
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 from starlette.status import (
     HTTP_401_UNAUTHORIZED,
@@ -53,7 +55,15 @@ from vk import (
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 BASE_DIR = Path(__file__).parent
-app.mount("/static", StaticFiles(directory=BASE_DIR / 'static'), name="static")
+STATIC_FILES_DIR = BASE_DIR / 'static'
+MEDIA_FILES_DIR = BASE_DIR / 'media'
+WISH_IMAGES_DIR = MEDIA_FILES_DIR / 'wish_images'
+
+STATIC_FILES_DIR.mkdir(exist_ok=True)
+MEDIA_FILES_DIR.mkdir(exist_ok=True)
+
+app.mount('/static', StaticFiles(directory=STATIC_FILES_DIR), name='static')
+app.mount('/media', StaticFiles(directory=MEDIA_FILES_DIR), name='media')
 
 admin = Admin(app, engine)
 
@@ -115,6 +125,19 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
             status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
         )
     return user
+
+
+def get_current_user_wish(
+    wish_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+) -> Wish:
+    wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
+    if not wish:
+        raise HTTPException(HTTP_404_NOT_FOUND)
+    if wish.user != user:
+        raise HTTPException(HTTP_403_FORBIDDEN)
+    return wish
 
 
 def auth_vk(
@@ -365,13 +388,10 @@ def add_wish(
 
 @app.put('/wishes/{wish_id}')
 def update_wish(
-    wish_id: int,
     wish_data: WishWriteSchema,
     db: Session = Depends(get_db),
+    wish: Wish = Depends(get_current_user_wish),
 ):
-    wish = db.execute(select(Wish).where(Wish.id == wish_id)).scalar_one_or_none()
-    if not wish:
-        raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     wish.name = wish_data.name
     wish.description = wish_data.description
     wish.price = Decimal(wish_data.price) if wish_data.price else None
@@ -380,9 +400,35 @@ def update_wish(
     db.commit()
 
 
+@app.post('/wishes/{wish_id}/image')
+def upload_wish_image(
+    file: UploadFile,
+    wish: Wish = Depends(get_current_user_wish),
+    db: Session = Depends(get_db),
+):
+    if file.content_type not in ('image/jpg', 'image/png'):
+        raise HTTPException(400, 'Invalid document type')
+    match = re.match(r'.*\.(\w+)$', (file.filename or ''))
+    if not match:
+        raise HTTPException(400, 'No extension')
+    extension = match.group(1)
+    WISH_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
+    content = file.file.read()
+    content_hash = md5().hexdigest()
+    file_name = f'{content_hash}.{extension}'
+    file_path = WISH_IMAGES_DIR / file_name
+    file_path.write_bytes(content)
+    wish.image = file_name
+    db.add(wish)
+    db.commit()
+
+
 @app.delete('/wishes/{wish_id}')
-def delete_wish(wish_id: int, db: Session = Depends(get_db)):
-    db.execute(delete(Wish).where(Wish.id == wish_id))
+def delete_wish(
+    db: Session = Depends(get_db),
+    wish: Wish = Depends(get_current_user_wish),
+):
+    db.execute(delete(Wish).where(Wish.id == wish.id))
     db.commit()
 
 

@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Annotated, Optional, Union
 
-from pydantic import BaseModel, EmailStr, Field, HttpUrl
+from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
 
 
 class BaseWishSchema(BaseModel):
@@ -10,6 +10,12 @@ class BaseWishSchema(BaseModel):
     # price: Union[Annotated[Decimal, Field(decimal_places=2)], None]
     price: Optional[int]
     link: Optional[HttpUrl]
+    image: Optional[str]
+
+    @field_validator('image', mode='before')
+    @staticmethod
+    def make_image_url(image_name: str):
+        return f'/media/wish_images/{image_name}'
 
 
 class WishReadSchema(BaseWishSchema):
@@ -26,7 +32,6 @@ class BaseUserSchema(BaseModel):
     id: int
     display_name: str
     photo_url: HttpUrl
-    wishes: list[WishReadSchema]
 
 
 class OtherUserSchema(BaseUserSchema):
