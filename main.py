@@ -347,6 +347,7 @@ def add_wish(
         name=wish_data.name,
         description=wish_data.description,
         price=wish_data.price,
+        link=str(wish_data.link),
     )
     db.add(wish)
     db.commit()
@@ -364,6 +365,7 @@ def update_wish(
     wish.name = wish_data.name
     wish.description = wish_data.description
     wish.price = Decimal(wish_data.price) if wish_data.price else None
+    wish.link = str(wish_data.link)
     db.add(wish)
     db.commit()
 
