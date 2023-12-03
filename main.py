@@ -371,6 +371,7 @@ def update_wish(
 @app.delete('/wishes/{wish_id}')
 def delete_wish(wish_id: int, db: Session = Depends(get_db)):
     db.execute(delete(Wish).where(Wish.id == wish_id))
+    db.commit()
 
 
 @app.get('/users/', response_model=list[OtherUserSchema])
