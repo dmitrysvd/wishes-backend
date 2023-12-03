@@ -99,6 +99,7 @@ class Wish(Base):
     )
     name: Mapped[str] = mapped_column(String(50))
     description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     price: Mapped[Optional[Decimal]] = mapped_column(
         DECIMAL(precision=2), nullable=True
     )

@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Annotated, Optional, Union
 
-from pydantic import AnyUrl, BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, HttpUrl
 
 
 class BaseWishSchema(BaseModel):
@@ -9,6 +9,7 @@ class BaseWishSchema(BaseModel):
     description: Optional[str]
     # price: Union[Annotated[Decimal, Field(decimal_places=2)], None]
     price: Optional[int]
+    link: Optional[HttpUrl]
 
 
 class WishReadSchema(BaseWishSchema):
@@ -24,7 +25,7 @@ class WishWriteSchema(BaseWishSchema):
 class BaseUserSchema(BaseModel):
     id: int
     display_name: str
-    photo_url: AnyUrl
+    photo_url: HttpUrl
     wishes: list[WishReadSchema]
 
 
