@@ -272,7 +272,7 @@ def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_
     return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
-@app.get('/wishes/{user_id}', response_model=WishReadSchema)
+@app.get('/wishes/{wish_id}', response_model=WishReadSchema)
 def get_wish(wish_id: int, db: Session = Depends(get_db)):
     wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
     if not wish:
