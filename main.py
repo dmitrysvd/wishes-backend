@@ -423,6 +423,17 @@ def upload_wish_image(
     db.commit()
 
 
+@app.delete('/wishes/{wish_id}/image')
+def delete_wish_image(
+    file: UploadFile,
+    wish: Wish = Depends(get_current_user_wish),
+    db: Session = Depends(get_db),
+):
+    wish.image = None
+    db.add(wish)
+    db.commit()
+
+
 @app.delete('/wishes/{wish_id}')
 def delete_wish(
     db: Session = Depends(get_db),
