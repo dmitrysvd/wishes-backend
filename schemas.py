@@ -36,8 +36,6 @@ class BaseUserSchema(BaseModel):
     id: UUID
     display_name: str
     photo_url: HttpUrl
-    follows: list['OtherUserSchema']
-    followed_by: list['OtherUserSchema']
 
 
 class OtherUserSchema(BaseUserSchema):
@@ -49,6 +47,8 @@ class CurrentUserSchema(BaseUserSchema):
     email: EmailStr
     gender: Gender
     birth_date: Optional[date]
+    follows: list['OtherUserSchema']
+    followed_by: list['OtherUserSchema']
 
 
 class RequestFirebaseAuthSchema(BaseModel):
