@@ -462,18 +462,20 @@ def search_users(
     user: User = Depends(get_current_user),
 ):
     """Поиск пользователей по имени, email и номеру. Возвращает первые 20 результатов."""
-    return db.execute(
+    query = (
         select(User)
         .where(
-            User.id != user.id,
-        )
-        .where(
-            User.display_name.icontains(q)
-            | User.email.icontains(q)
-            | User.phone.icontains(q)
+            (User.id != user.id)
+            & (
+                User.display_name.icontains(q.capitalize())
+                | User.display_name.icontains(q.lower())
+                | User.email.icontains(q)
+                | User.phone.icontains(q)
+            )
         )
         .limit(20)
-    ).scalars()
+    )
+    return db.execute(query).scalars()
 
 
 @app.get('/users/me/', response_model=CurrentUserSchema)
