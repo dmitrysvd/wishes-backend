@@ -511,6 +511,7 @@ def unfollow_user(
         select(User).where(User.id == unfollow_user_id)
     ).scalar_one()
     user.follows.remove(unfollow_user)
+    db.commit()
 
 
 @app.get('/possible_friends/', response_model=list[OtherUserSchema])
