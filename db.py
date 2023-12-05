@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -6,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     Enum,
     ForeignKey,
     String,
@@ -45,6 +47,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     phone: Mapped[str] = mapped_column(String(15), nullable=True)
+    birth_date: Mapped[Optional[date]] = mapped_column(Date(), nullable=True)
     gender: Mapped[Gender] = mapped_column(Enum(Gender))
     photo_url: Mapped[str] = mapped_column(String(200))
 

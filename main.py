@@ -167,6 +167,7 @@ def auth_vk(
             phone=vk_extra_data.phone,
             email=vk_extra_data.email,
             firebase_uid=firebase_uid,
+            birth_date=vk_basic_data.birthdate,
             gender=vk_basic_data.gender,
             vk_friends_data=friends_data,
         )

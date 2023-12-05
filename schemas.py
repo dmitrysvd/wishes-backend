@@ -1,7 +1,10 @@
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Optional, Union
 
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
+
+from constants import Gender
 
 
 class BaseWishSchema(BaseModel):
@@ -41,6 +44,8 @@ class OtherUserSchema(BaseUserSchema):
 class CurrentUserSchema(BaseUserSchema):
     phone: Optional[str]
     email: EmailStr
+    gender: Gender
+    birth_date: Optional[date]
     reserved_wishes: list[WishReadSchema]
     follows: list['OtherUserSchema']
     followed_by: list['OtherUserSchema']
