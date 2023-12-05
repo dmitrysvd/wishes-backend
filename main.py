@@ -355,7 +355,7 @@ def delete_wish(
     db.commit()
 
 
-@app.post('/users/me/wishes/{wish_id}/image')
+@app.post('/wishes/{wish_id}/image')
 def upload_wish_image(
     file: UploadFile,
     wish: Wish = Depends(get_current_user_wish),
@@ -378,7 +378,7 @@ def upload_wish_image(
     db.commit()
 
 
-@app.delete('/users/me/wishes/{wish_id}/image')
+@app.delete('/wishes/{wish_id}/image')
 def delete_wish_image(
     wish: Wish = Depends(get_current_user_wish),
     db: Session = Depends(get_db),
