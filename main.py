@@ -302,7 +302,7 @@ def main(request: Request, db: Session = Depends(get_db)):
     return 'You are authenticated'
 
 
-@app.post('/users/me/wishes')
+@app.post('/wishes')
 def add_wish(
     wish_data: WishWriteSchema,
     user: User = Depends(get_current_user),
@@ -319,12 +319,12 @@ def add_wish(
     db.commit()
 
 
-@app.get('/users/me/wishes', response_model=list[WishReadSchema])
+@app.get('/wishes', response_model=list[WishReadSchema])
 def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
-@app.get('/users/me/wishes/{wish_id}', response_model=WishReadSchema)
+@app.get('/wishes/{wish_id}', response_model=WishReadSchema)
 def get_wish(wish_id: UUID, db: Session = Depends(get_db)):
     wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
     if not wish:
@@ -332,7 +332,7 @@ def get_wish(wish_id: UUID, db: Session = Depends(get_db)):
     return wish
 
 
-@app.put('/users/me/wishes/{wish_id}')
+@app.put('/wishes/{wish_id}')
 def update_wish(
     wish_data: WishWriteSchema,
     db: Session = Depends(get_db),
@@ -346,7 +346,7 @@ def update_wish(
     db.commit()
 
 
-@app.delete('/users/me/wishes/{wish_id}')
+@app.delete('/wishes/{wish_id}')
 def delete_wish(
     db: Session = Depends(get_db),
     wish: Wish = Depends(get_current_user_wish),
