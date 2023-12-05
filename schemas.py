@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from typing import Annotated, Optional, Union
+from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
 
@@ -22,8 +23,8 @@ class BaseWishSchema(BaseModel):
 
 
 class WishReadSchema(BaseWishSchema):
-    id: int
-    user_id: int
+    id: UUID
+    user_id: UUID
     is_active: bool
 
 
@@ -32,9 +33,11 @@ class WishWriteSchema(BaseWishSchema):
 
 
 class BaseUserSchema(BaseModel):
-    id: int
+    id: UUID
     display_name: str
     photo_url: HttpUrl
+    follows: list['OtherUserSchema']
+    followed_by: list['OtherUserSchema']
 
 
 class OtherUserSchema(BaseUserSchema):
@@ -46,9 +49,6 @@ class CurrentUserSchema(BaseUserSchema):
     email: EmailStr
     gender: Gender
     birth_date: Optional[date]
-    reserved_wishes: list[WishReadSchema]
-    follows: list['OtherUserSchema']
-    followed_by: list['OtherUserSchema']
 
 
 class RequestFirebaseAuthSchema(BaseModel):

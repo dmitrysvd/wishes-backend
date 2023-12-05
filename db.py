@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from typing import Any, Optional
+from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Table,
+    Uuid,
     create_engine,
 )
 from sqlalchemy.orm import (
@@ -43,7 +45,7 @@ user_following_table = Table(
 class User(Base):
     __tablename__ = 'user'
 
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
     display_name: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     phone: Mapped[str] = mapped_column(String(15), nullable=True)
@@ -95,9 +97,9 @@ class Wish(Base):
         ),
     )
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('user.id'))
-    reserved_by_id: Mapped[Optional[int]] = mapped_column(
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(ForeignKey('user.id'))
+    reserved_by_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey('user.id'), nullable=True
     )
     name: Mapped[str] = mapped_column(String(50))
@@ -116,6 +118,10 @@ class Wish(Base):
 
     def __str__(self) -> str:
         return f'Wish(id={self.id}, name="{self.name}")'
+
+    @property
+    def is_reserved(self) -> bool:
+        return bool(self.reserved_by_id)
 
 
 engine = create_engine(

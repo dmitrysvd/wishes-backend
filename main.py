@@ -6,10 +6,11 @@ from decimal import Decimal, getcontext
 from hashlib import md5
 from pathlib import Path
 from typing import Annotated, Optional
+from uuid import UUID
 
 import firebase_admin
 import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -106,7 +107,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         )
 
     if settings.IS_DEBUG and token.startswith(settings.TEST_TOKEN):
-        user_id = int(token.split(':')[-1])
+        user_id = UUID(token.split(':')[-1])
         user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
         if not user:
             raise HTTPException(
@@ -128,7 +129,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
 
 def get_current_user_wish(
-    wish_id: int,
+    wish_id: UUID,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> Wish:
@@ -180,7 +181,7 @@ def auth_vk(
     return firebase_uid, firebase_token
 
 
-@app.get('/auth/vk/web/')
+@app.get('/auth/vk/web')
 def auth_vk_web(payload: str, db: Session = Depends(get_db)) -> ResponseVkAuthWebSchema:
     """
     Аутентификация через ВК в браузере.
@@ -204,7 +205,7 @@ def auth_vk_web(payload: str, db: Session = Depends(get_db)) -> ResponseVkAuthWe
     )
 
 
-@app.post('/auth/vk/mobile/')
+@app.post('/auth/vk/mobile')
 def auth_vk_mobile(
     auth_data: RequestVkAuthMobileSchema, db: Session = Depends(get_db)
 ) -> ResponseVkAuthMobileSchema:
@@ -264,7 +265,7 @@ def auth_firebase(
     db.commit()
 
 
-@app.post('/save_push_token/', response_class=Response)
+@app.post('/save_push_token', response_class=Response)
 def save_push_token(
     schema: SavePushTokenSchema,
     user: User = Depends(get_current_user),
@@ -301,26 +302,104 @@ def main(request: Request, db: Session = Depends(get_db)):
     return 'You are authenticated'
 
 
-@app.get('/wishes', response_model=list[WishReadSchema])
+@app.post('/users/me/wishes')
+def add_wish(
+    wish_data: WishWriteSchema,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    wish = Wish(
+        user_id=user.id,
+        name=wish_data.name,
+        description=wish_data.description,
+        price=wish_data.price,
+        link=str(wish_data.link) if wish_data.link else None,
+    )
+    db.add(wish)
+    db.commit()
+
+
+@app.get('/users/me/wishes', response_model=list[WishReadSchema])
 def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
-@app.get('/wishes/{wish_id}', response_model=WishReadSchema)
-def get_wish(wish_id: int, db: Session = Depends(get_db)):
+@app.get('/users/me/wishes/{wish_id}', response_model=WishReadSchema)
+def get_wish(wish_id: UUID, db: Session = Depends(get_db)):
     wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
     if not wish:
         return HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     return wish
 
 
-@app.get('/wishes/user/{user_id}', response_model=list[WishReadSchema])
-def user_wishes(user_id: int, db: Session = Depends(get_db)):
+@app.put('/users/me/wishes/{wish_id}')
+def update_wish(
+    wish_data: WishWriteSchema,
+    db: Session = Depends(get_db),
+    wish: Wish = Depends(get_current_user_wish),
+):
+    wish.name = wish_data.name
+    wish.description = wish_data.description
+    wish.price = Decimal(wish_data.price) if wish_data.price else None
+    wish.link = str(wish_data.link) if wish_data.link else None
+    db.add(wish)
+    db.commit()
+
+
+@app.delete('/users/me/wishes/{wish_id}')
+def delete_wish(
+    db: Session = Depends(get_db),
+    wish: Wish = Depends(get_current_user_wish),
+):
+    db.execute(delete(Wish).where(Wish.id == wish.id))
+    db.commit()
+
+
+@app.post('/users/me/wishes/{wish_id}/image')
+def upload_wish_image(
+    file: UploadFile,
+    wish: Wish = Depends(get_current_user_wish),
+    db: Session = Depends(get_db),
+):
+    if file.content_type not in ('image/jpg', 'image/png'):
+        raise HTTPException(400, 'Invalid document type')
+    match = re.match(r'.*\.(\w+)$', (file.filename or ''))
+    if not match:
+        raise HTTPException(400, 'No extension')
+    extension = match.group(1)
+    WISH_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
+    content = file.file.read()
+    content_hash = md5().hexdigest()
+    file_name = f'{content_hash}.{extension}'
+    file_path = WISH_IMAGES_DIR / file_name
+    file_path.write_bytes(content)
+    wish.image = file_name
+    db.add(wish)
+    db.commit()
+
+
+@app.delete('/users/me/wishes/{wish_id}/image')
+def delete_wish_image(
+    wish: Wish = Depends(get_current_user_wish),
+    db: Session = Depends(get_db),
+):
+    wish.image = None
+    db.add(wish)
+    db.commit()
+
+
+@app.get('/users/{user_id}/wishes', response_model=list[WishReadSchema])
+def user_wishes(user_id: UUID, db: Session = Depends(get_db)):
     user = db.execute(select(User).where(User.id == user_id)).scalar_one()
     return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
-@app.post('/wishes/user/{user_id}/reserve/{wish_id}', response_class=Response)
+@app.get('/reserved_wishes', response_model=list[WishReadSchema])
+def reserved_wishes(user: User = Depends(get_current_user)):
+    return user.reserved_wishes
+
+
+@app.post('/wishes/{wish_id}/reserve', response_class=Response)
 def reserve_wish(
     user_id: int,
     wish_id: int,
@@ -344,11 +423,9 @@ def reserve_wish(
     db.commit()
 
 
-@app.post(
-    '/wishes/user/{user_id}/cancel_reservation/{wish_id}', response_class=Response
-)
+@app.post('/wishes/{wish_id}/cancel_reservation', response_class=Response)
 def cancel_wish_reservation(
-    user_id: int,
+    user_id: UUID,
     wish_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -370,93 +447,25 @@ def cancel_wish_reservation(
     db.commit()
 
 
-@app.post('/wishes')
-def add_wish(
-    wish_data: WishWriteSchema,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    wish = Wish(
-        user_id=user.id,
-        name=wish_data.name,
-        description=wish_data.description,
-        price=wish_data.price,
-        link=str(wish_data.link) if wish_data.link else None,
-    )
-    db.add(wish)
-    db.commit()
-
-
-@app.put('/wishes/{wish_id}')
-def update_wish(
-    wish_data: WishWriteSchema,
-    db: Session = Depends(get_db),
-    wish: Wish = Depends(get_current_user_wish),
-):
-    wish.name = wish_data.name
-    wish.description = wish_data.description
-    wish.price = Decimal(wish_data.price) if wish_data.price else None
-    wish.link = str(wish_data.link) if wish_data.link else None
-    db.add(wish)
-    db.commit()
-
-
-@app.post('/wishes/{wish_id}/image')
-def upload_wish_image(
-    file: UploadFile,
-    wish: Wish = Depends(get_current_user_wish),
-    db: Session = Depends(get_db),
-):
-    if file.content_type not in ('image/jpg', 'image/png'):
-        raise HTTPException(400, 'Invalid document type')
-    match = re.match(r'.*\.(\w+)$', (file.filename or ''))
-    if not match:
-        raise HTTPException(400, 'No extension')
-    extension = match.group(1)
-    WISH_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
-    content = file.file.read()
-    content_hash = md5().hexdigest()
-    file_name = f'{content_hash}.{extension}'
-    file_path = WISH_IMAGES_DIR / file_name
-    file_path.write_bytes(content)
-    wish.image = file_name
-    db.add(wish)
-    db.commit()
-
-
-@app.delete('/wishes/{wish_id}/image')
-def delete_wish_image(
-    wish: Wish = Depends(get_current_user_wish),
-    db: Session = Depends(get_db),
-):
-    wish.image = None
-    db.add(wish)
-    db.commit()
-
-
-@app.delete('/wishes/{wish_id}')
-def delete_wish(
-    db: Session = Depends(get_db),
-    wish: Wish = Depends(get_current_user_wish),
-):
-    db.execute(delete(Wish).where(Wish.id == wish.id))
-    db.commit()
-
-
 @app.get('/users/', response_model=list[OtherUserSchema])
 def users(db: Session = Depends(get_db)):
     return db.execute(select(User)).scalars()
 
 
+@app.get('/users/me', response_model=CurrentUserSchema)
+def users_me(user: User = Depends(get_current_user)):
+    return user
+
+
 @app.get('/users/{user_id}', response_model=OtherUserSchema)
-def get_user(user_id: int, db: Session = Depends(get_db)):
+def get_user(user_id: UUID, db: Session = Depends(get_db)):
     user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
     if not user:
         return HTTPException(HTTP_404_NOT_FOUND, 'User not found')
     return user
 
 
-@app.get('/users/search/', response_model=list[OtherUserSchema])
+@app.get('/users/search', response_model=list[OtherUserSchema])
 def search_users(
     q: str,
     db: Session = Depends(get_db),
@@ -479,12 +488,7 @@ def search_users(
     return db.execute(query).scalars()
 
 
-@app.get('/users/me/', response_model=CurrentUserSchema)
-def users_me(user: User = Depends(get_current_user)):
-    return user
-
-
-@app.post('/delete_own_account/')
+@app.post('/delete_own_account')
 def delete_own_account(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
@@ -495,7 +499,7 @@ def delete_own_account(
 
 @app.post('/follow/{follow_user_id}')
 def follow_user(
-    follow_user_id: int,
+    follow_user_id: UUID,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -506,7 +510,7 @@ def follow_user(
 
 @app.post('/unfollow/{unfollow_user_id}')
 def unfollow_user(
-    unfollow_user_id: int,
+    unfollow_user_id: UUID,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -517,7 +521,7 @@ def unfollow_user(
     db.commit()
 
 
-@app.get('/possible_friends/', response_model=list[OtherUserSchema])
+@app.get('/possible_friends', response_model=list[OtherUserSchema])
 def possible_friends(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
