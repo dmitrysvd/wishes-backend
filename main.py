@@ -328,6 +328,11 @@ def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_
     return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
+@app.get('/reserved_wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG])
+def my_reserved_wishes(user: User = Depends(get_current_user)):
+    return user.reserved_wishes
+
+
 @app.get('/wishes/{wish_id}', response_model=WishReadSchema, tags=[WISHES_TAG])
 def get_wish(wish_id: UUID, db: Session = Depends(get_db)):
     wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
@@ -503,6 +508,24 @@ def delete_own_account(
     # TODO: удалять пользователя firebase и сбрасывать access_token.
     db.execute(delete(User).where(User.id == user.id))
     db.commit()
+
+
+@app.get(
+    '/users/{user_id}/followers',
+    tags=[USERS_TAG],
+    response_model=list[OtherUserSchema],
+)
+def user_followers(user: User = Depends(get_current_user)):
+    return user.followed_by
+
+
+@app.get(
+    '/users/{user_id}/follows',
+    tags=[USERS_TAG],
+    response_model=list[OtherUserSchema],
+)
+def users_followed_by_current_user(user: User = Depends(get_current_user)):
+    return user.follows
 
 
 @app.post('/follow/{follow_user_id}', tags=[USERS_TAG])

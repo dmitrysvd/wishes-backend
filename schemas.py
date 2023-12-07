@@ -26,6 +26,7 @@ class WishReadSchema(BaseWishSchema):
     id: UUID
     user_id: UUID
     is_active: bool
+    reserved_by_id: Optional[UUID]
 
 
 class WishWriteSchema(BaseWishSchema):
