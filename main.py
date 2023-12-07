@@ -68,6 +68,10 @@ app.mount('/media', StaticFiles(directory=MEDIA_FILES_DIR), name='media')
 
 admin = Admin(app, engine)
 
+AUTH_TAG = 'auth'
+WISHES_TAG = 'wishes'
+USERS_TAG = 'users'
+
 
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.display_name]
@@ -181,7 +185,7 @@ def auth_vk(
     return firebase_uid, firebase_token
 
 
-@app.get('/auth/vk/web')
+@app.get('/auth/vk/web', tags=[AUTH_TAG])
 def auth_vk_web(payload: str, db: Session = Depends(get_db)) -> ResponseVkAuthWebSchema:
     """
     Аутентификация через ВК в браузере.
@@ -205,7 +209,7 @@ def auth_vk_web(payload: str, db: Session = Depends(get_db)) -> ResponseVkAuthWe
     )
 
 
-@app.post('/auth/vk/mobile')
+@app.post('/auth/vk/mobile', tags=[AUTH_TAG])
 def auth_vk_mobile(
     auth_data: RequestVkAuthMobileSchema, db: Session = Depends(get_db)
 ) -> ResponseVkAuthMobileSchema:
@@ -265,7 +269,7 @@ def auth_firebase(
     db.commit()
 
 
-@app.post('/save_push_token', response_class=Response)
+@app.post('/save_push_token', response_class=Response, tags=[AUTH_TAG])
 def save_push_token(
     schema: SavePushTokenSchema,
     user: User = Depends(get_current_user),
@@ -281,7 +285,7 @@ def save_push_token(
     db.commit()
 
 
-@app.get('/auth/vk/index.html')
+@app.get('/auth/vk/index.html', tags=[AUTH_TAG])
 def auth_vk_page(request: Request):
     return templates.TemplateResponse(
         "registration.html",
@@ -302,7 +306,7 @@ def main(request: Request, db: Session = Depends(get_db)):
     return 'You are authenticated'
 
 
-@app.post('/wishes')
+@app.post('/wishes', tags=[WISHES_TAG])
 def add_wish(
     wish_data: WishWriteSchema,
     user: User = Depends(get_current_user),
@@ -319,12 +323,12 @@ def add_wish(
     db.commit()
 
 
-@app.get('/wishes', response_model=list[WishReadSchema])
+@app.get('/wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG])
 def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
-@app.get('/wishes/{wish_id}', response_model=WishReadSchema)
+@app.get('/wishes/{wish_id}', response_model=WishReadSchema, tags=[WISHES_TAG])
 def get_wish(wish_id: UUID, db: Session = Depends(get_db)):
     wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
     if not wish:
@@ -332,7 +336,7 @@ def get_wish(wish_id: UUID, db: Session = Depends(get_db)):
     return wish
 
 
-@app.put('/wishes/{wish_id}')
+@app.put('/wishes/{wish_id}', tags=[WISHES_TAG])
 def update_wish(
     wish_data: WishWriteSchema,
     db: Session = Depends(get_db),
@@ -346,7 +350,7 @@ def update_wish(
     db.commit()
 
 
-@app.delete('/wishes/{wish_id}')
+@app.delete('/wishes/{wish_id}', tags=[WISHES_TAG])
 def delete_wish(
     db: Session = Depends(get_db),
     wish: Wish = Depends(get_current_user_wish),
@@ -355,7 +359,7 @@ def delete_wish(
     db.commit()
 
 
-@app.post('/wishes/{wish_id}/image')
+@app.post('/wishes/{wish_id}/image', tags=[WISHES_TAG])
 def upload_wish_image(
     file: UploadFile,
     wish: Wish = Depends(get_current_user_wish),
@@ -378,7 +382,7 @@ def upload_wish_image(
     db.commit()
 
 
-@app.delete('/wishes/{wish_id}/image')
+@app.delete('/wishes/{wish_id}/image', tags=[WISHES_TAG])
 def delete_wish_image(
     wish: Wish = Depends(get_current_user_wish),
     db: Session = Depends(get_db),
@@ -388,18 +392,20 @@ def delete_wish_image(
     db.commit()
 
 
-@app.get('/users/{user_id}/wishes', response_model=list[WishReadSchema])
+@app.get(
+    '/users/{user_id}/wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG]
+)
 def user_wishes(user_id: UUID, db: Session = Depends(get_db)):
     user = db.execute(select(User).where(User.id == user_id)).scalar_one()
     return db.execute(select(Wish).where(Wish.user == user)).scalars()
 
 
-@app.get('/reserved_wishes', response_model=list[WishReadSchema])
+@app.get('/reserved_wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG])
 def reserved_wishes(user: User = Depends(get_current_user)):
     return user.reserved_wishes
 
 
-@app.post('/wishes/{wish_id}/reserve', response_class=Response)
+@app.post('/wishes/{wish_id}/reserve', response_class=Response, tags=[WISHES_TAG])
 def reserve_wish(
     user_id: int,
     wish_id: int,
@@ -423,7 +429,9 @@ def reserve_wish(
     db.commit()
 
 
-@app.post('/wishes/{wish_id}/cancel_reservation', response_class=Response)
+@app.post(
+    '/wishes/{wish_id}/cancel_reservation', response_class=Response, tags=[WISHES_TAG]
+)
 def cancel_wish_reservation(
     user_id: UUID,
     wish_id: int,
@@ -447,17 +455,17 @@ def cancel_wish_reservation(
     db.commit()
 
 
-@app.get('/users/', response_model=list[OtherUserSchema])
+@app.get('/users/', response_model=list[OtherUserSchema], tags=[USERS_TAG])
 def users(db: Session = Depends(get_db)):
     return db.execute(select(User)).scalars()
 
 
-@app.get('/users/me', response_model=CurrentUserSchema)
+@app.get('/users/me', response_model=CurrentUserSchema, tags=[USERS_TAG])
 def users_me(user: User = Depends(get_current_user)):
     return user
 
 
-@app.get('/users/{user_id}', response_model=OtherUserSchema)
+@app.get('/users/{user_id}', response_model=OtherUserSchema, tags=[USERS_TAG])
 def get_user(user_id: UUID, db: Session = Depends(get_db)):
     user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
     if not user:
@@ -465,7 +473,7 @@ def get_user(user_id: UUID, db: Session = Depends(get_db)):
     return user
 
 
-@app.get('/users/search', response_model=list[OtherUserSchema])
+@app.get('/users/search', response_model=list[OtherUserSchema], tags=[USERS_TAG])
 def search_users(
     q: str,
     db: Session = Depends(get_db),
@@ -488,7 +496,7 @@ def search_users(
     return db.execute(query).scalars()
 
 
-@app.post('/delete_own_account')
+@app.post('/delete_own_account', tags=[USERS_TAG])
 def delete_own_account(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
@@ -497,7 +505,7 @@ def delete_own_account(
     db.commit()
 
 
-@app.post('/follow/{follow_user_id}')
+@app.post('/follow/{follow_user_id}', tags=[USERS_TAG])
 def follow_user(
     follow_user_id: UUID,
     user: User = Depends(get_current_user),
@@ -508,7 +516,7 @@ def follow_user(
     db.commit()
 
 
-@app.post('/unfollow/{unfollow_user_id}')
+@app.post('/unfollow/{unfollow_user_id}', tags=[USERS_TAG])
 def unfollow_user(
     unfollow_user_id: UUID,
     user: User = Depends(get_current_user),
@@ -521,7 +529,7 @@ def unfollow_user(
     db.commit()
 
 
-@app.get('/possible_friends', response_model=list[OtherUserSchema])
+@app.get('/possible_friends', response_model=list[OtherUserSchema], tags=[USERS_TAG])
 def possible_friends(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
