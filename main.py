@@ -515,7 +515,8 @@ def delete_own_account(
     tags=[USERS_TAG],
     response_model=list[OtherUserSchema],
 )
-def user_followers(user: User = Depends(get_current_user)):
+def user_followers(user_id: UUID, db: Session = Depends(get_db)):
+    user = db.scalars(select(User).where(User.id == user_id)).one()
     return user.followed_by
 
 
@@ -524,7 +525,8 @@ def user_followers(user: User = Depends(get_current_user)):
     tags=[USERS_TAG],
     response_model=list[OtherUserSchema],
 )
-def users_followed_by_current_user(user: User = Depends(get_current_user)):
+def users_followed_by_current_user(user_id: UUID, db: Session = Depends(get_db)):
+    user = db.scalars(select(User).where(User.id == user_id)).one()
     return user.follows
 
 

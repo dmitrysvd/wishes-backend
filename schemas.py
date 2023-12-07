@@ -48,8 +48,6 @@ class CurrentUserSchema(BaseUserSchema):
     email: EmailStr
     gender: Gender
     birth_date: Optional[date]
-    follows: list['OtherUserSchema']
-    followed_by: list['OtherUserSchema']
 
 
 class RequestFirebaseAuthSchema(BaseModel):
