@@ -537,6 +537,8 @@ def follow_user(
     db: Session = Depends(get_db),
 ):
     follow_user = db.execute(select(User).where(User.id == follow_user_id)).scalar_one()
+    if follow_user in user.follows:
+        return
     user.follows.append(follow_user)
     db.commit()
 
@@ -550,6 +552,8 @@ def unfollow_user(
     unfollow_user = db.execute(
         select(User).where(User.id == unfollow_user_id)
     ).scalar_one()
+    if unfollow_user not in user.follows:
+        return
     user.follows.remove(unfollow_user)
     db.commit()
 
