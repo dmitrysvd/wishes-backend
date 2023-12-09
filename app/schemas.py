@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
 
-from constants import Gender
+from app.constants import Gender
 
 
 class BaseWishSchema(BaseModel):

@@ -27,15 +27,15 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
 )
 
-from config import settings
-from db import SessionLocal, User, Wish, engine
-from firebase import (
+from app.config import settings
+from app.db import SessionLocal, User, Wish, engine
+from app.firebase import (
     create_custom_firebase_token,
     get_firebase_app,
     get_firebase_user_data,
     get_or_create_firebase_user,
 )
-from schemas import (
+from app.schemas import (
     CurrentUserSchema,
     OtherUserSchema,
     RequestFirebaseAuthSchema,
@@ -46,22 +46,25 @@ from schemas import (
     WishReadSchema,
     WishWriteSchema,
 )
-from vk import (
+from app.vk import (
     VkUserExtraData,
     exchange_tokens,
     get_vk_user_data_by_access_token,
     get_vk_user_friends,
 )
 
-app = FastAPI()
-templates = Jinja2Templates(directory="templates")
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).parent.parent
+APP_DIR = BASE_DIR / 'app'
+TEMPLATES_DIR = APP_DIR / 'templates'
 STATIC_FILES_DIR = BASE_DIR / 'static'
 MEDIA_FILES_DIR = BASE_DIR / 'media'
 WISH_IMAGES_DIR = MEDIA_FILES_DIR / 'wish_images'
 
 STATIC_FILES_DIR.mkdir(exist_ok=True)
 MEDIA_FILES_DIR.mkdir(exist_ok=True)
+
+app = FastAPI()
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 app.mount('/static', StaticFiles(directory=STATIC_FILES_DIR), name='static')
 app.mount('/media', StaticFiles(directory=MEDIA_FILES_DIR), name='media')

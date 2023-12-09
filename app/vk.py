@@ -6,8 +6,8 @@ from typing import Any, Optional
 import httpx
 from fastapi import HTTPException
 
-from config import settings
-from constants import Gender
+from app.config import settings
+from app.constants import Gender
 
 VK_API_VERSION = '5.191'
 

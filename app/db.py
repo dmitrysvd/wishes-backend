@@ -25,8 +25,8 @@ from sqlalchemy.orm import (
 )
 from sqlalchemy.types import DECIMAL
 
-from config import settings
-from constants import Gender
+from app.config import settings
+from app.constants import Gender
 
 
 class Base(DeclarativeBase):

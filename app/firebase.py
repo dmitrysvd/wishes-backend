@@ -4,7 +4,7 @@ import firebase_admin
 from firebase_admin import App, auth, messaging
 from firebase_admin.auth import UserRecord
 
-from config import settings
+from app.config import settings
 
 cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
 
