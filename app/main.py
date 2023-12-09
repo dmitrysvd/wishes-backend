@@ -10,7 +10,15 @@ from uuid import UUID
 
 import firebase_admin
 import httpx
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -34,6 +42,7 @@ from app.firebase import (
     get_firebase_app,
     get_firebase_user_data,
     get_or_create_firebase_user,
+    send_push,
 )
 from app.schemas import (
     CurrentUserSchema,
@@ -528,9 +537,18 @@ def users_followed_by_current_user(user_id: UUID, db: Session = Depends(get_db))
     return user.follows
 
 
+def send_push_about_new_follower(target: User, follower: User):
+    send_push(
+        push_token=target.firebase_push_token,
+        title='У вас новый подписчик',
+        body=f'На вас подписался {follower.display_name}',
+    )
+
+
 @app.post('/follow/{follow_user_id}', tags=[USERS_TAG])
 def follow_user(
     follow_user_id: UUID,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -539,6 +557,11 @@ def follow_user(
         return
     user.follows.append(follow_user)
     db.commit()
+    background_tasks.add_task(
+        send_push_about_new_follower,
+        target=follow_user,
+        follower=user,
+    )
 
 
 @app.post('/unfollow/{unfollow_user_id}', tags=[USERS_TAG])
