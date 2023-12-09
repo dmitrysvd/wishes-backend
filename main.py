@@ -306,7 +306,7 @@ def main(request: Request, db: Session = Depends(get_db)):
     return 'You are authenticated'
 
 
-@app.post('/wishes', tags=[WISHES_TAG])
+@app.post('/wishes', tags=[WISHES_TAG], response_model=WishReadSchema)
 def add_wish(
     wish_data: WishWriteSchema,
     user: User = Depends(get_current_user),
@@ -321,6 +321,7 @@ def add_wish(
     )
     db.add(wish)
     db.commit()
+    return wish
 
 
 @app.get('/wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG])
