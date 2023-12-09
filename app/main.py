@@ -374,14 +374,10 @@ def upload_wish_image(
     wish: Wish = Depends(get_current_user_wish),
     db: Session = Depends(get_db),
 ):
-    match = re.match(r'.*\.(\w+)$', (file.filename or ''))
-    if not match:
-        raise HTTPException(400, 'No extension')
-    extension = match.group(1)
     WISH_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
     content = file.file.read()
     content_hash = md5(content).hexdigest()
-    file_name = f'{content_hash}.{extension}'
+    file_name = f'{content_hash}'
     file_path = WISH_IMAGES_DIR / file_name
     file_path.write_bytes(content)
     wish.image = file_name
