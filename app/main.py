@@ -462,24 +462,6 @@ def cancel_wish_reservation(
     db.commit()
 
 
-@app.get('/users/', response_model=list[OtherUserSchema], tags=[USERS_TAG])
-def users(db: Session = Depends(get_db)):
-    return db.execute(select(User)).scalars()
-
-
-@app.get('/users/me', response_model=CurrentUserSchema, tags=[USERS_TAG])
-def users_me(user: User = Depends(get_current_user)):
-    return user
-
-
-@app.get('/users/{user_id}', response_model=OtherUserSchema, tags=[USERS_TAG])
-def get_user(user_id: UUID, db: Session = Depends(get_db)):
-    user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
-    if not user:
-        return HTTPException(HTTP_404_NOT_FOUND, 'User not found')
-    return user
-
-
 @app.get('/users/search', response_model=list[OtherUserSchema], tags=[USERS_TAG])
 def search_users(
     q: str,
@@ -501,6 +483,24 @@ def search_users(
         .limit(20)
     )
     return db.execute(query).scalars()
+
+
+@app.get('/users/', response_model=list[OtherUserSchema], tags=[USERS_TAG])
+def users(db: Session = Depends(get_db)):
+    return db.execute(select(User)).scalars()
+
+
+@app.get('/users/me', response_model=CurrentUserSchema, tags=[USERS_TAG])
+def users_me(user: User = Depends(get_current_user)):
+    return user
+
+
+@app.get('/users/{user_id}', response_model=OtherUserSchema, tags=[USERS_TAG])
+def get_user(user_id: UUID, db: Session = Depends(get_db)):
+    user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
+    if not user:
+        return HTTPException(HTTP_404_NOT_FOUND, 'User not found')
+    return user
 
 
 @app.post('/delete_own_account', tags=[USERS_TAG])
