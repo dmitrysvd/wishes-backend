@@ -26,6 +26,7 @@ from fastapi.templating import Jinja2Templates
 from firebase_admin import auth as firebase_auth
 from firebase_admin.auth import ExpiredIdTokenError, verify_id_token
 from firebase_admin.exceptions import FirebaseError
+from loguru import logger
 from sqladmin import Admin, ModelView
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
@@ -63,6 +64,7 @@ from app.vk import (
 )
 
 BASE_DIR = Path(__file__).parent.parent
+LOGS_DIR = BASE_DIR / 'logs'
 APP_DIR = BASE_DIR / 'app'
 TEMPLATES_DIR = APP_DIR / 'templates'
 STATIC_FILES_DIR = BASE_DIR / 'static'
@@ -71,6 +73,7 @@ WISH_IMAGES_DIR = MEDIA_FILES_DIR / 'wish_images'
 
 STATIC_FILES_DIR.mkdir(exist_ok=True)
 MEDIA_FILES_DIR.mkdir(exist_ok=True)
+LOGS_DIR.mkdir(exist_ok=True)
 
 app = FastAPI()
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
@@ -79,6 +82,8 @@ app.mount('/static', StaticFiles(directory=STATIC_FILES_DIR), name='static')
 app.mount('/media', StaticFiles(directory=MEDIA_FILES_DIR), name='media')
 
 admin = Admin(app, engine)
+
+logger.add(LOGS_DIR / 'log.log')
 
 AUTH_TAG = 'auth'
 WISHES_TAG = 'wishes'
@@ -543,6 +548,7 @@ def send_push_about_new_follower(target: User, follower: User):
         title='У вас новый подписчик',
         body=f'На вас подписался {follower.display_name}',
     )
+    logger.info(f'Отправлен пуш при подписании {follower.id} на {target.id}')
 
 
 @app.post('/follow/{follow_user_id}', tags=[USERS_TAG])
