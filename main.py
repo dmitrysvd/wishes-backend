@@ -371,8 +371,6 @@ def upload_wish_image(
     wish: Wish = Depends(get_current_user_wish),
     db: Session = Depends(get_db),
 ):
-    if file.content_type not in ('image/jpg', 'image/png'):
-        raise HTTPException(400, 'Invalid document type')
     match = re.match(r'.*\.(\w+)$', (file.filename or ''))
     if not match:
         raise HTTPException(400, 'No extension')
