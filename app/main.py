@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from decimal import Decimal, getcontext
 from hashlib import md5
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Optional, Union
 from uuid import UUID
 
 import firebase_admin
@@ -28,8 +28,8 @@ from firebase_admin.auth import ExpiredIdTokenError, verify_id_token
 from firebase_admin.exceptions import FirebaseError
 from loguru import logger
 from sqladmin import Admin, ModelView
-from sqlalchemy import delete, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import Select, delete, select, update
+from sqlalchemy.orm import Query, Session
 from starlette.status import (
     HTTP_401_UNAUTHORIZED,
     HTTP_403_FORBIDDEN,
@@ -46,6 +46,7 @@ from app.firebase import (
     send_push,
 )
 from app.schemas import (
+    AnnotatedOtherUserSchema,
     CurrentUserSchema,
     OtherUserSchema,
     RequestFirebaseAuthSchema,
@@ -495,9 +496,33 @@ def search_users(
     return db.execute(query).scalars()
 
 
+def get_annotated_users(
+    db: Session,
+    current_user: User,
+    outer_users: Union[Select[tuple[User]], list[User], None] = None,
+) -> list[AnnotatedOtherUserSchema]:
+    query = select(
+        User,
+        User.followed_by.any(User.id == current_user.id).label('followed_by_me'),
+        User.follows.any(User.id == current_user.id).label('follows_me'),
+    )
+    if isinstance(outer_users, Select):
+        user_ids = [user.id for user in db.execute(outer_users).scalars()]
+        query = query.where(User.id.in_(user_ids))
+    elif isinstance(outer_users, list):
+        user_ids = [user.id for user in outer_users]
+        query = query.where(User.id.in_(user_ids))
+    values = db.execute(query).all()
+    for user, followed_by_me, follows_me in values:
+        user.followed_by_me = followed_by_me  # type: ignore
+        user.follows_me = follows_me  # type: ignore
+    return [AnnotatedOtherUserSchema.model_validate(val[0]) for val in values]
+
+
 @app.get('/users/', response_model=list[OtherUserSchema], tags=[USERS_TAG])
 def users(db: Session = Depends(get_db)):
-    return db.execute(select(User)).scalars()
+    user = db.execute(select(User).limit(1)).scalar_one()
+    return get_annotated_users(db, user)
 
 
 @app.get('/users/me', response_model=CurrentUserSchema, tags=[USERS_TAG])
@@ -505,12 +530,16 @@ def users_me(user: User = Depends(get_current_user)):
     return user
 
 
-@app.get('/users/{user_id}', response_model=OtherUserSchema, tags=[USERS_TAG])
-def get_user(user_id: UUID, db: Session = Depends(get_db)):
+@app.get('/users/{user_id}', response_model=AnnotatedOtherUserSchema, tags=[USERS_TAG])
+def get_user(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
     if not user:
         return HTTPException(HTTP_404_NOT_FOUND, 'User not found')
-    return user
+    return get_annotated_users(db, current_user, [user])[0]
 
 
 @app.post('/delete_own_account', tags=[USERS_TAG])
@@ -525,21 +554,29 @@ def delete_own_account(
 @app.get(
     '/users/{user_id}/followers',
     tags=[USERS_TAG],
-    response_model=list[OtherUserSchema],
+    response_model=list[AnnotatedOtherUserSchema],
 )
-def user_followers(user_id: UUID, db: Session = Depends(get_db)):
+def user_followers(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     user = db.scalars(select(User).where(User.id == user_id)).one()
-    return user.followed_by
+    return get_annotated_users(db, current_user, user.followed_by)
 
 
 @app.get(
     '/users/{user_id}/follows',
     tags=[USERS_TAG],
-    response_model=list[OtherUserSchema],
+    response_model=list[AnnotatedOtherUserSchema],
 )
-def users_followed_by_current_user(user_id: UUID, db: Session = Depends(get_db)):
+def users_followed_by_this_user(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     user = db.scalars(select(User).where(User.id == user_id)).one()
-    return user.follows
+    return get_annotated_users(db, current_user, user.follows)
 
 
 def send_push_about_new_follower(target: User, follower: User):
@@ -598,7 +635,7 @@ def possible_friends(
         .where(User.vk_id.in_(vk_friend_ids))
         .where(~User.followed_by.any(User.id == user.id))
     )
-    return db.execute(query).scalars()
+    return get_annotated_users(db, user, query)
 
 
 def custom_openapi():

@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Annotated, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_validator
 
 from app.constants import Gender
 
@@ -43,6 +43,13 @@ class BaseUserSchema(BaseModel):
 
 class OtherUserSchema(BaseUserSchema):
     pass
+
+
+class AnnotatedOtherUserSchema(BaseUserSchema):
+    model_config = ConfigDict(from_attributes=True)
+
+    follows_me: bool
+    followed_by_me: bool
 
 
 class CurrentUserSchema(BaseUserSchema):
