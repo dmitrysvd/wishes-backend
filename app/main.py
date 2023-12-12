@@ -425,8 +425,8 @@ def reserved_wishes(user: User = Depends(get_current_user)):
 
 @app.post('/wishes/{wish_id}/reserve', response_class=Response, tags=[WISHES_TAG])
 def reserve_wish(
-    user_id: int,
-    wish_id: int,
+    user_id: UUID,
+    wish_id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
