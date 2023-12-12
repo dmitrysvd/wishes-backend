@@ -452,7 +452,7 @@ def reserve_wish(
 )
 def cancel_wish_reservation(
     user_id: UUID,
-    wish_id: int,
+    wish_id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
