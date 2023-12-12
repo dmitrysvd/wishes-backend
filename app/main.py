@@ -429,14 +429,7 @@ def reserve_wish(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    other_user: Optional[User] = db.execute(
-        select(User).where(User.id == user_id)
-    ).scalar_one()
-    if not other_user:
-        raise HTTPException(HTTP_404_NOT_FOUND, 'User not found')
-    wish = db.execute(
-        select(Wish).where(Wish.user == other_user, Wish.id == wish_id)
-    ).scalar_one_or_none()
+    wish = db.execute(select(Wish).where(Wish.id == wish_id)).scalar_one_or_none()
     if not wish:
         raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     if wish.reserved_by and wish.reserved_by != current_user:
@@ -454,14 +447,7 @@ def cancel_wish_reservation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    other_user: Optional[User] = db.execute(
-        select(User).where(User.id == user_id)
-    ).scalar_one_or_none()
-    if not other_user:
-        raise HTTPException(404, 'User not found')
-    wish = db.execute(
-        select(Wish).where(Wish.user == other_user, Wish.id == wish_id)
-    ).scalar_one_or_none()
+    wish = db.execute(select(Wish).where(Wish.id == wish_id)).scalar_one_or_none()
     if not wish:
         raise HTTPException(404, 'Wish not found')
     if wish.reserved_by and wish.reserved_by != current_user:
