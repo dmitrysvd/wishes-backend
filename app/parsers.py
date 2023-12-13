@@ -5,11 +5,13 @@ from typing import Optional
 import httpx
 from bs4 import BeautifulSoup
 from fastapi import HTTPException
+from loguru import logger
 
 from app.schemas import ItemInfoSchema
 
 
 def try_parse_item_by_link(link: str) -> Optional[ItemInfoSchema]:
+    logger.info('Парсинг превью {link}', link=link)
     response = httpx.get(link, follow_redirects=True)
     response.raise_for_status()
     content = response.content
@@ -51,7 +53,7 @@ def try_parse_item_by_link(link: str) -> Optional[ItemInfoSchema]:
             image_url=f'{base_url}/images/big/1.webp',
         )
 
-    soup = BeautifulSoup(content)
+    soup = BeautifulSoup(content, features='html.parser')
     try:
         title = soup.select('meta[property="og:title"]')[0]['content']
         description = soup.select('meta[property="og:description"]')[0]['content']
