@@ -10,6 +10,7 @@ from uuid import UUID
 
 import firebase_admin
 import httpx
+from bs4 import BeautifulSoup
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -45,9 +46,11 @@ from app.firebase import (
     get_or_create_firebase_user,
     send_push,
 )
+from app.parsers import try_parse_item_by_link
 from app.schemas import (
     AnnotatedOtherUserSchema,
     CurrentUserSchema,
+    ItemInfoSchema,
     OtherUserSchema,
     RequestFirebaseAuthSchema,
     RequestVkAuthMobileSchema,
@@ -620,6 +623,14 @@ def possible_friends(
         .where(~User.followed_by.any(User.id == user.id))
     )
     return get_annotated_users(db, user, query)
+
+
+@app.post('/item_info_from_page')
+def get_item_info_from_page(link: str) -> ItemInfoSchema:
+    result = try_parse_item_by_link(link)
+    if not result:
+        raise HTTPException(status_code=400)
+    return result
 
 
 def custom_openapi():
