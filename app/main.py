@@ -518,7 +518,7 @@ def users_me(user: User = Depends(get_current_user)):
     return user
 
 
-@app.put('/users/me')
+@app.put('/users/me', tags=[USERS_TAG])
 def update_profile(
     update_data: CurrentUserUpdateSchema,
     user: User = Depends(get_current_user),
