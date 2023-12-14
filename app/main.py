@@ -49,7 +49,8 @@ from app.firebase import (
 from app.parsers import try_parse_item_by_link
 from app.schemas import (
     AnnotatedOtherUserSchema,
-    CurrentUserSchema,
+    CurrentUserReadSchema,
+    CurrentUserUpdateSchema,
     ItemInfoSchema,
     OtherUserSchema,
     RequestFirebaseAuthSchema,
@@ -512,9 +513,22 @@ def users(db: Session = Depends(get_db)):
     return get_annotated_users(db, user)
 
 
-@app.get('/users/me', response_model=CurrentUserSchema, tags=[USERS_TAG])
+@app.get('/users/me', response_model=CurrentUserReadSchema, tags=[USERS_TAG])
 def users_me(user: User = Depends(get_current_user)):
     return user
+
+
+@app.put('/users/me')
+def update_profile(
+    update_data: CurrentUserUpdateSchema,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user.birth_date = update_data.birth_date
+    user.display_name = update_data.display_name
+    user.gender = update_data.gender
+    db.add(user)
+    db.commit()
 
 
 @app.get('/users/{user_id}', response_model=AnnotatedOtherUserSchema, tags=[USERS_TAG])

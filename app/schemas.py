@@ -39,6 +39,8 @@ class BaseUserSchema(BaseModel):
     id: UUID
     display_name: str
     photo_url: HttpUrl
+    gender: Gender
+    birth_date: Optional[date]
 
 
 class OtherUserSchema(BaseUserSchema):
@@ -52,9 +54,13 @@ class AnnotatedOtherUserSchema(BaseUserSchema):
     followed_by_me: bool
 
 
-class CurrentUserSchema(BaseUserSchema):
+class CurrentUserReadSchema(BaseUserSchema):
     phone: Optional[str]
     email: EmailStr
+
+
+class CurrentUserUpdateSchema(BaseModel):
+    display_name: str
     gender: Gender
     birth_date: Optional[date]
 

@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine
+from sqlalchemy import StaticPool, create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.constants import Gender
@@ -22,7 +22,11 @@ api_client = TestClient(app)
 
 @pytest.fixture
 def db():
-    yield TestingSessionLocal()
+    try:
+        _db = TestingSessionLocal()
+        yield _db
+    finally:
+        _db.close()
 
 
 @pytest.fixture
@@ -39,15 +43,13 @@ def user(db: Session):
     )
     db.add(_user)
     db.commit()
+    return _user
 
 
 @pytest.fixture(autouse=True)
 def override_dependencies(user, db):
     def override_get_db():
-        try:
-            yield db
-        finally:
-            db.close()
+        return db
 
     def override_get_current_user():
         return user
@@ -57,7 +59,7 @@ def override_dependencies(user, db):
 
 
 @pytest.fixture
-def auth_client(user) -> TestClient:
+def auth_client(user: User) -> TestClient:
     client = TestClient(app, headers={'Authorization': ''})
     return client
 
@@ -67,3 +69,18 @@ class TestGetWishes:
         response = auth_client.get('/wishes')
         assert response.is_success
         assert response.json() == []
+
+
+class TestUpdateOwnUser:
+    def test_update_name(self, user: User, auth_client: TestClient, db: Session):
+        response = auth_client.put(
+            '/users/me',
+            json={
+                'display_name': 'New name',
+                'gender': 'male',
+                'birth_date': '2000-01-01',
+            },
+        )
+        assert response.is_success, response.json()
+        user = db.scalars(select(User).where(User.id == user.id)).one()
+        assert user.display_name == 'New name'
