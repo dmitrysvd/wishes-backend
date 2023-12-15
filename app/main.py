@@ -260,7 +260,7 @@ def auth_vk_mobile(
     )
 
 
-# @app.post('/auth/firebase/', response_class=Response)
+@app.post('/auth/firebase/', response_class=Response)
 def auth_firebase(
     firebase_auth_schema: RequestFirebaseAuthSchema,
     db: Session = Depends(get_db),
