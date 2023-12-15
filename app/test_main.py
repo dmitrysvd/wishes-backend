@@ -1,10 +1,10 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine, select
+from sqlalchemy import StaticPool, create_engine, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.constants import Gender
-from app.db import Base, User
+from app.db import Base, User, Wish
 from app.main import app, get_current_user, get_db
 
 engine = create_engine(
@@ -46,6 +46,17 @@ def user(db: Session):
     return _user
 
 
+@pytest.fixture
+def wish(db: Session, user: User) -> Wish:
+    _wish = Wish(
+        user_id=user.id,
+        name='name',
+    )
+    db.add(_wish)
+    db.commit()
+    return _wish
+
+
 @pytest.fixture(autouse=True)
 def override_dependencies(user, db):
     def override_get_db():
@@ -84,3 +95,34 @@ class TestUpdateOwnUser:
         assert response.is_success, response.json()
         user = db.scalars(select(User).where(User.id == user.id)).one()
         assert user.display_name == 'New name'
+
+
+class TestArchiveWish:
+    @pytest.fixture
+    def archived_wish(self, auth_client: TestClient, db: Session, wish: Wish):
+        db.execute(update(Wish).where(Wish.id == wish.id).values(is_archived=True))
+        db.commit()
+        return wish
+
+    def test_archive(self, auth_client: TestClient, db: Session, wish: Wish):
+        response = auth_client.post(f'/wishes/{wish.id}/archive')
+        assert response.is_success, response.json()
+        assert db.scalars(select(Wish).where(Wish.id == wish.id)).one().is_archived
+
+    def test_unarchive(self, auth_client: TestClient, db: Session, archived_wish: Wish):
+        response = auth_client.post(f'/wishes/{archived_wish.id}/unarchive')
+        assert response.is_success, response.json()
+        assert (
+            not db.scalars(select(Wish).where(Wish.id == archived_wish.id))
+            .one()
+            .is_archived
+        )
+
+    def test_read_archived(
+        self, auth_client: TestClient, db: Session, archived_wish: Wish
+    ):
+        response = auth_client.post(f'/wishes/archived')
+        assert response.is_success, response.json()
+        assert str(archived_wish.id) in [
+            wish_data['id'] for wish_data in response.json()
+        ]

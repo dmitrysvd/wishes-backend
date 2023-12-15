@@ -109,7 +109,8 @@ class Wish(Base):
         DECIMAL(precision=2), nullable=True
     )
     image: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    is_active: Mapped[Boolean] = mapped_column(Boolean(), default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean(), default=True)  # TODO: убрать
+    is_archived: Mapped[bool] = mapped_column(Boolean(), default=False)
 
     user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
     reserved_by: Mapped[Optional['User']] = relationship(

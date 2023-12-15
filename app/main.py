@@ -471,6 +471,32 @@ def cancel_wish_reservation(
     db.commit()
 
 
+@app.post('/wishes/{wish_id}/archive', response_class=Response, tags=[WISHES_TAG])
+def archive_wish(
+    db: Session = Depends(get_db), wish: Wish = Depends(get_current_user_wish)
+):
+    wish.is_archived = True
+    db.add(wish)
+    db.commit()
+
+
+@app.post('/wishes/{wish_id}/unarchive', response_class=Response, tags=[WISHES_TAG])
+def unarchive_wish(
+    db: Session = Depends(get_db), wish: Wish = Depends(get_current_user_wish)
+):
+    wish.is_archived = False
+    db.add(wish)
+    db.commit()
+
+
+@app.post('/wishes/archived', response_model=list[WishReadSchema], tags=[WISHES_TAG])
+def archived_wishes(
+    db: Session = Depends(get_db), user: User = Depends(get_current_user)
+):
+    wishes = db.scalars(select(Wish).where(Wish.user == user, Wish.is_archived == True))
+    return wishes
+
+
 @app.get('/users/search', response_model=list[OtherUserSchema], tags=[USERS_TAG])
 def search_users(
     q: str,
