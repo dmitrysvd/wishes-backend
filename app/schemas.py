@@ -19,7 +19,7 @@ class BaseWishSchema(BaseModel):
 class WishReadSchema(BaseWishSchema):
     id: UUID
     user_id: UUID
-    is_active: bool
+    is_archived: bool
     reserved_by_id: Optional[UUID]
     image: Optional[str]
 
