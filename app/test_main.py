@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine, select, update
+from sqlalchemy import StaticPool, create_engine, delete, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.constants import Gender
@@ -43,7 +43,9 @@ def user(db: Session):
     )
     db.add(_user)
     db.commit()
-    return _user
+    yield _user
+    db.execute(delete(User).where(User.id == _user.id))
+    db.commit()
 
 
 @pytest.fixture
