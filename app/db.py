@@ -15,6 +15,7 @@ from sqlalchemy import (
     Table,
     Uuid,
     create_engine,
+    select,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -122,6 +123,10 @@ class Wish(Base):
     @property
     def is_reserved(self) -> bool:
         return bool(self.reserved_by_id)
+
+    @classmethod
+    def get_active_wish_query(cls):
+        return select(cls).where(~cls.is_archived)
 
 
 engine = create_engine(

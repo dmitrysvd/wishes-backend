@@ -355,18 +355,26 @@ def add_wish(
 
 @app.get('/wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG])
 def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.execute(select(Wish).where(Wish.user == user)).scalars()
+    query = Wish.get_active_wish_query().where(Wish.user == user)
+    return db.scalars(query)
 
 
 @app.get('/reserved_wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG])
-def my_reserved_wishes(user: User = Depends(get_current_user)):
-    return user.reserved_wishes
+def my_reserved_wishes(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    query = Wish.get_active_wish_query().where(Wish.reserved_by == user)
+    return db.scalars(query)
 
 
 @app.get('/wishes/{wish_id}', response_model=WishReadSchema, tags=[WISHES_TAG])
-def get_wish(wish_id: UUID, db: Session = Depends(get_db)):
+def get_wish(
+    wish_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
-    if not wish:
+    if not wish or (wish.is_archived and wish.user != user):
         return HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     return wish
 
@@ -425,13 +433,17 @@ def delete_wish_image(
     '/users/{user_id}/wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG]
 )
 def user_wishes(user_id: UUID, db: Session = Depends(get_db)):
-    user = db.execute(select(User).where(User.id == user_id)).scalar_one()
-    return db.execute(select(Wish).where(Wish.user == user)).scalars()
+    user = db.scalars(select(User).where(User.id == user_id)).one()
+    query = Wish.get_active_wish_query().where(Wish.user == user)
+    return db.scalars(query)
 
 
 @app.get('/reserved_wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG])
-def reserved_wishes(user: User = Depends(get_current_user)):
-    return user.reserved_wishes
+def reserved_wishes(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    query = Wish.get_active_wish_query().where(Wish.reserved_by == user)
+    return db.scalars(query)
 
 
 @app.post('/wishes/{wish_id}/reserve', response_class=Response, tags=[WISHES_TAG])
@@ -440,7 +452,8 @@ def reserve_wish(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    wish = db.execute(select(Wish).where(Wish.id == wish_id)).scalar_one_or_none()
+    query = Wish.get_active_wish_query().where(Wish.id == wish_id)
+    wish = db.scalars(query).one_or_none()
     if not wish:
         raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     if wish.reserved_by and wish.reserved_by != current_user:
@@ -613,6 +626,8 @@ def users_followed_by_this_user(
 
 
 def send_push_about_new_follower(target: User, follower: User):
+    if not target.firebase_push_token:
+        return
     send_push(
         push_token=target.firebase_push_token,
         title='У вас новый подписчик',

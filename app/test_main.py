@@ -49,9 +49,39 @@ def user(db: Session):
 
 
 @pytest.fixture
+def other_user(db: Session):
+    _user = User(
+        display_name='Other test user',
+        email='test2@mail.ru',
+        photo_url='test_photo.com',
+        vk_id='vk_id 2',
+        vk_friends_data=[],
+        vk_access_token='vk_access_token 2',
+        firebase_uid='firebase uid 2',
+        gender=Gender.male,
+    )
+    db.add(_user)
+    db.commit()
+    yield _user
+    db.execute(delete(User).where(User.id == _user.id))
+    db.commit()
+
+
+@pytest.fixture
 def wish(db: Session, user: User) -> Wish:
     _wish = Wish(
         user_id=user.id,
+        name='name',
+    )
+    db.add(_wish)
+    db.commit()
+    return _wish
+
+
+@pytest.fixture
+def other_user_wish(db: Session, other_user: User) -> Wish:
+    _wish = Wish(
+        user_id=other_user.id,
         name='name',
     )
     db.add(_wish)
@@ -77,11 +107,59 @@ def auth_client(user: User) -> TestClient:
     return client
 
 
-class TestGetWishes:
+class TestMyWishes:
     def test_empty_wishes(self, auth_client):
         response = auth_client.get('/wishes')
         assert response.is_success
         assert response.json() == []
+
+    def test_list_wishes(self, auth_client: TestClient, wish: Wish):
+        response = auth_client.get('/wishes')
+        assert response.is_success
+        assert [w['id'] for w in response.json()] == [str(wish.id)]
+
+    def test_get_single_wish(self, auth_client: TestClient, wish: Wish):
+        response = auth_client.get(f'/wishes/{wish.id}')
+        assert response.is_success
+        assert response.json()['id'] == str(wish.id)
+
+    def test_get_user_wishes(self, auth_client: TestClient, wish: Wish, user: User):
+        response = auth_client.get(f'/users/{user.id}/wishes/')
+        assert response.is_success
+        assert [w['id'] for w in response.json()] == [str(wish.id)]
+
+
+class TestReservedWishes:
+    @pytest.fixture
+    def reserved_wish(self, db: Session, wish: Wish, user: User, other_user: User):
+        db.execute(
+            update(Wish)
+            .where(Wish.id == wish.id)
+            .values(reserved_by_id=user.id, user_id=other_user.id)
+        )
+        db.commit()
+        return wish
+
+    def test_list_reserved_wishes(self, auth_client: TestClient, reserved_wish: Wish):
+        response = auth_client.get('/reserved_wishes')
+        assert response.is_success
+        assert [w['id'] for w in response.json()] == [str(reserved_wish.id)]
+
+    def test_reserve_wish(
+        self,
+        auth_client: TestClient,
+        other_user_wish: Wish,
+        db: Session,
+        user: User,
+    ):
+        response = auth_client.post(f'/wishes/{other_user_wish.id}/reserve')
+        assert response.is_success
+        assert (
+            db.scalars(select(Wish).where(Wish.id == other_user_wish.id))
+            .one()
+            .reserved_by_id
+            == user.id
+        )
 
 
 class TestUpdateOwnUser:
@@ -101,7 +179,7 @@ class TestUpdateOwnUser:
 
 class TestArchiveWish:
     @pytest.fixture
-    def archived_wish(self, auth_client: TestClient, db: Session, wish: Wish):
+    def archived_wish(self, db: Session, wish: Wish):
         db.execute(update(Wish).where(Wish.id == wish.id).values(is_archived=True))
         db.commit()
         return wish
