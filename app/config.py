@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     VK_APP_ID: int
     FIREBASE_KEY_PATH: Path
     TEST_TOKEN: str
+    STATIC_ROOT: Path
+    MEDIA_ROOT: Path
 
     model_config = SettingsConfigDict(env_file=".env")
 
