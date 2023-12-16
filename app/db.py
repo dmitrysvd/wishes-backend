@@ -54,10 +54,9 @@ class User(Base):
     photo_url: Mapped[Optional[str]] = mapped_column(String(200))
 
     vk_id: Mapped[Optional[str]] = mapped_column(String(15), unique=True, nullable=True)
-    vk_access_token: Mapped[str] = mapped_column(
+    vk_access_token: Mapped[Optional[str]] = mapped_column(
         String(500),
         unique=True,
-        nullable=False,
     )
     vk_friends_data: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)
     firebase_uid: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)

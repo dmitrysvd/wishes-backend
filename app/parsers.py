@@ -50,7 +50,7 @@ def try_parse_item_by_link(link: str) -> Optional[ItemInfoSchema]:
         return ItemInfoSchema(
             title=api_data['imt_name'],
             description=api_data['description'],
-            image_url=f'{base_url}/images/big/1.webp',
+            image_url=f'{base_url}/images/big/1.webp',  # type: ignore
         )
 
     soup = BeautifulSoup(content, features='html.parser')
@@ -58,10 +58,13 @@ def try_parse_item_by_link(link: str) -> Optional[ItemInfoSchema]:
         title = soup.select('meta[property="og:title"]')[0]['content']
         description = soup.select('meta[property="og:description"]')[0]['content']
         image_url = soup.select('meta[property="og:image"]')[0]['content']
+        assert isinstance(title, str)
+        assert isinstance(description, str)
+        assert isinstance(image_url, str)
     except IndexError:
         return None
     return ItemInfoSchema(
         title=title,
         description=description,
-        image_url=image_url,
+        image_url=image_url,  # type: ignore
     )

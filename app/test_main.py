@@ -22,8 +22,8 @@ api_client = TestClient(app)
 
 @pytest.fixture
 def db():
+    _db = TestingSessionLocal()
     try:
-        _db = TestingSessionLocal()
         yield _db
     finally:
         _db.close()
