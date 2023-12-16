@@ -53,14 +53,14 @@ class User(Base):
     gender: Mapped[Optional[Gender]] = mapped_column(Enum(Gender))
     photo_url: Mapped[Optional[str]] = mapped_column(String(200))
 
-    vk_id: Mapped[Optional[str]] = mapped_column(String(15), unique=True, nullable=True)
+    vk_id: Mapped[Optional[str]] = mapped_column(String(15), unique=True)
     vk_access_token: Mapped[Optional[str]] = mapped_column(
         String(500),
         unique=True,
     )
-    vk_friends_data: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)
-    firebase_uid: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    firebase_push_token: Mapped[str] = mapped_column(String(100), nullable=True)
+    vk_friends_data: Mapped[Optional[list[Any]]] = mapped_column(JSON)
+    firebase_uid: Mapped[str] = mapped_column(String(100), unique=True)
+    firebase_push_token: Mapped[Optional[str]] = mapped_column(String(100))
 
     wishes: Mapped[list['Wish']] = relationship(
         back_populates='user',
