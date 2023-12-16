@@ -48,18 +48,18 @@ class User(Base):
     id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
     display_name: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
-    phone: Mapped[str] = mapped_column(String(15), nullable=True)
-    birth_date: Mapped[Optional[date]] = mapped_column(Date(), nullable=True)
-    gender: Mapped[Gender] = mapped_column(Enum(Gender))
-    photo_url: Mapped[str] = mapped_column(String(200))
+    phone: Mapped[Optional[str]] = mapped_column(String(15))
+    birth_date: Mapped[Optional[date]] = mapped_column(Date())
+    gender: Mapped[Optional[Gender]] = mapped_column(Enum(Gender))
+    photo_url: Mapped[Optional[str]] = mapped_column(String(200))
 
-    vk_id: Mapped[str] = mapped_column(String(15), unique=True, nullable=False)
+    vk_id: Mapped[Optional[str]] = mapped_column(String(15), unique=True, nullable=True)
     vk_access_token: Mapped[str] = mapped_column(
         String(500),
         unique=True,
         nullable=False,
     )
-    vk_friends_data: Mapped[Any] = mapped_column(JSON, nullable=False)
+    vk_friends_data: Mapped[Optional[list[Any]]] = mapped_column(JSON, nullable=True)
     firebase_uid: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     firebase_push_token: Mapped[str] = mapped_column(String(100), nullable=True)
 
