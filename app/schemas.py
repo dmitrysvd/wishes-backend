@@ -38,9 +38,9 @@ class WishWriteSchema(BaseWishSchema):
 class BaseUserSchema(BaseModel):
     id: UUID
     display_name: str
-    photo_url: HttpUrl
-    gender: Gender
-    birth_date: Optional[date]
+    photo_url: HttpUrl | None
+    gender: Gender | None
+    birth_date: date | None
 
 
 class OtherUserSchema(BaseUserSchema):
