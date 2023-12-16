@@ -50,6 +50,8 @@ class OtherUserSchema(BaseUserSchema):
 class AnnotatedOtherUserSchema(BaseUserSchema):
     model_config = ConfigDict(from_attributes=True)
 
+    follows: list[OtherUserSchema]
+    followed_by: list[OtherUserSchema]
     follows_me: bool
     followed_by_me: bool
 
