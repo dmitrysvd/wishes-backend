@@ -489,12 +489,11 @@ def unarchive_wish(
     db.commit()
 
 
-@app.post('/wishes/archived', response_model=list[WishReadSchema], tags=[WISHES_TAG])
+@app.get('/archived_wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG])
 def archived_wishes(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    wishes = db.scalars(select(Wish).where(Wish.user == user, Wish.is_archived == True))
-    return wishes
+    return db.scalars(select(Wish).where(Wish.user == user, Wish.is_archived == True))
 
 
 @app.get('/users/search', response_model=list[OtherUserSchema], tags=[USERS_TAG])

@@ -123,7 +123,7 @@ class TestArchiveWish:
     def test_read_archived(
         self, auth_client: TestClient, db: Session, archived_wish: Wish
     ):
-        response = auth_client.post(f'/wishes/archived')
+        response = auth_client.get(f'/archived_wishes')
         assert response.is_success, response.json()
         assert str(archived_wish.id) in [
             wish_data['id'] for wish_data in response.json()
