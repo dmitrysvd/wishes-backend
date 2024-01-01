@@ -54,7 +54,6 @@ from app.schemas import (
     AnnotatedOtherUserSchema,
     CurrentUserReadSchema,
     CurrentUserUpdateSchema,
-    ItemInfoRequestSchema,
     ItemInfoSchema,
     OtherUserSchema,
     RequestFirebaseAuthSchema,
