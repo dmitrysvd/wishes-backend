@@ -16,6 +16,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     FastAPI,
+    Form,
     HTTPException,
     Request,
     UploadFile,
@@ -29,6 +30,7 @@ from firebase_admin import auth as firebase_auth
 from firebase_admin.auth import ExpiredIdTokenError, verify_id_token
 from firebase_admin.exceptions import FirebaseError
 from loguru import logger
+from pydantic import HttpUrl
 from sqladmin import Admin, ModelView
 from sqlalchemy import Select, delete, select, update
 from sqlalchemy.orm import Query, Session
@@ -52,6 +54,7 @@ from app.schemas import (
     AnnotatedOtherUserSchema,
     CurrentUserReadSchema,
     CurrentUserUpdateSchema,
+    ItemInfoRequestSchema,
     ItemInfoSchema,
     OtherUserSchema,
     RequestFirebaseAuthSchema,
@@ -552,7 +555,7 @@ def get_annotated_users(
     return [AnnotatedOtherUserSchema.model_validate(val[0]) for val in values]
 
 
-@app.get('/users/', response_model=list[OtherUserSchema], tags=[USERS_TAG])
+@app.get('/users/', response_model=list[AnnotatedOtherUserSchema], tags=[USERS_TAG])
 def users(db: Session = Depends(get_db)):
     user = db.execute(select(User).limit(1)).scalar_one()
     return get_annotated_users(db, user)
@@ -687,8 +690,12 @@ def possible_friends(
 
 
 @app.post('/item_info_from_page')
-def get_item_info_from_page(link: str) -> ItemInfoSchema:
-    result = try_parse_item_by_link(link)
+def get_item_info_from_page(
+    link: Annotated[HttpUrl, Form()],
+    html: Annotated[str | None, Form()] = None,
+    user: User = Depends(get_current_user),
+) -> ItemInfoSchema:
+    result = try_parse_item_by_link(str(link), html)
     if not result:
         raise HTTPException(status_code=400)
     return result

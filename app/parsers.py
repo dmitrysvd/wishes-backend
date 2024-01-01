@@ -10,15 +10,14 @@ from loguru import logger
 from app.schemas import ItemInfoSchema
 
 
-def try_parse_item_by_link(link: str) -> Optional[ItemInfoSchema]:
+def try_parse_item_by_link(link: str, html: str | None) -> Optional[ItemInfoSchema]:
     logger.info('Парсинг превью {link}', link=link)
-    response = httpx.get(link, follow_redirects=True)
-    response.raise_for_status()
-    content = response.content
+    if not html:
+        response = httpx.get(link, follow_redirects=True)
+        response.raise_for_status()
+        html = response.text
     if 'market.yandex.ru' in link:
-        match = re.search(
-            r'window.\__apiary\.deferredMetaGenerator\((.*?.)\);', response.text
-        )
+        match = re.search(r'window.\__apiary\.deferredMetaGenerator\((.*?.)\);', html)
         if not match:
             return None
         meta_data_str = match.group(1)
@@ -53,7 +52,7 @@ def try_parse_item_by_link(link: str) -> Optional[ItemInfoSchema]:
             image_url=f'{base_url}/images/big/1.webp',  # type: ignore
         )
 
-    soup = BeautifulSoup(content, features='html.parser')
+    soup = BeautifulSoup(html, features='html.parser')
     try:
         title = soup.select('meta[property="og:title"]')[0]['content']
         description = soup.select('meta[property="og:description"]')[0]['content']

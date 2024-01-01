@@ -44,7 +44,7 @@ class BaseUserSchema(BaseModel):
 
 
 class OtherUserSchema(BaseUserSchema):
-    pass
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AnnotatedOtherUserSchema(BaseUserSchema):
