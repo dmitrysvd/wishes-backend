@@ -34,7 +34,7 @@ def user(db: Session):
     _user = User(
         display_name='Test user',
         email='test@mail.ru',
-        photo_url='test_photo.com',
+        photo_url='https://test_photo.com',
         vk_id='vk_id',
         vk_friends_data=[],
         vk_access_token='vk_access_token',
@@ -53,7 +53,7 @@ def other_user(db: Session):
     _user = User(
         display_name='Other test user',
         email='test2@mail.ru',
-        photo_url='test_photo.com',
+        photo_url='https://test_photo.com',
         vk_id='vk_id 2',
         vk_friends_data=[],
         vk_access_token='vk_access_token 2',
@@ -162,7 +162,12 @@ class TestReservedWishes:
         )
 
 
-class TestUpdateOwnUser:
+class TestMyUser:
+    def test_get_user(self, user: User, auth_client: TestClient, db: Session):
+        response = auth_client.get('/users/me')
+        assert response.is_success
+        assert response.json()['id'] == str(user.id)
+
     def test_update_name(self, user: User, auth_client: TestClient, db: Session):
         response = auth_client.put(
             '/users/me',

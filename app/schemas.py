@@ -59,6 +59,8 @@ class AnnotatedOtherUserSchema(BaseUserSchema):
 class CurrentUserReadSchema(BaseUserSchema):
     phone: Optional[str]
     email: EmailStr
+    follows: list[OtherUserSchema]
+    followed_by: list[OtherUserSchema]
 
 
 class CurrentUserUpdateSchema(BaseModel):
