@@ -190,7 +190,7 @@ def auth_vk(
     firebase_token = create_custom_firebase_token(firebase_uid)
 
     user = db.execute(
-        select(User).where(User.vk_id == vk_basic_data.id)
+        select(User).where(User.firebase_uid == firebase_uid)
     ).scalar_one_or_none()
     is_new_user = not bool(user)
     if is_new_user:
