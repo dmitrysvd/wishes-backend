@@ -16,21 +16,6 @@ class BaseWishSchema(BaseModel):
     link: Optional[HttpUrl]
 
 
-class WishReadSchema(BaseWishSchema):
-    id: UUID
-    user_id: UUID
-    is_archived: bool
-    reserved_by_id: Optional[UUID]
-    image: Optional[str]
-
-    @field_validator('image', mode='before')
-    @staticmethod
-    def make_image_url(image_name: str) -> Optional[str]:
-        if not image_name:
-            return None
-        return f'/media/wish_images/{image_name}'
-
-
 class WishWriteSchema(BaseWishSchema):
     pass
 
@@ -47,6 +32,22 @@ class OtherUserSchema(BaseUserSchema):
     model_config = ConfigDict(from_attributes=True)
 
     email: EmailStr
+
+
+class WishReadSchema(BaseWishSchema):
+    id: UUID
+    user_id: UUID
+    is_archived: bool
+    reserved_by_id: Optional[UUID]
+    image: Optional[str]
+    user: OtherUserSchema
+
+    @field_validator('image', mode='before')
+    @staticmethod
+    def make_image_url(image_name: str) -> Optional[str]:
+        if not image_name:
+            return None
+        return f'/media/wish_images/{image_name}'
 
 
 class AnnotatedOtherUserSchema(BaseUserSchema):
