@@ -211,3 +211,14 @@ class TestArchiveWish:
         assert str(archived_wish.id) in [
             wish_data['id'] for wish_data in response.json()
         ]
+
+
+def test_search_user(
+    auth_client: TestClient,
+    other_user: User,
+):
+    response = auth_client.get(f'/users/search', params={'q': 'Other test user'})
+    assert response.is_success, response.json()
+    response_data = response.json()
+    assert len(response_data) == 1
+    assert response_data[0]['email'] == 'test2@mail.ru'

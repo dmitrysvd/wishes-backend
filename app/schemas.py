@@ -46,6 +46,8 @@ class BaseUserSchema(BaseModel):
 class OtherUserSchema(BaseUserSchema):
     model_config = ConfigDict(from_attributes=True)
 
+    email: EmailStr
+
 
 class AnnotatedOtherUserSchema(BaseUserSchema):
     model_config = ConfigDict(from_attributes=True)
