@@ -3,7 +3,15 @@ from decimal import Decimal
 from typing import Annotated, Optional, Union
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    FilePath,
+    HttpUrl,
+    field_validator,
+)
 
 from app.constants import Gender
 

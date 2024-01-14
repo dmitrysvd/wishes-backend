@@ -53,6 +53,7 @@ class User(Base):
     birth_date: Mapped[Optional[date]] = mapped_column(Date())
     gender: Mapped[Optional[Gender]] = mapped_column(Enum(Gender))
     photo_url: Mapped[Optional[str]] = mapped_column(String(200))
+    photo_path: Mapped[Optional[str]] = mapped_column(String(200))
 
     vk_id: Mapped[Optional[str]] = mapped_column(String(15), unique=True)
     vk_access_token: Mapped[Optional[str]] = mapped_column(

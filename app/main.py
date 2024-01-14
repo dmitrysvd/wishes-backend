@@ -1,5 +1,6 @@
 import enum
 import json
+import os
 import re
 from dataclasses import dataclass
 from decimal import Decimal, getcontext
@@ -16,6 +17,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     FastAPI,
+    File,
     Form,
     HTTPException,
     Request,
@@ -76,6 +78,7 @@ LOGS_DIR = BASE_DIR / 'logs'
 APP_DIR = BASE_DIR / 'app'
 TEMPLATES_DIR = APP_DIR / 'templates'
 WISH_IMAGES_DIR = settings.MEDIA_ROOT / 'wish_images'
+PROFILE_IMAGES_DIR = settings.MEDIA_ROOT / 'profile_images'
 
 LOGS_DIR.mkdir(exist_ok=True)
 
@@ -576,6 +579,45 @@ def update_profile(
     user.gender = update_data.gender
     db.add(user)
     db.commit()
+
+
+def delete_user_image(user: User, db: Session):
+    user.photo_path = None
+    user.photo_url = None
+    if user.photo_path:
+        os.remove(user.photo_path)
+    db.add(user)
+    db.commit()
+
+
+@app.post('/set_profile_image', tags=[USERS_TAG])
+def set_profile_image(
+    request: Request,
+    image: UploadFile,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    PROFILE_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
+    content = image.file.read()
+    file_name = f'profile_image_user_{user.id}'
+    file_path = PROFILE_IMAGES_DIR / file_name
+    file_path.write_bytes(content)
+    related_media_path = file_path.relative_to(settings.MEDIA_ROOT)
+    user.photo_url = (
+        f"{request.url.scheme}://{request.headers['host']}/media/{related_media_path}"
+    )
+    user.photo_path = str(file_path)
+    db.add(user)
+    db.commit()
+
+
+@app.post('/delete_profile_image', tags=[USERS_TAG])
+def delete_profile_image(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if user.photo_path:
+        delete_user_image(user, db)
 
 
 @app.get('/users/{user_id}', response_model=AnnotatedOtherUserSchema, tags=[USERS_TAG])
