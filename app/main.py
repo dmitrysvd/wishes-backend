@@ -82,7 +82,7 @@ PROFILE_IMAGES_DIR = settings.MEDIA_ROOT / 'profile_images'
 
 LOGS_DIR.mkdir(exist_ok=True)
 
-app = FastAPI(root_path='/api/v1')
+app = FastAPI(root_path=settings.URL_ROOT_PATH)
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 if settings.IS_DEBUG:

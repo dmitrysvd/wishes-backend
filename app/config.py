@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     TEST_TOKEN: str
     STATIC_ROOT: Path
     MEDIA_ROOT: Path
+    URL_ROOT_PATH: str = ''
 
     model_config = SettingsConfigDict(env_file=".env")
 
