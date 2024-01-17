@@ -3,6 +3,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal, getcontext
 from hashlib import md5
 from pathlib import Path
@@ -600,7 +601,7 @@ def set_profile_image(
 ):
     PROFILE_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
     content = image.file.read()
-    file_name = f'profile_image_user_{user.id}'
+    file_name = f'profile_image_user_{user.id}_{datetime.now().isoformat()}'
     file_path = PROFILE_IMAGES_DIR / file_name
     file_path.write_bytes(content)
     related_media_path = file_path.relative_to(settings.MEDIA_ROOT)
