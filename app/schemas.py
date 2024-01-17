@@ -39,7 +39,7 @@ class BaseUserSchema(BaseModel):
 class OtherUserSchema(BaseUserSchema):
     model_config = ConfigDict(from_attributes=True)
 
-    email: EmailStr
+    email: EmailStr | None
 
 
 class WishReadSchema(BaseWishSchema):
@@ -69,7 +69,7 @@ class AnnotatedOtherUserSchema(BaseUserSchema):
 
 class CurrentUserReadSchema(BaseUserSchema):
     phone: Optional[str]
-    email: EmailStr
+    email: EmailStr | None
     follows: list[OtherUserSchema]
     followed_by: list[OtherUserSchema]
 
