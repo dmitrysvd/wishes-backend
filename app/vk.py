@@ -39,7 +39,7 @@ class VkUserExtraData:
     Доступны только при аутентификации.
     """
 
-    email: str
+    email: Optional[str]
     phone: Optional[str]
 
 

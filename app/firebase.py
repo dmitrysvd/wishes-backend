@@ -26,18 +26,21 @@ def send_push(push_token: str, title: str, body: str):
     messaging.send(message)
 
 
-def get_or_create_firebase_user(
-    email: str, display_name: str, photo_url: str, phone: Optional[str]
+def create_firebase_user(
+    display_name: str,
+    photo_url: str,
+    email: str | None,
+    phone: str | None,
 ) -> str:
-    try:
-        user: UserRecord = auth.get_user_by_email(email)
-    except auth.UserNotFoundError:
-        user: UserRecord = auth.create_user(
-            email=email,
-            email_verified=False,
-            display_name=display_name,
-            photo_url=photo_url,
-        )
+    # try:
+    #     user: UserRecord = auth.get_user_by_email(email)
+    # except auth.UserNotFoundError:
+    user: UserRecord = auth.create_user(
+        email=email,
+        email_verified=False,
+        display_name=display_name,
+        photo_url=photo_url,
+    )
     return user.uid  # type: ignore
 
 

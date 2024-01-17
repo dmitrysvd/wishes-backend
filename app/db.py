@@ -48,7 +48,7 @@ class User(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
     display_name: Mapped[str] = mapped_column(String(50), nullable=False)
-    email: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    email: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     phone: Mapped[Optional[str]] = mapped_column(String(15))
     birth_date: Mapped[Optional[date]] = mapped_column(Date())
     gender: Mapped[Optional[Gender]] = mapped_column(Enum(Gender))

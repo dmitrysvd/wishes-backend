@@ -46,9 +46,9 @@ from app.config import settings
 from app.db import SessionLocal, User, Wish, engine
 from app.firebase import (
     create_custom_firebase_token,
+    create_firebase_user,
     get_firebase_app,
     get_firebase_user_data,
-    get_or_create_firebase_user,
     send_push,
 )
 from app.parsers import try_parse_item_by_link
@@ -184,19 +184,18 @@ def auth_vk(
 ) -> tuple[str, str]:
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
-    firebase_uid = get_or_create_firebase_user(
-        email=vk_extra_data.email,
-        display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
-        photo_url=vk_basic_data.photo_url,
-        phone=vk_extra_data.phone,
-    )
-    firebase_token = create_custom_firebase_token(firebase_uid)
-
     user = db.execute(
-        select(User).where(User.firebase_uid == firebase_uid)
+        select(User).where(User.vk_id == vk_basic_data.id)
     ).scalar_one_or_none()
+
     is_new_user = not bool(user)
     if is_new_user:
+        firebase_uid = create_firebase_user(
+            email=vk_extra_data.email,
+            display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
+            photo_url=vk_basic_data.photo_url,
+            phone=vk_extra_data.phone,
+        )
         friends_data = get_vk_user_friends(access_token)
         user = User(
             vk_id=vk_basic_data.id,
@@ -211,11 +210,13 @@ def auth_vk(
             vk_friends_data=friends_data,
         )
     else:
-        user.vk_access_token = access_token
-        user.firebase_uid = firebase_uid
+        firebase_uid = user.firebase_uid
+
+    user.vk_access_token = access_token
     db.add(user)
     db.commit()
 
+    firebase_token = create_custom_firebase_token(firebase_uid)
     return firebase_uid, firebase_token
 
 

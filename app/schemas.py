@@ -90,8 +90,8 @@ class SavePushTokenSchema(BaseModel):
 
 class RequestVkAuthMobileSchema(BaseModel):
     access_token: str
-    email: EmailStr
-    phone: Optional[str]
+    email: EmailStr | None
+    phone: str | None
 
 
 class ResponseVkAuthWebSchema(BaseModel):
