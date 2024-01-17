@@ -32,15 +32,15 @@ def create_firebase_user(
     email: str | None,
     phone: str | None,
 ) -> str:
-    # try:
-    #     user: UserRecord = auth.get_user_by_email(email)
-    # except auth.UserNotFoundError:
-    user: UserRecord = auth.create_user(
-        email=email,
-        email_verified=False,
-        display_name=display_name,
-        photo_url=photo_url,
-    )
+    try:
+        user: UserRecord = auth.get_user_by_email(email)
+    except auth.UserNotFoundError:
+        user: UserRecord = auth.create_user(
+            email=email,
+            email_verified=False,
+            display_name=display_name,
+            photo_url=photo_url,
+        )
     return user.uid  # type: ignore
 
 
