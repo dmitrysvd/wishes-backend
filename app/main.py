@@ -278,7 +278,7 @@ def auth_firebase(
     """
     id_token = firebase_auth_schema.id_token
     try:
-        decoded_token = verify_id_token(id_token, app=get_firebase_app())
+        decoded_token = verify_id_token(id_token)
     except FirebaseError as ex:
         raise HTTPException(status_code=403, detail="Not authenticated")
     uid = decoded_token['uid']

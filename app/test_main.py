@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, delete, select, update
@@ -6,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.constants import Gender
 from app.db import Base, User, Wish
 from app.main import app, get_current_user, get_db
+from app.vk import Gender, VkUserBasicData, VkUserExtraData
 
 engine = create_engine(
     'sqlite://',
@@ -15,18 +19,15 @@ engine = create_engine(
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-Base.metadata.create_all(bind=engine)
-
-api_client = TestClient(app)
-
-
 @pytest.fixture
 def db():
     _db = TestingSessionLocal()
+    Base.metadata.create_all(bind=engine)
     try:
         yield _db
     finally:
         _db.close()
+        Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture
@@ -99,6 +100,13 @@ def override_dependencies(user, db):
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
+    yield
+    app.dependency_overrides = {}
+
+
+@pytest.fixture
+def api_client() -> TestClient:
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -211,6 +219,123 @@ class TestArchiveWish:
         assert str(archived_wish.id) in [
             wish_data['id'] for wish_data in response.json()
         ]
+
+
+class TestAuth:
+    @pytest.fixture(autouse=True)
+    def mock_vk_request(self, mocker):
+        def _fake_get_data(access_token):
+            return VkUserBasicData(
+                id=12345678,
+                first_name='Иванов',
+                last_name='Иван',
+                photo_url='https://photo.ru',
+                gender=Gender.male,
+                birthdate=date.fromisoformat('2020-01-01'),
+            )
+
+        def _fake_get_friends(access_token):
+            return []
+
+        mocker.patch('app.main.get_vk_user_data_by_access_token', _fake_get_data)
+        mocker.patch('app.main.get_vk_user_friends', _fake_get_friends)
+
+    @pytest.fixture(autouse=True)
+    def mock_firebase_create_user(self, mocker):
+        def _fake_create_user(*args, **kwargs):
+            return 'firebase uid 2'
+
+        mocker.patch('app.main.create_firebase_user', _fake_create_user)
+
+    @pytest.fixture(autouse=True)
+    def mock_firebase_get_user_data(self, mocker):
+        def _fake_get_user_data(uid: str):
+            @dataclass
+            class FakeUserRecord:
+                email_verified: bool
+                email: str
+                display_name: str
+                photo_url: str
+                phone_number: str
+
+            return FakeUserRecord(
+                email_verified=True,
+                email='test_firebase_email@mail.com',
+                display_name='Иванов Иван',
+                photo_url='https://photo.com',
+                phone_number='8999334424242',
+            )
+
+        mocker.patch('app.main.get_firebase_user_data', _fake_get_user_data)
+
+    @pytest.fixture(autouse=True)
+    def mock_verify_id_token(self, mocker):
+        def _fake_verify_id_token(id_token):
+            return {
+                'uid': 'uid',
+            }
+
+        mocker.patch('app.main.verify_id_token', _fake_verify_id_token)
+
+    def test_auth_vk_success(
+        self,
+        api_client: TestClient,
+        auth_client: TestClient,
+        db: Session,
+    ):
+        response = api_client.post(
+            '/auth/vk/mobile',
+            json={
+                'access_token': 'some_token',
+                'email': 'test_vk@test.com',
+                'phone': '+79898041180',
+            },
+        )
+        assert response.is_success
+        user = db.scalars(
+            select(User).where(User.vk_access_token == 'some_token')
+        ).one_or_none()
+        assert user is not None
+        assert user.email == 'test_vk@test.com'
+        assert api_client.post(
+            '/users/me',
+        )
+
+        assert auth_client.get(f'/users/{user.id}').is_success
+
+    def test_auth_vk_no_email_phone(
+        self,
+        api_client: TestClient,
+        auth_client: TestClient,
+        db: Session,
+    ):
+        response = api_client.post(
+            '/auth/vk/mobile',
+            json={
+                'access_token': 'some_vk_token',
+                'email': None,
+                'phone': None,
+            },
+        )
+        assert response.is_success
+        user = db.scalars(
+            select(User).where(User.vk_access_token == 'some_vk_token')
+        ).one_or_none()
+        assert user is not None
+        assert user.email is None
+
+        assert auth_client.get(f'/users/{user.id}').is_success
+
+    def test_auth_firebase(
+        self,
+        api_client: TestClient,
+        db: Session,
+    ):
+        response = api_client.post(
+            '/auth/firebase',
+            json={'id_token': 'id_token'},
+        )
+        assert response.is_success
 
 
 def test_search_user(
