@@ -107,7 +107,7 @@ class ResponseVkAuthMobileSchema(BaseModel):
 
 class ItemInfoRequestSchema(BaseModel):
     link: HttpUrl
-    html: str | None
+    html: str | None = None
 
 
 class ItemInfoResponseSchema(BaseModel):
