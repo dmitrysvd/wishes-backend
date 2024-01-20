@@ -3,7 +3,7 @@ from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine, delete, select, update
+from sqlalchemy import StaticPool, create_engine, delete, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.constants import Gender
@@ -222,6 +222,8 @@ class TestArchiveWish:
 
 
 class TestAuth:
+    FIREBASE_USER_EMAIL = 'test_firebase_email@mail.com'
+
     @pytest.fixture(autouse=True)
     def mock_vk_request(self, mocker):
         def _fake_get_data(access_token):
@@ -260,7 +262,7 @@ class TestAuth:
 
             return FakeUserRecord(
                 email_verified=True,
-                email='test_firebase_email@mail.com',
+                email=self.FIREBASE_USER_EMAIL,
                 display_name='Иванов Иван',
                 photo_url='https://photo.com',
                 phone_number='8999334424242',
@@ -336,6 +338,36 @@ class TestAuth:
             json={'id_token': 'id_token'},
         )
         assert response.is_success
+
+    def test_auth_vk_after_firebase_with_same_email(
+        self,
+        api_client: TestClient,
+        db: Session,
+    ):
+        response = api_client.post(
+            '/auth/firebase',
+            json={'id_token': 'id_token'},
+        )
+        assert response.is_success
+
+        response = api_client.post(
+            '/auth/vk/mobile',
+            json={
+                'access_token': 'some_vk_token',
+                'email': self.FIREBASE_USER_EMAIL,
+                'phone': None,
+            },
+        )
+        assert response.is_success
+
+        assert (
+            db.scalars(
+                select(func.count(User.id)).where(
+                    User.email == self.FIREBASE_USER_EMAIL
+                )
+            ).one()
+            == 1
+        )
 
 
 def test_search_user(

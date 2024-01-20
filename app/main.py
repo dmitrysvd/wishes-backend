@@ -192,6 +192,10 @@ def auth_vk(
     user = db.execute(
         select(User).where(User.vk_id == vk_basic_data.id)
     ).scalar_one_or_none()
+    if not user and vk_extra_data.email:
+        user = db.execute(
+            select(User).where(User.email == vk_extra_data.email)
+        ).scalar_one_or_none()
 
     is_new_user = not bool(user)
     if is_new_user:
