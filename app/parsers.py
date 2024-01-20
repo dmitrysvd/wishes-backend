@@ -7,10 +7,12 @@ from bs4 import BeautifulSoup
 from fastapi import HTTPException
 from loguru import logger
 
-from app.schemas import ItemInfoSchema
+from app.schemas import ItemInfoResponseSchema
 
 
-def try_parse_item_by_link(link: str, html: str | None) -> Optional[ItemInfoSchema]:
+def try_parse_item_by_link(
+    link: str, html: str | None
+) -> Optional[ItemInfoResponseSchema]:
     logger.info('Парсинг превью {link}', link=link)
     if not html:
         response = httpx.get(link, follow_redirects=True)
@@ -30,7 +32,7 @@ def try_parse_item_by_link(link: str, html: str | None) -> Optional[ItemInfoSche
                 key = item['attrs']['property']
                 value = item['attrs']['content']
                 attrs[key] = value
-        return ItemInfoSchema(
+        return ItemInfoResponseSchema(
             title=attrs['og:title'],
             image_url=attrs['og:image'],
             description=attrs['og:description'],
@@ -46,7 +48,7 @@ def try_parse_item_by_link(link: str, html: str | None) -> Optional[ItemInfoSche
         api_response = httpx.get(f'{base_url}/info/ru/card.json')
         api_response.raise_for_status()
         api_data = api_response.json()
-        return ItemInfoSchema(
+        return ItemInfoResponseSchema(
             title=api_data['imt_name'],
             description=api_data['description'],
             image_url=f'{base_url}/images/big/1.webp',  # type: ignore
@@ -62,7 +64,7 @@ def try_parse_item_by_link(link: str, html: str | None) -> Optional[ItemInfoSche
         assert isinstance(image_url, str)
     except IndexError:
         return None
-    return ItemInfoSchema(
+    return ItemInfoResponseSchema(
         title=title,
         description=description,
         image_url=image_url,  # type: ignore

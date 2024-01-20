@@ -57,7 +57,8 @@ from app.schemas import (
     AnnotatedOtherUserSchema,
     CurrentUserReadSchema,
     CurrentUserUpdateSchema,
-    ItemInfoSchema,
+    ItemInfoRequestSchema,
+    ItemInfoResponseSchema,
     OtherUserSchema,
     RequestFirebaseAuthSchema,
     RequestVkAuthMobileSchema,
@@ -737,11 +738,10 @@ def possible_friends(
 
 @app.post('/item_info_from_page')
 def get_item_info_from_page(
-    link: HttpUrl,
-    html: str | None = None,
+    request_data: ItemInfoRequestSchema,
     user: User = Depends(get_current_user),
-) -> ItemInfoSchema:
-    result = try_parse_item_by_link(str(link), html)
+) -> ItemInfoResponseSchema:
+    result = try_parse_item_by_link(str(request_data.link), request_data.html)
     if not result:
         raise HTTPException(status_code=400)
     return result

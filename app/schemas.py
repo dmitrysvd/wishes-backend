@@ -105,7 +105,12 @@ class ResponseVkAuthMobileSchema(BaseModel):
     firebase_token: str
 
 
-class ItemInfoSchema(BaseModel):
+class ItemInfoRequestSchema(BaseModel):
+    link: HttpUrl
+    html: str | None
+
+
+class ItemInfoResponseSchema(BaseModel):
     title: str
     description: str
     image_url: HttpUrl
