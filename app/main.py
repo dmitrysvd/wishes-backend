@@ -737,8 +737,8 @@ def possible_friends(
 
 @app.post('/item_info_from_page')
 def get_item_info_from_page(
-    link: Annotated[HttpUrl, Form()],
-    html: Annotated[str | None, Form()] = None,
+    link: HttpUrl,
+    html: str | None = None,
     user: User = Depends(get_current_user),
 ) -> ItemInfoSchema:
     result = try_parse_item_by_link(str(link), html)
