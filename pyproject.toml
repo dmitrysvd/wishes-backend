@@ -19,6 +19,7 @@ firebase-admin = "^6.2.0"
 sqladmin = {extras = ["full"], version = "^0.16.0"}
 loguru = "^0.7.2"
 beautifulsoup4 = "^4.12.2"
+ipython = "^8.20.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.11.0"
