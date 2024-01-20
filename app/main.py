@@ -84,8 +84,8 @@ PROFILE_IMAGES_DIR = settings.MEDIA_ROOT / 'profile_images'
 LOGS_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(
+    title='Хотелки',
     root_path=settings.URL_ROOT_PATH,
-    servers=[{"url": settings.URL_ROOT_PATH}],
 )
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
@@ -750,11 +750,8 @@ def get_item_info_from_page(
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
-    openapi_schema = get_openapi(
-        title='Хотелки',
-        version='0.0.1',
-        routes=app.routes,
-    )
+
+    openapi_schema = default_openapi()
     openapi_schema['components']['securitySchemes'] = {
         'ApiKey': {
             'type': 'apiKey',
@@ -769,4 +766,5 @@ def custom_openapi():
     return app.openapi_schema
 
 
+default_openapi = app.openapi
 app.openapi = custom_openapi
