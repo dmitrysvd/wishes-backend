@@ -724,11 +724,11 @@ def unfollow_user(
     db.commit()
 
 
-@app.get('/possible_friends', response_model=list[OtherUserSchema], tags=[USERS_TAG])
+@app.get('/possible_friends', tags=[USERS_TAG])
 def possible_friends(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+) -> list[AnnotatedOtherUserSchema]:
     if not user.vk_friends_data:
         return []
     vk_friend_ids = [vk_friend_data['id'] for vk_friend_data in user.vk_friends_data]
