@@ -140,7 +140,8 @@ async def internal_exception_handler(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception as exc:
-        await alert_tg(request, exc)
+        if not settings.IS_DEBUG:
+            await alert_tg(request, exc)
         raise exc
     return response
 
