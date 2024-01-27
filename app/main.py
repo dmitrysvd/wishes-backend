@@ -766,7 +766,7 @@ def get_item_info_from_page(
 
 
 @app.post('/test_500')
-def test_exception() -> ItemInfoResponseSchema:
+def test_exception():
     raise Exception('some exception')
 
 
