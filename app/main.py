@@ -2,6 +2,7 @@ import enum
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
@@ -43,6 +44,7 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
 )
 
+from app.alerts import alert_tg
 from app.config import settings
 from app.db import SessionLocal, User, Wish, engine
 from app.firebase import (
@@ -76,13 +78,12 @@ from app.vk import (
 )
 
 BASE_DIR = Path(__file__).parent.parent
-LOGS_DIR = BASE_DIR / 'logs'
 APP_DIR = BASE_DIR / 'app'
 TEMPLATES_DIR = APP_DIR / 'templates'
 WISH_IMAGES_DIR = settings.MEDIA_ROOT / 'wish_images'
 PROFILE_IMAGES_DIR = settings.MEDIA_ROOT / 'profile_images'
 
-LOGS_DIR.mkdir(exist_ok=True)
+settings.LOGS_DIR.mkdir(exist_ok=True, parents=True)
 
 app = FastAPI(
     title='Хотелки',
@@ -105,7 +106,7 @@ app.add_middleware(
 
 admin = Admin(app, engine)
 
-logger.add(LOGS_DIR / 'log.log')
+logger.add(settings.LOGS_DIR / 'log.log')
 
 AUTH_TAG = 'auth'
 WISHES_TAG = 'wishes'
@@ -132,6 +133,16 @@ class HolidayEvent(enum.Enum):
 PUSH_MESSAGES = {HolidayEvent.NEW_YEAR: ('🎄🎄🎄Скоро Новый год!🎄🎄🎄')}
 
 BODY_MESSAGE = 'Заполните свой список желаний, чтобы друзья знали, что вам подарить'
+
+
+@app.middleware('http')
+async def internal_exception_handler(request: Request, call_next):
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        await alert_tg(request, exc)
+        raise exc
+    return response
 
 
 def get_db():
@@ -751,6 +762,11 @@ def get_item_info_from_page(
             detail='Ошибка получения метаданных из страницы', status_code=400
         )
     return result
+
+
+@app.post('/test_500')
+def test_exception() -> ItemInfoResponseSchema:
+    raise Exception('some exception')
 
 
 def custom_openapi():

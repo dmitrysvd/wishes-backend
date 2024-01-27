@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     TEST_TOKEN: str
     STATIC_ROOT: Path
     MEDIA_ROOT: Path
+    LOGS_DIR: Path
+    TG_ALERTS_BOT_TOKEN: str
+    TG_ALERTS_CHANNEL_ID: str
     URL_ROOT_PATH: str = '/'
 
     model_config = SettingsConfigDict(env_file=".env")
