@@ -16,7 +16,8 @@ def try_parse_item_by_link(
     logger.info('Парсинг превью {link}', link=link)
     if not html:
         response = httpx.get(link, follow_redirects=True)
-        response.raise_for_status()
+        if not response.is_success:
+            return None
         html = response.text
     if 'market.yandex.ru' in link:
         match = re.search(r'window.\__apiary\.deferredMetaGenerator\((.*?.)\);', html)
