@@ -197,7 +197,9 @@ def get_current_user_wish(
 
 
 def auth_vk(
-    access_token: str, vk_extra_data: VkUserExtraData, db: Session
+    access_token: str,
+    vk_extra_data: VkUserExtraData,
+    db: Session,
 ) -> tuple[str, str]:
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
@@ -757,6 +759,7 @@ def get_item_info_from_page(
     request_data: ItemInfoRequestSchema,
     user: User = Depends(get_current_user),
 ) -> ItemInfoResponseSchema:
+    logger.log('debug', 'html = {html}', html=request_data.html)
     result = try_parse_item_by_link(str(request_data.link), request_data.html)
     if not result:
         raise HTTPException(
