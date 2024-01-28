@@ -1,4 +1,5 @@
 import sys
+import traceback
 
 import httpx
 from fastapi.requests import Request
@@ -10,8 +11,9 @@ async def alert_tg(request: Request, exception: Exception):
     api_url = f'https://api.telegram.org/bot{settings.TG_ALERTS_BOT_TOKEN}/sendMessage'
     _, _, tb = sys.exc_info()
     assert tb is not None
-    fname = tb.tb_frame.f_code.co_filename
-    message = f'{request.url}\n\n{repr(exception)}\n\n{fname}\nline: {tb.tb_lineno}'
+
+    tb_text = '\n'.join(traceback.format_exception(exception, limit=-3))
+    message = f'{request.url}\n\n{tb_text}'
 
     async with httpx.AsyncClient() as client:
         tg_response = await client.post(
