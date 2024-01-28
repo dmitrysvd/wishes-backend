@@ -759,7 +759,7 @@ def get_item_info_from_page(
     request_data: ItemInfoRequestSchema,
     user: User = Depends(get_current_user),
 ) -> ItemInfoResponseSchema:
-    logger.log('debug', 'html = {html}', html=request_data.html)
+    logger.log('DEBUG', 'html = {html}', html=request_data.html)
     result = try_parse_item_by_link(str(request_data.link), request_data.html)
     if not result:
         raise HTTPException(
