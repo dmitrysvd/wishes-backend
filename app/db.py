@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from sqlite3 import Connection as SQLite3Connection
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
@@ -15,8 +16,10 @@ from sqlalchemy import (
     Table,
     Uuid,
     create_engine,
+    event,
     select,
 )
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -137,3 +140,12 @@ engine = create_engine(
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    if not isinstance(dbapi_connection, SQLite3Connection):
+        raise Exception('Not supported')
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON;")
+    cursor.close()

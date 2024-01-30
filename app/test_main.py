@@ -379,3 +379,14 @@ def test_search_user(
     response_data = response.json()
     assert len(response_data) == 1
     assert response_data[0]['email'] == 'test2@mail.ru'
+
+
+def test_delete_user_with_wishes(
+    auth_client: TestClient,
+    user: User,
+    wish: Wish,
+    db: Session,
+):
+    db.delete(user)
+    db.flush()
+    assert not db.scalars(select(Wish).where(Wish.id == wish.id)).one_or_none()

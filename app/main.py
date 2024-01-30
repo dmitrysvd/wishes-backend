@@ -427,7 +427,7 @@ def delete_wish(
     db: Session = Depends(get_db),
     wish: Wish = Depends(get_current_user_wish),
 ):
-    db.execute(delete(Wish).where(Wish.id == wish.id))
+    db.delete(wish)
     db.commit()
 
 
@@ -661,7 +661,7 @@ def delete_own_account(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     # TODO: удалять пользователя firebase и сбрасывать access_token.
-    db.execute(delete(User).where(User.id == user.id))
+    db.delete(user)
     db.commit()
 
 
