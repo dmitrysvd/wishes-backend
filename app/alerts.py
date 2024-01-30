@@ -13,7 +13,7 @@ async def alert_tg(request: Request, exception: Exception):
     assert tb is not None
 
     tb_text = '\n'.join(traceback.format_tb(tb, limit=-3))
-    message = f'{request.url}\n\n{repr(exception)}\n\n{tb_text}'
+    message = f'{request.url}\n\n{repr(exception)}\n\n{str(exception)}\n\n{tb_text}'
 
     async with httpx.AsyncClient() as client:
         tg_response = await client.post(
