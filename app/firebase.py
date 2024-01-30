@@ -15,12 +15,14 @@ def get_firebase_app():
     return _firebase_app
 
 
-def send_push(push_token: str, title: str, body: str):
+def send_push(push_token: str, title: str, body: str, image_url: str | None = None):
+    notification = messaging.Notification(
+        title=title,
+        body=body,
+        image=image_url,
+    )
     message = messaging.Message(
-        notification=messaging.Notification(
-            title=title,
-            body=body,
-        ),
+        notification=notification,
         token=push_token,
     )
     messaging.send(message)
