@@ -700,7 +700,6 @@ def send_push_about_new_follower(target: User, follower: User):
         push_token=target.firebase_push_token,
         title='У вас новый подписчик',
         body=f'На вас подписался {follower.display_name}',
-        image_url=follower.photo_url,
     )
     logger.info(f'Отправлен пуш при подписании {follower.id} на {target.id}')
 
