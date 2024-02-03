@@ -46,7 +46,9 @@ def _get_wb_basket(nm_id: int):
 def try_parse_item_by_link(
     link: str, html: str | None
 ) -> Optional[ItemInfoResponseSchema]:
-    logger.info('Парсинг превью {link}', link=link)
+    logger.info(
+        'Парсинг превью {link}, есть html: {has_html}', link=link, has_html=bool(html)
+    )
     if not html or 'yandex' in link:
         response = httpx.get(link, follow_redirects=True)
         if not response.is_success:
