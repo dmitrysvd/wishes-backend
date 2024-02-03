@@ -45,7 +45,7 @@ def user(db: Session):
     db.add(_user)
     db.commit()
     yield _user
-    db.execute(delete(User).where(User.id == _user.id))
+    db.delete(_user)
     db.commit()
 
 
@@ -64,19 +64,21 @@ def other_user(db: Session):
     db.add(_user)
     db.commit()
     yield _user
-    db.execute(delete(User).where(User.id == _user.id))
+    db.delete(_user)
     db.commit()
 
 
 @pytest.fixture
-def wish(db: Session, user: User) -> Wish:
+def wish(db: Session, user: User):
     _wish = Wish(
         user_id=user.id,
         name='name',
     )
     db.add(_wish)
     db.commit()
-    return _wish
+    yield _wish
+    db.delete(_wish)
+    db.commit()
 
 
 @pytest.fixture

@@ -44,7 +44,7 @@ from starlette.status import (
     HTTP_404_NOT_FOUND,
 )
 
-from app.alerts import alert_tg
+from app.alerts import alert_exception
 from app.config import settings
 from app.db import SessionLocal, User, Wish, engine
 from app.firebase import (
@@ -141,7 +141,7 @@ async def internal_exception_handler(request: Request, call_next):
         response = await call_next(request)
     except Exception as exc:
         if not settings.IS_DEBUG:
-            await alert_tg(request, exc)
+            await alert_exception(request, exc)
         raise exc
     return response
 
