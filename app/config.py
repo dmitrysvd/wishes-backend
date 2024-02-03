@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     LOGS_DIR: Path
     TG_ALERTS_BOT_TOKEN: str
     TG_ALERTS_CHANNEL_ID: str
+    CPU_ALERT_TRESHOLD: float = 70.0
+    RAM_ALERT_TRESHOLD: float = 70.0
     URL_ROOT_PATH: str = '/'
 
     model_config = SettingsConfigDict(env_file=".env")
