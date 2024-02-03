@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sys
+from base64 import b64encode
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, getcontext
@@ -782,6 +783,7 @@ def get_item_info_from_page(
     request_data: ItemInfoRequestSchema,
     user: User = Depends(get_current_user),
 ) -> ItemInfoResponseSchema:
+    logger.log('INFO', b64encode((request_data.html or '').encode()).decode())
     result = try_parse_item_by_link(str(request_data.link), request_data.html)
     if not result:
         raise HTTPException(
