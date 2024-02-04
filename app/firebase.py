@@ -28,6 +28,22 @@ def send_push(push_token: str, title: str, body: str):
     messaging.send(message)
 
 
+def send_pushes(push_tokens: list[str], title: str, body: str):
+    android_notification = messaging.AndroidNotification(
+        title=title,
+        body=body,
+    )
+    android_config = messaging.AndroidConfig(notification=android_notification)
+    messages = []
+    for push_token in push_tokens:
+        message = messaging.Message(
+            android=android_config,
+            token=push_token,
+        )
+        messages.append(message)
+    messaging.send_all(messages)
+
+
 def create_firebase_user(
     display_name: str,
     photo_url: str,

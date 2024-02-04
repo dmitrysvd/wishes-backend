@@ -106,6 +106,9 @@ class Wish(Base):
     reserved_by_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey('user.id'), nullable=True
     )
+    is_reservation_notification_sent: Mapped[bool] = mapped_column(
+        default=False, nullable=False
+    )
     name: Mapped[str] = mapped_column(String(50))
     description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -143,10 +146,22 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 @event.listens_for(Engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
+def do_connect(dbapi_connection, connection_record):
     if not isinstance(dbapi_connection, SQLite3Connection):
         raise Exception('Not supported')
+
+    # disable pysqlite's emitting of the BEGIN statement entirely.
+    # also stops it from emitting COMMIT before any DDL.
+    dbapi_connection.isolation_level = None
+
+    # enable FK constraints and WAL mode
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON;")
     cursor.execute('PRAGMA journal_mode=WAL;')
     cursor.close()
+
+
+@event.listens_for(engine, "begin")
+def do_begin(conn):
+    # emit our own BEGIN
+    conn.exec_driver_sql("BEGIN")
