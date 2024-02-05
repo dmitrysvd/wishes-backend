@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from sqlite3 import Connection as SQLite3Connection
 from typing import Any, Optional
@@ -10,6 +10,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     Date,
+    DateTime,
     Enum,
     ForeignKey,
     String,
@@ -27,6 +28,7 @@ from sqlalchemy.orm import (
     relationship,
     sessionmaker,
 )
+from sqlalchemy.sql import func
 from sqlalchemy.types import DECIMAL
 
 from app.config import settings
@@ -106,9 +108,6 @@ class Wish(Base):
     reserved_by_id: Mapped[Optional[UUID]] = mapped_column(
         ForeignKey('user.id'), nullable=True
     )
-    is_reservation_notification_sent: Mapped[bool] = mapped_column(
-        default=False, nullable=False
-    )
     name: Mapped[str] = mapped_column(String(50))
     description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -118,6 +117,16 @@ class Wish(Base):
     image: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean(), default=True)  # TODO: убрать
     is_archived: Mapped[bool] = mapped_column(Boolean(), default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    is_reservation_notification_sent: Mapped[bool] = mapped_column(
+        default=False, nullable=False
+    )
+    is_creation_notification_sent: Mapped[bool] = mapped_column(
+        default=False, nullable=False
+    )
 
     user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
     reserved_by: Mapped[Optional['User']] = relationship(

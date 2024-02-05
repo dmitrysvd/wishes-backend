@@ -1,13 +1,15 @@
 import asyncio
+from datetime import timedelta
 
 import psutil
 from sqlalchemy import select, update
 
 from app.alerts import alert_warning
 from app.config import settings
+from app.constants import Gender
 from app.db import SessionLocal, User, Wish
 from app.firebase import send_pushes
-from app.main import logger
+from app.utils import utc_now
 
 
 async def check_cpu_usage():
@@ -52,9 +54,41 @@ def send_reservation_notifincations():
     )
 
 
+def send_wish_creation_notifications():
+    """Отправить всем подписчикам уведомление о новых хотелках."""
+
+    hour_ago = utc_now() - timedelta(hours=1)
+    with SessionLocal() as db:
+        wishes_filter_cond = ~Wish.is_creation_notification_sent & (
+            Wish.created_at < hour_ago
+        )
+        users_q = select(User).join(User.wishes).where(wishes_filter_cond)
+        users_with_new_wishes = db.scalars(users_q).all()
+        db.execute(
+            update(Wish)
+            .where(wishes_filter_cond)
+            .values(is_creation_notification_sent=True)
+        )
+        db.commit()
+        for user in users_with_new_wishes:
+            followers_push_tokens = [
+                follower.firebase_push_token
+                for follower in user.followed_by
+                if follower.firebase_push_token
+            ]
+            if followers_push_tokens:
+                verb = 'добавила' if user.gender == Gender.female else 'добавил'
+                send_pushes(
+                    push_tokens=followers_push_tokens,
+                    title=f'{user.display_name} {verb} новое желание',
+                    body=f'Узнайте, что {user.display_name} хочет получить в подарок',
+                )
+
+
 def main():
     asyncio.run(check_cpu_usage())
     send_reservation_notifincations()
+    send_wish_creation_notifications()
 
 
 if __name__ == '__main__':
