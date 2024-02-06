@@ -676,7 +676,7 @@ def get_user(
 ):
     user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
     if not user:
-        return HTTPException(HTTP_404_NOT_FOUND, 'User not found')
+        raise HTTPException(HTTP_404_NOT_FOUND, 'User not found')
     return get_annotated_users(db, current_user, [user])[0]
 
 
