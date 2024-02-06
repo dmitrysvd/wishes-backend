@@ -582,6 +582,10 @@ def get_annotated_users(
     return [AnnotatedOtherUserSchema.model_validate(val[0]) for val in values]
 
 
+def get_user_deep_link(user: User) -> str:
+    return f'https://hotelki.pro/user?userId={user.id}#'
+
+
 @app.get('/users/', response_model=list[AnnotatedOtherUserSchema], tags=[USERS_TAG])
 def users(db: Session = Depends(get_db)):
     user = db.execute(select(User).limit(1)).scalar_one()
@@ -721,9 +725,10 @@ def send_push_about_new_follower(target: User, follower: User):
     if not target.firebase_push_token:
         return
     send_push(
-        push_token=target.firebase_push_token,
+        push_tokens=[target.firebase_push_token],
         title='У вас новый подписчик',
         body=f'На вас подписался {follower.display_name}',
+        link=get_user_deep_link(follower),
     )
     logger.info(f'Отправлен пуш при подписании {follower.id} на {target.id}')
 

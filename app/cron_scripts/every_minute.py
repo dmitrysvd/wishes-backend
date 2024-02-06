@@ -8,7 +8,8 @@ from app.alerts import alert_warning
 from app.config import settings
 from app.constants import Gender
 from app.db import SessionLocal, User, Wish
-from app.firebase import send_pushes
+from app.firebase import send_push
+from app.main import get_user_deep_link
 from app.utils import utc_now
 
 
@@ -47,7 +48,7 @@ def send_reservation_notifincations():
             .values(is_reservation_notification_sent=True)
         )
         db.commit()
-    send_pushes(
+    send_push(
         push_tokens=push_tokens,
         title='Кто-то хочет сделать Вам подарок!',
         body=f'Одно из ваших желаний было зарезервировано',
@@ -78,10 +79,11 @@ def send_wish_creation_notifications():
             ]
             if followers_push_tokens:
                 verb = 'добавила' if user.gender == Gender.female else 'добавил'
-                send_pushes(
+                send_push(
                     push_tokens=followers_push_tokens,
                     title=f'{user.display_name} {verb} новое желание',
                     body=f'Узнайте, что {user.display_name} хочет получить в подарок',
+                    link=get_user_deep_link(user),
                 )
 
 

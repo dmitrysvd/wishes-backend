@@ -15,20 +15,10 @@ def get_firebase_app():
     return _firebase_app
 
 
-def send_push(push_token: str, title: str, body: str):
-    android_notification = messaging.AndroidNotification(
-        title=title,
-        body=body,
-    )
-    android_config = messaging.AndroidConfig(notification=android_notification)
-    message = messaging.Message(
-        android=android_config,
-        token=push_token,
-    )
-    messaging.send(message)
-
-
-def send_pushes(push_tokens: list[str], title: str, body: str):
+def send_push(push_tokens: list[str], title: str, body: str, link: str | None = None):
+    data = None
+    if link:
+        data = {'link': link}
     android_notification = messaging.AndroidNotification(
         title=title,
         body=body,
@@ -39,6 +29,7 @@ def send_pushes(push_tokens: list[str], title: str, body: str):
         message = messaging.Message(
             android=android_config,
             token=push_token,
+            data=data,
         )
         messages.append(message)
     messaging.send_all(messages)
