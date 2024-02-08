@@ -778,6 +778,11 @@ def test_exception():
     raise Exception('some exception')
 
 
+@app.get('/invite_link/')
+def get_invite_link():
+    return 'https://hotelki.pro'
+
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
