@@ -69,6 +69,9 @@ class User(Base):
     firebase_uid: Mapped[str] = mapped_column(String(100), unique=True)
     firebase_push_token: Mapped[Optional[str]] = mapped_column(String(100))
 
+    registered_at: Mapped[datetime] = mapped_column(nullable=False)
+
+    # relationships
     wishes: Mapped[list['Wish']] = relationship(
         back_populates='user',
         cascade='all, delete-orphan',

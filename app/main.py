@@ -71,6 +71,7 @@ from app.schemas import (
     WishReadSchema,
     WishWriteSchema,
 )
+from app.utils import utc_now
 from app.vk import (
     VkUserExtraData,
     exchange_tokens,
@@ -228,6 +229,7 @@ def auth_vk(
             firebase_uid=firebase_uid,
             birth_date=vk_basic_data.birthdate,
             gender=vk_basic_data.gender,
+            registered_at=utc_now(),
         )
     else:
         firebase_uid = user.firebase_uid
@@ -322,6 +324,7 @@ def auth_firebase(
             phone=firebase_user.phone_number,
             email=firebase_user.email,
             firebase_uid=uid,
+            registered_at=utc_now(),
         )
     else:
         user.firebase_uid = uid
