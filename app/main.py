@@ -243,6 +243,12 @@ def auth_vk(
     db.add(user)
     db.commit()
 
+    if is_new_user:
+        logger.info(
+            'Зарегистрирован новый пользователь: firebase_uid={firebase_uid}',
+            firebase_uid=firebase_uid,
+        )
+
     firebase_token = create_custom_firebase_token(firebase_uid)
     return firebase_uid, firebase_token
 
@@ -328,8 +334,15 @@ def auth_firebase(
         )
     else:
         user.firebase_uid = uid
+
     db.add(user)
     db.commit()
+
+    if is_new_user:
+        logger.info(
+            'Зарегистрирован новый пользователь: firebase_uid={firebase_uid}',
+            firebase_uid=uid,
+        )
 
 
 @app.post('/save_push_token', response_class=Response, tags=[AUTH_TAG])
