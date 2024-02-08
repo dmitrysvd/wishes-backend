@@ -43,14 +43,15 @@ def _get_wb_basket(nm_id: int):
     return "15"
 
 
-def try_parse_item_by_link(
-    link: str, html: str | None
+async def try_parse_item_by_link(
+    link: str, html: str | None = None
 ) -> Optional[ItemInfoResponseSchema]:
     logger.info(
         'Парсинг превью {link}, есть html: {has_html}', link=link, has_html=bool(html)
     )
     if not html or 'yandex' in link:
-        response = httpx.get(link, follow_redirects=True)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(link, follow_redirects=True, timeout=5)
         if not response.is_success:
             return None
         html = response.text
@@ -82,7 +83,8 @@ def try_parse_item_by_link(
         part = item_id // 1000
         basket = _get_wb_basket(item_id)
         base_url = f'https://basket-{basket}.wbbasket.ru/vol{vol}/part{part}/{item_id}'
-        api_response = httpx.get(f'{base_url}/info/ru/card.json')
+        async with httpx.AsyncClient() as client:
+            api_response = await client.get(f'{base_url}/info/ru/card.json')
         api_response.raise_for_status()
         api_data = api_response.json()
         return ItemInfoResponseSchema(
