@@ -640,29 +640,6 @@ def set_profile_image(
     db.commit()
 
 
-# TODO: УДАЛИТЬ ПОСЛЕ ИСПОЛЬЗОВАНИЯ
-@app.post('/set_profile_image_root/{user_id}', tags=[USERS_TAG])
-def set_profile_image_root(
-    request: Request,
-    image: UploadFile,
-    user_id: UUID,
-    db: Session = Depends(get_db),
-):
-    PROFILE_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
-    content = image.file.read()
-    file_name = f'profile_image_user_{user_id}_{datetime.now().isoformat()}'
-    file_path = PROFILE_IMAGES_DIR / file_name
-    file_path.write_bytes(content)
-    related_media_path = file_path.relative_to(settings.MEDIA_ROOT)
-    user = db.scalars(select(User).where(User.id == user_id)).one()
-    user.photo_url = (
-        f"{request.url.scheme}://{request.headers['host']}/media/{related_media_path}"
-    )
-    user.photo_path = str(file_path)
-    db.add(user)
-    db.commit()
-
-
 @app.post('/delete_profile_image', tags=[USERS_TAG])
 def delete_profile_image(
     user: User = Depends(get_current_user),
