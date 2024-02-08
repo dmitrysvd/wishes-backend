@@ -204,13 +204,11 @@ def auth_vk(
 ) -> tuple[str, str]:
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
-    user = db.execute(
-        select(User).where(User.vk_id == vk_basic_data.id)
-    ).scalar_one_or_none()
+    user = db.scalars(select(User).where(User.vk_id == vk_basic_data.id)).one_or_none()
     if not user and vk_extra_data.email:
-        user = db.execute(
+        user = db.scalars(
             select(User).where(User.email == vk_extra_data.email)
-        ).scalar_one_or_none()
+        ).one_or_none()
 
     is_new_user = not bool(user)
     if is_new_user:
@@ -220,7 +218,6 @@ def auth_vk(
             photo_url=vk_basic_data.photo_url,
             phone=vk_extra_data.phone,
         )
-        friends_data = get_vk_user_friends(access_token)
         user = User(
             vk_id=vk_basic_data.id,
             vk_access_token=access_token,
@@ -231,12 +228,16 @@ def auth_vk(
             firebase_uid=firebase_uid,
             birth_date=vk_basic_data.birthdate,
             gender=vk_basic_data.gender,
-            vk_friends_data=friends_data,
         )
     else:
         firebase_uid = user.firebase_uid
 
     user.vk_access_token = access_token
+    if not user.vk_id:
+        # Если пользователь раньше был зареган через google.
+        user.vk_id = str(vk_basic_data.id)
+        user.vk_friends_data = get_vk_user_friends(access_token)
+
     db.add(user)
     db.commit()
 
