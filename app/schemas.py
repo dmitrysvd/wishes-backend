@@ -44,7 +44,6 @@ class OtherUserSchema(BaseUserSchema):
 
 class WishReadSchema(BaseWishSchema):
     id: UUID
-    user_id: UUID
     is_archived: bool
     reserved_by_id: Optional[UUID]
     image: Optional[str]
