@@ -422,7 +422,7 @@ def get_wish(
 ):
     wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
     if not wish or (wish.is_archived and wish.user != user):
-        return HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
+        raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     return wish
 
 
