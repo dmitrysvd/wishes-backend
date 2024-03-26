@@ -72,7 +72,7 @@ async def try_parse_item_by_link(
         return ItemInfoResponseSchema(
             title=attrs['og:title'],
             image_url=attrs['og:image'],
-            description=attrs['og:description'],
+            description=attrs.get('og:description', ''),
         )
     elif 'wildberries.ru' in link:
         match = re.search(r'catalog\/(\d+)', link)
