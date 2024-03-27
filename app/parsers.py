@@ -103,8 +103,8 @@ async def _request_ya_market_html(link: str) -> str:
         response_2 = await client.get(link)
         logger.debug(
             'response_2 status {status}, text {text}',
-            response_2.status_code,
-            response_2.text,
+            status=response_2.status_code,
+            text=response_2.text,
         )
         return response_2.text
 
