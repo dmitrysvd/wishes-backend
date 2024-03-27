@@ -11,6 +11,7 @@ from app.schemas import ItemInfoResponseSchema
 
 
 def _get_wb_basket(nm_id: int):
+    # Взято из исходников js-файла на сайте.
     nm_id = nm_id // 100000
     if nm_id >= 0 and nm_id <= 143:
         return "01"
@@ -43,38 +44,72 @@ def _get_wb_basket(nm_id: int):
     return "15"
 
 
+async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema | None:
+    match = re.search(r'window.\__apiary\.deferredMetaGenerator\((.*?.)\);', html)
+    if not match:
+        return None
+    meta_data_str = match.group(1)
+    meta_data = json.loads(meta_data_str)
+    attrs = {}
+    for item in meta_data:
+        if item['tagName'] == 'meta' and item['attrs'].get('property', '').startswith(
+            'og:'
+        ):
+            key = item['attrs']['property']
+            value = item['attrs']['content']
+            attrs[key] = value
+    return ItemInfoResponseSchema(
+        title=attrs['og:title'],
+        image_url=attrs['og:image'],
+        description=attrs.get('og:description', ''),
+    )
+
+
+async def _request_ya_market_html(link: str) -> str:
+    if '/cc/' in link:
+        # Короткие ссылки вызывают несколько редиректов, заканчивающихся каптчей (400).
+        # Запрос той же страницы повторно возвращает успешный ответ.
+        async with httpx.AsyncClient() as client:
+            client.headers = {
+                'authority': 'market.yandex.ru',
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'accept-language': 'en-US,en;q=0.9',
+                'cache-control': 'no-cache',
+                'pragma': 'no-cache',
+                'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Linux"',
+                'sec-fetch-dest': 'document',
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-site': 'none',
+                'sec-fetch-user': '?1',
+                'upgrade-insecure-requests': '1',
+                'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            }
+            response = await client.get(
+                link,
+                follow_redirects=True,
+            )
+            next_url = response.history[2].url
+            link = str(next_url)
+    async with httpx.AsyncClient() as client:
+        response_2 = await client.get(link)
+        return response_2.text
+
+
 async def try_parse_item_by_link(
-    link: str, html: str | None = None
+    link: str,
+    html: str | None = None,
 ) -> Optional[ItemInfoResponseSchema]:
     logger.info(
         'Парсинг превью {link}, есть html: {has_html}', link=link, has_html=bool(html)
     )
-    if not html or 'yandex' in link:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(link, follow_redirects=True, timeout=5)
-        if not response.is_success:
-            return None
-        html = response.text
+
     if 'market.yandex.ru' in link:
-        match = re.search(r'window.\__apiary\.deferredMetaGenerator\((.*?.)\);', html)
-        if not match:
-            return None
-        meta_data_str = match.group(1)
-        meta_data = json.loads(meta_data_str)
-        attrs = {}
-        for item in meta_data:
-            if item['tagName'] == 'meta' and item['attrs'].get(
-                'property', ''
-            ).startswith('og:'):
-                key = item['attrs']['property']
-                value = item['attrs']['content']
-                attrs[key] = value
-        return ItemInfoResponseSchema(
-            title=attrs['og:title'],
-            image_url=attrs['og:image'],
-            description=attrs.get('og:description', ''),
-        )
-    elif 'wildberries.ru' in link:
+        html = await _request_ya_market_html(link)
+        return await _parse_ya_market_page(html)
+
+    if 'wildberries.ru' in link:
         match = re.search(r'catalog\/(\d+)', link)
         if not match:
             return None
@@ -92,6 +127,13 @@ async def try_parse_item_by_link(
             description=api_data['description'],
             image_url=f'{base_url}/images/big/1.webp',  # type: ignore
         )
+
+    if not html:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(link, follow_redirects=True, timeout=5)
+        if not response.is_success:
+            return None
+        html = response.text
 
     soup = BeautifulSoup(html, features='html.parser')
     try:

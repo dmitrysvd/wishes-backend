@@ -780,7 +780,7 @@ def possible_friends(
 @app.post('/item_info_from_page')
 async def get_item_info_from_page(
     request_data: ItemInfoRequestSchema,
-    user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),
 ) -> ItemInfoResponseSchema:
     result = await try_parse_item_by_link(str(request_data.link), request_data.html)
     if not result and request_data.html:
