@@ -55,7 +55,7 @@ from app.firebase import (
     get_firebase_user_data,
     send_push,
 )
-from app.parsers import try_parse_item_by_link
+from app.parsers import ItemInfoParseError, try_parse_item_by_link
 from app.schemas import (
     AnnotatedOtherUserSchema,
     CurrentUserReadSchema,
@@ -780,13 +780,20 @@ def possible_friends(
 @app.post('/item_info_from_page')
 async def get_item_info_from_page(
     request_data: ItemInfoRequestSchema,
-    # user: User = Depends(get_current_user),
+    # user: User = Depends(get_current_user),  # TODO:
 ) -> ItemInfoResponseSchema:
-    result = await try_parse_item_by_link(str(request_data.link), request_data.html)
-    if not result and request_data.html:
-        logger.info(f'Перезапрос html от сервера для превью: {request_data.link}')
-        result = await try_parse_item_by_link(str(request_data.link))
-    if not result:
+    try:
+        result = await try_parse_item_by_link(str(request_data.link), request_data.html)
+    except ItemInfoParseError as ex:
+        logger.warning(str(ex))
+        result = None
+        if request_data.html:
+            logger.info(f'Перезапрос html от сервера для превью: {request_data.link}')
+            try:
+                result = await try_parse_item_by_link(str(request_data.link))
+            except ItemInfoParseError:
+                logger.warning(str(ex))
+    if result is None:
         raise HTTPException(detail='Ошибка получения данных', status_code=400)
     return result
 

@@ -10,6 +10,10 @@ from loguru import logger
 from app.schemas import ItemInfoResponseSchema
 
 
+class ItemInfoParseError(Exception):
+    pass
+
+
 def _get_wb_basket(nm_id: int):
     # Взято из исходников js-файла на сайте.
     nm_id = nm_id // 100000
@@ -44,10 +48,10 @@ def _get_wb_basket(nm_id: int):
     return "15"
 
 
-async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema | None:
+async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
     match = re.search(r'window.\__apiary\.deferredMetaGenerator\((.*?.)\);', html)
     if not match:
-        return None
+        raise ItemInfoParseError('Не найдена переменная с данными в ответе')
     meta_data_str = match.group(1)
     meta_data = json.loads(meta_data_str)
     attrs = {}
@@ -100,7 +104,7 @@ async def _request_ya_market_html(link: str) -> str:
 async def try_parse_item_by_link(
     link: str,
     html: str | None = None,
-) -> Optional[ItemInfoResponseSchema]:
+) -> ItemInfoResponseSchema:
     logger.info(
         'Парсинг превью {link}, есть html: {has_html}', link=link, has_html=bool(html)
     )
@@ -112,7 +116,7 @@ async def try_parse_item_by_link(
     if 'wildberries.ru' in link:
         match = re.search(r'catalog\/(\d+)', link)
         if not match:
-            return None
+            raise Exception('В URL не найден паттерн catalog/')
         item_id = int(match.group(1))
         vol = item_id // 100000
         part = item_id // 1000
@@ -132,7 +136,7 @@ async def try_parse_item_by_link(
         async with httpx.AsyncClient() as client:
             response = await client.get(link, follow_redirects=True, timeout=5)
         if not response.is_success:
-            return None
+            raise ItemInfoParseError(f'Ошибка статуса ответа: {response.status_code}')
         html = response.text
 
     soup = BeautifulSoup(html, features='html.parser')
@@ -144,7 +148,7 @@ async def try_parse_item_by_link(
         assert isinstance(description, str)
         assert isinstance(image_url, str)
     except IndexError:
-        return None
+        raise ItemInfoParseError('Не найден тег метаданных')
     return ItemInfoResponseSchema(
         title=title,
         description=description,
