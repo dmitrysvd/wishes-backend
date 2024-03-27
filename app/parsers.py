@@ -51,6 +51,7 @@ def _get_wb_basket(nm_id: int):
 async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
     match = re.search(r'window.\__apiary\.deferredMetaGenerator\((.*?.)\);', html)
     if not match:
+        logger.debug('html content:\n{html}', html=html)
         raise ItemInfoParseError('Не найдена переменная с данными в ответе')
     meta_data_str = match.group(1)
     meta_data = json.loads(meta_data_str)
