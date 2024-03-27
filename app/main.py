@@ -784,6 +784,7 @@ async def get_item_info_from_page(
 ) -> ItemInfoResponseSchema:
     try:
         result = await try_parse_item_by_link(str(request_data.link), request_data.html)
+        logger.debug('result return value {result}', result=result)
     except ItemInfoParseError as ex:
         logger.warning(str(ex))
         result = None
