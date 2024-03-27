@@ -782,7 +782,6 @@ async def get_item_info_from_page(
     request_data: ItemInfoRequestSchema,
     # user: User = Depends(get_current_user),  # TODO:
 ) -> ItemInfoResponseSchema:
-    raise Exception('test')
     try:
         result = await try_parse_item_by_link(str(request_data.link), request_data.html)
     except ItemInfoParseError as ex:
