@@ -102,9 +102,11 @@ async def _request_ya_market_html(link: str) -> str:
     async with httpx.AsyncClient() as client:
         response_2 = await client.get(link)
         logger.debug(
-            'response_2 status {status}, text {text}',
+            'response_2 link {link}, status {status}, text {text}, headers {headers}',
+            link=link,
             status=response_2.status_code,
             text=response_2.text,
+            headers=str(response_2.headers),
         )
         return response_2.text
 
