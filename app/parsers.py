@@ -120,7 +120,8 @@ async def try_parse_item_by_link(
     )
 
     if 'market.yandex.ru' in link:
-        html = await _request_ya_market_html(link)
+        if not html:
+            html = await _request_ya_market_html(link)
         return await _parse_ya_market_page(html)
 
     if 'wildberries.ru' in link:
