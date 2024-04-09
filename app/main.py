@@ -778,11 +778,6 @@ async def get_item_info_from_page(
     return result
 
 
-@app.post('/test_500')
-def test_exception():
-    raise Exception('some exception')
-
-
 @app.get('/invite_link/')
 def get_invite_link(user: User = Depends(get_current_user)):
     return 'https://hotelki.pro'
