@@ -361,27 +361,6 @@ def save_push_token(
     db.commit()
 
 
-@app.get('/auth/vk/index.html', tags=[AUTH_TAG])
-def auth_vk_page(request: Request):
-    return templates.TemplateResponse(
-        "registration.html",
-        {
-            "request": request,
-            "vk_app_id": settings.VK_APP_ID,
-            "auth_redirect_url": request.url_for('auth_vk_web'),
-        },
-    )
-
-
-@app.get('/')
-def main(request: Request, db: Session = Depends(get_db)):
-    try:
-        get_current_user(request)
-    except HTTPException:
-        return RedirectResponse(request.url_for('auth_vk_page'))
-    return 'You are authenticated'
-
-
 @app.post('/wishes', tags=[WISHES_TAG], response_model=WishReadSchema)
 def add_wish(
     wish_data: WishWriteSchema,
