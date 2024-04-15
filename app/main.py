@@ -539,6 +539,7 @@ def search_users(
     user: User = Depends(get_current_user),
 ):
     """Поиск пользователей по имени, email и номеру. Возвращает первые 20 результатов."""
+    q = q.strip()
     query = (
         select(User)
         .where(
@@ -547,7 +548,6 @@ def search_users(
                 User.display_name.icontains(q.capitalize())
                 | User.display_name.icontains(q.lower())
                 | User.email.icontains(q)
-                | User.phone.icontains(q)
             )
         )
         .limit(20)
