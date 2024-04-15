@@ -87,6 +87,11 @@ class SavePushTokenSchema(BaseModel):
     push_token: str
 
 
+class RequestVkAuthWebSchema(BaseModel):
+    silent_token: str
+    uuid: UUID
+
+
 class RequestVkAuthMobileSchema(BaseModel):
     access_token: str
     email: str | None

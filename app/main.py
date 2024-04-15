@@ -65,6 +65,7 @@ from app.schemas import (
     OtherUserSchema,
     RequestFirebaseAuthSchema,
     RequestVkAuthMobileSchema,
+    RequestVkAuthWebSchema,
     ResponseVkAuthMobileSchema,
     ResponseVkAuthWebSchema,
     SavePushTokenSchema,
@@ -253,21 +254,18 @@ def auth_vk(
     return firebase_uid, firebase_token
 
 
-@app.get('/auth/vk/web', tags=[AUTH_TAG])
-def auth_vk_web(payload: str, db: Session = Depends(get_db)) -> ResponseVkAuthWebSchema:
+@app.post('/auth/vk/web', tags=[AUTH_TAG])
+def auth_vk_web(
+    request_data: RequestVkAuthWebSchema, db: Session = Depends(get_db)
+) -> ResponseVkAuthWebSchema:
     """
-    Аутентификация через ВК в браузере.
-
-    Открывается либо редиректом, либо при нажатии по кнопке скриптом js.
-    payload передавается в том виде, в котором получен из Vk SDK.
+    Аутентификация через ВК в вебе.
 
     Возвращает данные для аутентификации в firebase.
     Создаст пользователя в firebase, если не существовал.
     """
-    auth_payload = json.loads(payload)
-    assert auth_payload['type'] == 'silent_token'
-    silent_token = auth_payload['token']
-    uuid = auth_payload['uuid']
+    silent_token = request_data.silent_token
+    uuid = str(request_data.uuid)
     access_token, vk_extra_data = exchange_tokens(silent_token, uuid)
     firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data, db)
     return ResponseVkAuthWebSchema(
