@@ -89,7 +89,7 @@ class SavePushTokenSchema(BaseModel):
 
 class RequestVkAuthWebSchema(BaseModel):
     silent_token: str
-    uuid: UUID
+    uuid: str
 
 
 class RequestVkAuthMobileSchema(BaseModel):

@@ -123,6 +123,6 @@ def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]
     access_token = exchange_token_response['access_token']
     vk_user_extra = VkUserExtraData(
         phone=exchange_token_response.get('phone'),
-        email=exchange_token_response['email'],
+        email=exchange_token_response.get('email'),
     )
     return access_token, vk_user_extra

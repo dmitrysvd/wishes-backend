@@ -256,7 +256,8 @@ def auth_vk(
 
 @app.post('/auth/vk/web', tags=[AUTH_TAG])
 def auth_vk_web(
-    request_data: RequestVkAuthWebSchema, db: Session = Depends(get_db)
+    request_data: RequestVkAuthWebSchema,
+    db: Session = Depends(get_db),
 ) -> ResponseVkAuthWebSchema:
     """
     Аутентификация через ВК в вебе.
@@ -265,7 +266,7 @@ def auth_vk_web(
     Создаст пользователя в firebase, если не существовал.
     """
     silent_token = request_data.silent_token
-    uuid = str(request_data.uuid)
+    uuid = request_data.uuid
     access_token, vk_extra_data = exchange_tokens(silent_token, uuid)
     firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data, db)
     return ResponseVkAuthWebSchema(
