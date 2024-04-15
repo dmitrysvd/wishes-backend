@@ -51,6 +51,7 @@ from app.db import SessionLocal, User, Wish, engine
 from app.firebase import (
     create_custom_firebase_token,
     create_firebase_user,
+    delete_firebase_user,
     get_firebase_app,
     get_firebase_user_data,
     send_push,
@@ -658,9 +659,10 @@ def get_user(
 
 @app.post('/delete_own_account', tags=[USERS_TAG])
 def delete_own_account(
-    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    # TODO: удалять пользователя firebase и сбрасывать access_token.
+    delete_firebase_user(user.firebase_uid)
     db.delete(user)
     db.commit()
 

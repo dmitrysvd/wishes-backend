@@ -50,6 +50,10 @@ def create_firebase_user(
     return user.uid  # type: ignore
 
 
+def delete_firebase_user(uid: str) -> None:
+    auth.delete_user(uid)
+
+
 def create_custom_firebase_token(uid: str) -> str:
     custom_token = auth.create_custom_token(uid)
     return custom_token.decode()
