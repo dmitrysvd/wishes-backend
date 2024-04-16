@@ -1,3 +1,4 @@
+import enum
 from datetime import date, datetime
 from decimal import Decimal
 from sqlite3 import Connection as SQLite3Connection
@@ -13,6 +14,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Integer,
     String,
     Table,
     Uuid,
@@ -146,6 +148,25 @@ class Wish(Base):
     @classmethod
     def get_active_wish_query(cls):
         return select(cls).where(~cls.is_archived)
+
+
+class PushReason(enum.Enum):
+    CURRENT_USER_BIRTHDAY = enum.auto()
+    FOLLOWER_BIRTHDAY = enum.auto()
+
+
+class PushSendingLog(Base):
+    __tablename__ = 'push_sending_log'
+
+    id: Mapped[int] = mapped_column(Integer(), primary_key=True)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    reason_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), nullable=False
+    )
+    target_user_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), nullable=False
+    )
+    reason: Mapped[PushReason] = mapped_column(Enum(PushReason))
 
 
 engine = create_engine(
