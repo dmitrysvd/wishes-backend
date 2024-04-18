@@ -32,7 +32,11 @@ from fastapi.responses import RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from firebase_admin import auth as firebase_auth
-from firebase_admin.auth import ExpiredIdTokenError, verify_id_token
+from firebase_admin.auth import (
+    ExpiredIdTokenError,
+    InvalidIdTokenError,
+    verify_id_token,
+)
 from firebase_admin.exceptions import FirebaseError
 from loguru import logger
 from pydantic import HttpUrl
@@ -178,6 +182,8 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         decoded_token = verify_id_token(token, app=get_firebase_app())
     except ExpiredIdTokenError:
         raise HTTPException(HTTP_401_UNAUTHORIZED, 'Token expired')
+    except InvalidIdTokenError:
+        raise HTTPException(HTTP_401_UNAUTHORIZED, 'Invalid token')
     uid = decoded_token['uid']
     user = db.execute(select(User).where(User.firebase_uid == uid)).scalar_one_or_none()
     if not user:
