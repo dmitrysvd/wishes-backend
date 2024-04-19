@@ -789,7 +789,7 @@ async def get_item_info_from_page(
 
 @app.get('/invite_link/')
 def get_invite_link(user: User = Depends(get_current_user)):
-    return f'https://hotelki.pro/followers?userId={user.id}'
+    return f'https://hotelki.pro/user?userId={user.id}'
 
 
 def custom_openapi():
