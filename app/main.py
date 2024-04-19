@@ -546,6 +546,8 @@ def search_users(
 ):
     """Поиск пользователей по имени, email и номеру. Возвращает первые 20 результатов."""
     q = q.strip()
+    if not q:
+        return []
     query = (
         select(User)
         .where(
