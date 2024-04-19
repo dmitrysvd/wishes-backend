@@ -31,7 +31,6 @@ def send_reservation_notifincations():
             )
         )
         users = db.scalars(users_with_reserved_wishes_q).all()
-        print(users)
     push_tokens = [
         user.firebase_push_token for user in users if user.firebase_push_token
     ]
