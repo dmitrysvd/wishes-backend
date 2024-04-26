@@ -38,7 +38,6 @@ from firebase_admin.auth import (
     verify_id_token,
 )
 from firebase_admin.exceptions import FirebaseError
-from loguru import logger
 from pydantic import HttpUrl
 from sqladmin import Admin, ModelView
 from sqlalchemy import Select, delete, select, update
@@ -60,6 +59,7 @@ from app.firebase import (
     get_firebase_user_data,
     send_push,
 )
+from app.logging import logger
 from app.parsers import ItemInfoParseError, try_parse_item_by_link
 from app.schemas import (
     AnnotatedOtherUserSchema,
@@ -114,7 +114,6 @@ app.add_middleware(
 
 admin = Admin(app, engine)
 
-logger.add(settings.LOGS_DIR / 'log.log')
 
 AUTH_TAG = 'auth'
 WISHES_TAG = 'wishes'
@@ -670,6 +669,7 @@ def delete_own_account(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    logger.info('Удаление аккаунта: {user_id} {firebase_udi}')
     delete_firebase_user(user.firebase_uid)
     db.delete(user)
     db.commit()

@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from app.config import settings
 from app.constants import Gender
+from app.logging import logger
 
 VK_API_VERSION = '5.191'
 
@@ -114,11 +115,9 @@ def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]
     response.raise_for_status()
     response_json = response.json()
     if 'error' in response_json:
+        logger.debug('Ошибка авторизации vk: {text}', text=response_json['error'])
         raise HTTPException(status_code=401, detail="Not authenticated")
     response.raise_for_status()
-    response_json = response.json()
-    if 'error' in response_json:
-        raise HTTPException(status_code=401, detail="Not authenticated")
     exchange_token_response = response_json['response']
     access_token = exchange_token_response['access_token']
     vk_user_extra = VkUserExtraData(
