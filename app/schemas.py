@@ -102,11 +102,13 @@ class ResponseVkAuthWebSchema(BaseModel):
     vk_access_token: str
     firebase_uid: str
     firebase_token: str
+    user_created: bool
 
 
 class ResponseVkAuthMobileSchema(BaseModel):
     firebase_uid: str
     firebase_token: str
+    user_created: bool
 
 
 class ItemInfoRequestSchema(BaseModel):

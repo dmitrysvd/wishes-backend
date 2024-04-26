@@ -209,7 +209,7 @@ def auth_vk(
     access_token: str,
     vk_extra_data: VkUserExtraData,
     db: Session,
-) -> tuple[str, str]:
+) -> tuple[str, str, bool]:
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
     user = db.scalars(select(User).where(User.vk_id == vk_basic_data.id)).one_or_none()
@@ -257,7 +257,7 @@ def auth_vk(
         )
 
     firebase_token = create_custom_firebase_token(firebase_uid)
-    return firebase_uid, firebase_token
+    return firebase_uid, firebase_token, is_new_user
 
 
 @app.post('/auth/vk/web', tags=[AUTH_TAG])
@@ -274,11 +274,12 @@ def auth_vk_web(
     silent_token = request_data.silent_token
     uuid = request_data.uuid
     access_token, vk_extra_data = exchange_tokens(silent_token, uuid)
-    firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data, db)
+    firebase_uid, firebase_token, is_new_user = auth_vk(access_token, vk_extra_data, db)
     return ResponseVkAuthWebSchema(
         vk_access_token=access_token,
         firebase_uid=firebase_uid,
         firebase_token=firebase_token,
+        user_created=is_new_user,
     )
 
 
@@ -294,10 +295,11 @@ def auth_vk_mobile(
     """
     access_token = auth_data.access_token
     vk_extra_data = VkUserExtraData(email=auth_data.email, phone=auth_data.phone)
-    firebase_uid, firebase_token = auth_vk(access_token, vk_extra_data, db)
+    firebase_uid, firebase_token, is_new_user = auth_vk(access_token, vk_extra_data, db)
     return ResponseVkAuthMobileSchema(
         firebase_uid=firebase_uid,
         firebase_token=firebase_token,
+        user_created=is_new_user,
     )
 
 
