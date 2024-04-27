@@ -56,7 +56,6 @@ from app.firebase import (
     create_custom_firebase_token,
     create_firebase_user,
     delete_firebase_user,
-    get_firebase_app,
     get_firebase_user_data,
     send_push,
 )
@@ -179,7 +178,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
         return user
 
     try:
-        decoded_token = verify_id_token(token, app=get_firebase_app())
+        decoded_token = verify_id_token(token)
     except ExpiredIdTokenError:
         raise HTTPException(HTTP_401_UNAUTHORIZED, 'Token expired')
     except InvalidIdTokenError:
