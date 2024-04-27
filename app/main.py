@@ -38,6 +38,7 @@ from firebase_admin.auth import (
     verify_id_token,
 )
 from firebase_admin.exceptions import FirebaseError
+from httpx import ConnectError
 from pydantic import HttpUrl
 from sqladmin import Admin, ModelView
 from sqlalchemy import Select, delete, select, update
@@ -773,17 +774,25 @@ async def get_item_info_from_page(
     user: User = Depends(get_current_user),
 ) -> ItemInfoResponseSchema:
     try:
-        result = await try_parse_item_by_link(str(request_data.link), request_data.html)
-        logger.debug('result return value {result}', result=result)
-    except ItemInfoParseError as ex:
-        logger.warning(str(ex))
+        try:
+            result = await try_parse_item_by_link(
+                str(request_data.link), request_data.html
+            )
+            logger.debug('result return value {result}', result=result)
+        except ItemInfoParseError as ex:
+            logger.warning(str(ex))
+            result = None
+            if request_data.html:
+                logger.info(
+                    f'Перезапрос html от сервера для превью: {request_data.link}'
+                )
+                try:
+                    result = await try_parse_item_by_link(str(request_data.link))
+                except ItemInfoParseError:
+                    logger.warning(str(ex))
+    except ConnectError as ex:
+        logger.warning(repr(ex))
         result = None
-        if request_data.html:
-            logger.info(f'Перезапрос html от сервера для превью: {request_data.link}')
-            try:
-                result = await try_parse_item_by_link(str(request_data.link))
-            except ItemInfoParseError:
-                logger.warning(str(ex))
     if result is None:
         raise HTTPException(detail='Ошибка получения данных', status_code=400)
     return result
