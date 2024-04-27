@@ -8,7 +8,11 @@ from app.config import settings
 
 cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
 
-firebase_admin.initialize_app(cred)
+_firebase_app: Optional[App] = firebase_admin.initialize_app(cred)
+
+
+def get_firebase_app():
+    return _firebase_app
 
 
 def send_push(push_tokens: list[str], title: str, body: str, link: str | None = None):
