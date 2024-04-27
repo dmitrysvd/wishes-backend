@@ -16,9 +16,11 @@ def get_firebase_app():
 
 
 def send_push(push_tokens: list[str], title: str, body: str, link: str | None = None):
-    data = None
+    data = {
+        'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+    }
     if link:
-        data = {'link': link}
+        data['link'] = link
     android_notification = messaging.AndroidNotification(
         title=title,
         body=body,
