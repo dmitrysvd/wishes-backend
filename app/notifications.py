@@ -68,10 +68,10 @@ def send_wish_creation_notifications():
                 if follower.firebase_push_token
             ]
             if followers_push_tokens:
-                verb = 'добавила' if user.gender == Gender.female else 'добавил'
+                verb = 'обновила' if user.gender == Gender.female else 'обновил'
                 send_push(
                     push_tokens=followers_push_tokens,
-                    title=f'{user.display_name} {verb} новое желание',
+                    title=f'{user.display_name} {verb} список желаний',
                     body=f'Узнайте, что {user.display_name} хочет получить в подарок',
                     link=get_user_deep_link(user),
                 )
