@@ -14,6 +14,7 @@ from uuid import UUID
 
 import firebase_admin
 import httpx
+import sentry_sdk
 from bs4 import BeautifulSoup
 from fastapi import (
     APIRouter,
@@ -92,6 +93,13 @@ WISH_IMAGES_DIR = settings.MEDIA_ROOT / 'wish_images'
 PROFILE_IMAGES_DIR = settings.MEDIA_ROOT / 'profile_images'
 
 settings.LOGS_DIR.mkdir(exist_ok=True, parents=True)
+
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
 
 app = FastAPI(
     title='Хотелки',
@@ -800,6 +808,11 @@ async def get_item_info_from_page(
 @app.get('/invite_link/')
 def get_invite_link(user: User = Depends(get_current_user)):
     return f'https://hotelki.pro/user?userId={user.id}'
+
+
+@app.get("/sentry-debug")
+async def trigger_error():
+    division_by_zero = 1 / 0
 
 
 def custom_openapi():
