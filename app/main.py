@@ -553,7 +553,7 @@ def search_users(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Поиск пользователей по имени, email и номеру. Возвращает первые 20 результатов."""
+    """Поиск пользователей по имени. Возвращает первые 20 результатов."""
     q = q.strip()
     if not q:
         return []
@@ -564,12 +564,19 @@ def search_users(
             & (
                 User.display_name.icontains(q.capitalize())
                 | User.display_name.icontains(q.lower())
-                | User.email.icontains(q)
             )
         )
         .limit(20)
     )
-    return db.execute(query).scalars()
+    found_users = db.execute(query).scalars()
+    users_data = []
+    for user in found_users:
+        user_data = OtherUserSchema.model_validate(user)
+        # временный фикс, пока не выложим новую версию
+        # TODO: убрать
+        user_data.email = ''
+        users_data.append(user_data)
+    return users_data
 
 
 def get_annotated_users(
@@ -601,6 +608,9 @@ def get_user_deep_link(user: User) -> str:
 
 @app.get('/users/', response_model=list[AnnotatedOtherUserSchema], tags=[USERS_TAG])
 def users(db: Session = Depends(get_db)):
+    """Тестовый API, недоступен на проде."""
+    if not settings.IS_DEBUG:
+        raise HTTPException(status_code=404)
     user = db.execute(select(User).limit(1)).scalar_one()
     return get_annotated_users(db, user)
 
