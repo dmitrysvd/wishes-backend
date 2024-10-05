@@ -26,6 +26,10 @@ from fastapi import (
     HTTPException,
     Request,
     UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    WebSocketException,
+    status,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -40,7 +44,7 @@ from firebase_admin.auth import (
 )
 from firebase_admin.exceptions import FirebaseError
 from httpx import ConnectError
-from pydantic import HttpUrl
+from pydantic import HttpUrl, ValidationError
 from sqladmin import Admin, ModelView
 from sqlalchemy import Select, delete, select, update
 from sqlalchemy.orm import Query, Session
@@ -64,6 +68,7 @@ from app.logging import logger
 from app.parsers import ItemInfoParseError, try_parse_item_by_link
 from app.schemas import (
     AnnotatedOtherUserSchema,
+    ChatMessageSchema,
     CurrentUserReadSchema,
     CurrentUserUpdateSchema,
     ItemInfoRequestSchema,
@@ -818,6 +823,46 @@ async def get_item_info_from_page(
 @app.get('/invite_link/')
 def get_invite_link(user: User = Depends(get_current_user)):
     return f'https://hotelki.pro/user?userId={user.id}'
+
+
+class WsConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            await connection.send_text(message)
+
+
+ws_manager = WsConnectionManager()
+
+
+@app.websocket('/chat/ws')
+async def ws_chat(websocket: WebSocket):
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            message_raw = await websocket.receive_text()
+            try:
+                message = ChatMessageSchema.model_validate_json(message_raw)
+            except ValidationError as ex:
+                await websocket.send_json(
+                    {'type': 'ERROR', 'code': 'INVALID_FORMAT', 'detail': ex.errors()}
+                )
+                continue
+            await ws_manager.broadcast(message.model_dump_json())
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
 
 
 @app.get("/sentry-debug")

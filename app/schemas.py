@@ -120,3 +120,11 @@ class ItemInfoResponseSchema(BaseModel):
     title: str
     description: str
     image_url: HttpUrl
+
+
+class ChatMessageContentSchema(BaseModel):
+    text: str
+
+
+class ChatMessageSchema(BaseModel):
+    content: ChatMessageContentSchema
