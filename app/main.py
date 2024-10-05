@@ -847,7 +847,7 @@ class WsConnectionManager:
 ws_manager = WsConnectionManager()
 
 
-@app.websocket('/ws/chat')
+@app.websocket('/chat')
 async def ws_chat(websocket: WebSocket):
     await ws_manager.connect(websocket)
     try:
