@@ -839,7 +839,7 @@ class WsConnectionManager:
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
 
-    async def broadcast(self, message: str):
+    async def broadcast(self, message: str, exclude_self=True):
         for connection in self.active_connections:
             await connection.send_text(message)
 
@@ -847,7 +847,7 @@ class WsConnectionManager:
 ws_manager = WsConnectionManager()
 
 
-@app.websocket('/chat/ws')
+@app.websocket('/ws/chat')
 async def ws_chat(websocket: WebSocket):
     await ws_manager.connect(websocket)
     try:
