@@ -16,7 +16,7 @@ async def check_cpu_usage():
 
 
 def main():
-    asyncio.run(check_cpu_usage())
+    pass
 
 
 if __name__ == '__main__':
