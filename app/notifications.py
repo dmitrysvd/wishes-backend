@@ -46,7 +46,6 @@ def send_reservation_notifincations():
 
 def send_wish_creation_notifications():
     """Отправить всем подписчикам уведомление о новых хотелках."""
-
     hour_ago = utc_now() - timedelta(hours=1)
     with SessionLocal() as db:
         wishes_filter_cond = ~Wish.is_creation_notification_sent & (
@@ -61,13 +60,23 @@ def send_wish_creation_notifications():
         )
         db.commit()
         for user in users_with_new_wishes:
-            followers_push_tokens = [
-                follower.firebase_push_token
+            followers_to_send_push = [
+                follower
                 for follower in user.followed_by
                 if follower.firebase_push_token
             ]
-            if followers_push_tokens:
+            if followers_to_send_push:
+                logger.info(
+                    'Отправляются сообщения о создании хотелок: source={user_id}, dest={dest}',
+                    user_id=user.id,
+                    dest=[str(user.id) for user in followers_to_send_push],
+                )
                 verb = 'обновила' if user.gender == Gender.female else 'обновил'
+                followers_push_tokens = [
+                    follower.firebase_push_token
+                    for follower in followers_to_send_push
+                    if follower.firebase_push_token
+                ]
                 send_push(
                     push_tokens=followers_push_tokens,
                     title=f'{user.display_name} {verb} список желаний',

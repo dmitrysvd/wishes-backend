@@ -96,8 +96,11 @@ class User(Base):
         back_populates='follows',
     )
 
-    def __str__(self) -> str:
+    def __repr__(self) -> str:
         return f'User(id={self.id}, display_name="{self.display_name}")'
+
+    def __str__(self) -> str:
+        return repr(self)
 
 
 class Wish(Base):
