@@ -161,6 +161,7 @@ async def internal_exception_handler(request: Request, call_next):
         response = await call_next(request)
     except Exception as exc:
         if not settings.IS_DEBUG:
+            logger.log
             await alert_exception(request, exc)
         raise exc
     return response
