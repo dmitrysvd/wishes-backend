@@ -1,3 +1,4 @@
+copy_dump.sh
 .vscode
 *.sqlite*
 .env

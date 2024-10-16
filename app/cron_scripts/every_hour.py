@@ -1,3 +1,4 @@
+from app.logging import logger
 from app.notifications import (
     send_reservation_notifincations,
     send_wish_creation_notifications,
@@ -5,6 +6,7 @@ from app.notifications import (
 
 
 def main():
+    logger.info('Ежечасный крон запущен')
     send_reservation_notifincations()
     send_wish_creation_notifications()
 

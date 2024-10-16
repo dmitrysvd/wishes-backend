@@ -1,7 +1,5 @@
-import asyncio
 from datetime import timedelta
 
-import psutil
 from sqlalchemy import select, update
 
 from app.alerts import alert_warning
@@ -9,6 +7,7 @@ from app.config import settings
 from app.constants import Gender
 from app.db import SessionLocal, User, Wish
 from app.firebase import send_push
+from app.logging import logger
 from app.main import get_user_deep_link
 from app.utils import utc_now
 
