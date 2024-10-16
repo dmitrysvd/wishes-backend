@@ -46,10 +46,10 @@ def send_reservation_notifincations():
 
 def send_wish_creation_notifications():
     """Отправить всем подписчикам уведомление о новых хотелках."""
-    hour_ago = utc_now() - timedelta(hours=1)
+    created_not_later_than = utc_now()
     with SessionLocal() as db:
         wishes_filter_cond = ~Wish.is_creation_notification_sent & (
-            Wish.created_at < hour_ago
+            Wish.created_at < created_not_later_than
         )
         users_q = select(User).join(User.wishes).where(wishes_filter_cond)
         users_with_new_wishes = db.scalars(users_q).all()
