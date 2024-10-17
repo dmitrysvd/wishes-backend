@@ -74,6 +74,8 @@ class User(Base):
 
     registered_at: Mapped[datetime] = mapped_column(nullable=False)
 
+    pre_bday_push_for_followers_last_sent_at: Mapped[datetime | None] = mapped_column()
+
     # relationships
     wishes: Mapped[list['Wish']] = relationship(
         back_populates='user',

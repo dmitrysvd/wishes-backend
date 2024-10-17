@@ -30,7 +30,7 @@ def send_push(push_tokens: list[str], title: str, body: str, link: str | None = 
             data=data,
         )
         messages.append(message)
-    messaging.send_all(messages)
+    messaging.send_each(messages)
 
 
 def create_firebase_user(

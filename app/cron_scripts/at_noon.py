@@ -1,12 +1,14 @@
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 
 from app.db import PushReason, PushSendingLog, SessionLocal, User
 from app.firebase import send_push
+from app.main import get_user_deep_link
+from app.utils import utc_now
 
 UPCOMING_BIRTHDAY_NOTIFY_FOLLOWERS_DAYS_IN_ADVANCE = 7
-UPCOMING_BIRTHDAY_NOTIFY_CURRENT_USER_IN_ADVANCE = 14
+UPCOMING_BIRTHDAY_NOTIFY_CURRENT_USER_IN_ADVANCE = 21
 
 
 def get_next_birthday(birth_date: date) -> datetime:
@@ -45,7 +47,7 @@ def send_upcoming_birthday_of_current_user_notification():
             push_tokens=[user.firebase_push_token],
             title='🎉Скоро твой день рождения!🎉',
             body=(
-                'Не забудь обновить свои хотелки, чтобы друзья узнали, что ты хочешь получить в подарок!🎁'
+                'Не забудь обновить свои хотелки и поделиться ими с друзьями и близкими, чтобы они узнали, что ты хочешь получить в подарок! ✨🎁'
             ),
         )
         push_log = PushSendingLog(
@@ -59,8 +61,55 @@ def send_upcoming_birthday_of_current_user_notification():
             db.commit()
 
 
+def get_upcoming_birthday_users_condition_q(min_days: int, max_days: int):
+    today = date.today()
+    lower_limit = today + timedelta(days=min_days)
+    upper_limit = today + timedelta(days=max_days)
+    current_year = today.year
+    next_year = current_year + 1
+
+    bday_1 = func.concat(current_year, func.strftime('-%m-%d', User.birth_date))
+    bday_2 = func.concat(next_year, func.strftime('-%m-%d', User.birth_date))
+
+    condition_q = bday_1.between(lower_limit, upper_limit) | bday_2.between(
+        lower_limit, upper_limit
+    )
+    return condition_q
+
+
+def get_no_repeat_push_condition(min_days_since):
+    # TODO: поддерживать другие поля
+    return User.pre_bday_push_for_followers_last_sent_at.is_(None) | (
+        User.pre_bday_push_for_followers_last_sent_at
+        < datetime.now() - timedelta(days=200)
+    )
+
+
+def send_upcoming_birthday_of_followed_user_notification():
+    with SessionLocal() as db:
+        q = select(User).where(
+            get_upcoming_birthday_users_condition_q(7, 21)
+            & get_no_repeat_push_condition(210)
+        )
+        users = db.scalars(q).all()
+        for user in users:
+            user.pre_bday_push_for_followers_last_sent_at = utc_now()
+            db.add(user)
+            db.commit()
+            for follower in user.followed_by:
+                if not follower.firebase_push_token:
+                    continue
+                send_push(
+                    push_tokens=[follower.firebase_push_token],
+                    title=f'🎉Скоро день рождения у {user.display_name}!🎉',
+                    body=('Загляни в вишлист, чтобы выбрать идеальный подарок! 🎈'),
+                    link=get_user_deep_link(user),
+                )
+
+
 def main():
     send_upcoming_birthday_of_current_user_notification()
+    # send_upcoming_birthday_of_followed_user_notification()
 
 
 if __name__ == '__main__':
