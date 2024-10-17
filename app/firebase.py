@@ -5,6 +5,7 @@ from firebase_admin import App, auth, messaging
 from firebase_admin.auth import UserRecord
 
 from app.config import settings
+from app.logging import logger
 
 cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
 
@@ -30,6 +31,7 @@ def send_push(push_tokens: list[str], title: str, body: str, link: str | None = 
             data=data,
         )
         messages.append(message)
+    logger.info(f'Отправка {len(messages)} собщений')
     messaging.send_each(messages, dry_run=settings.IS_DEBUG)
 
 

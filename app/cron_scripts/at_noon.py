@@ -109,7 +109,7 @@ def send_upcoming_birthday_of_followed_user_notification():
 
 def main():
     send_upcoming_birthday_of_current_user_notification()
-    # send_upcoming_birthday_of_followed_user_notification()
+    send_upcoming_birthday_of_followed_user_notification()
 
 
 if __name__ == '__main__':
