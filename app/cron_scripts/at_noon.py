@@ -4,6 +4,7 @@ from sqlalchemy import case, func, select
 
 from app.db import PushReason, PushSendingLog, SessionLocal, User
 from app.firebase import send_push
+from app.logging import logger
 from app.main import get_user_deep_link
 from app.utils import utc_now
 
@@ -108,6 +109,7 @@ def send_upcoming_birthday_of_followed_user_notification():
 
 
 def main():
+    logger.info('Запуск полуденного крона')
     send_upcoming_birthday_of_current_user_notification()
     send_upcoming_birthday_of_followed_user_notification()
 
