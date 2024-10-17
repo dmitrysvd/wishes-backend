@@ -378,6 +378,7 @@ def save_push_token(
     Вызывается после аутентификации через vk или firebase.
     """
     user.firebase_push_token = schema.push_token
+    user.firebase_push_token_saved_at = utc_now()
     db.add(user)
     db.commit()
 

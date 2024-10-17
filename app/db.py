@@ -70,6 +70,7 @@ class User(Base):
     vk_friends_data: Mapped[Optional[list[Any]]] = mapped_column(JSON)
     firebase_uid: Mapped[str] = mapped_column(String(100), unique=True)
     firebase_push_token: Mapped[Optional[str]] = mapped_column(String(100))
+    firebase_push_token_saved_at: Mapped[datetime | None] = mapped_column()
 
     registered_at: Mapped[datetime] = mapped_column(nullable=False)
 
