@@ -13,6 +13,8 @@ firebase_admin.initialize_app(cred)
 
 
 def send_push(push_tokens: list[str], title: str, body: str, link: str | None = None):
+    if not push_tokens:
+        logger.info('Пустой список получателей. Пуши не отправлены.')
     data = {
         'click_action': 'FLUTTER_NOTIFICATION_CLICK',
     }
