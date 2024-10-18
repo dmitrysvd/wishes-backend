@@ -256,9 +256,8 @@ def auth_vk(
         firebase_uid = user.firebase_uid
 
     user.vk_access_token = access_token
-    if not user.vk_id:
-        # Если пользователь раньше был зареган через google.
-        user.vk_id = str(vk_basic_data.id)
+    user.vk_id = str(vk_basic_data.id)
+    if not user.vk_friends_data:
         user.vk_friends_data = get_vk_user_friends(access_token)
 
     db.add(user)
