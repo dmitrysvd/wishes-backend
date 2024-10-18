@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import case, func, select
 
-from app.db import PushReason, PushSendingLog, SessionLocal, User
+from app.db import Gender, PushReason, PushSendingLog, SessionLocal, User
 from app.firebase import send_push
 from app.logging import logger
 from app.main import get_user_deep_link
@@ -89,7 +89,7 @@ def get_no_repeat_push_condition(min_days_since):
 def send_upcoming_birthday_of_followed_user_notification():
     with SessionLocal() as db:
         q = select(User).where(
-            get_upcoming_birthday_users_condition_q(7, 21)
+            get_upcoming_birthday_users_condition_q(3, 14)
             & get_no_repeat_push_condition(210)
         )
         users = db.scalars(q).all()
@@ -100,10 +100,13 @@ def send_upcoming_birthday_of_followed_user_notification():
             for follower in user.followed_by:
                 if not follower.firebase_push_token:
                     continue
+                pronoun = 'её' if user.gender == Gender.female else 'его'
                 send_push(
                     target_users=[follower],
                     title=f'🎉Скоро день рождения у {user.display_name}!🎉',
-                    body=('Загляни в вишлист, чтобы выбрать идеальный подарок! 🎈'),
+                    body=(
+                        f'Загляни в {pronoun} хотелки, чтобы выбрать идеальный подарок! 🎈'
+                    ),
                     link=get_user_deep_link(user),
                 )
 
