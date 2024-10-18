@@ -21,9 +21,7 @@ def send_reservation_notifincations():
             )
         )
         users = db.scalars(users_with_reserved_wishes_q).all()
-    push_tokens = [
-        user.firebase_push_token for user in users if user.firebase_push_token
-    ]
+    users_to_send_pushes = [user for user in users if user.firebase_push_token]
     with SessionLocal() as db:
         db.execute(
             update(Wish)
@@ -31,14 +29,14 @@ def send_reservation_notifincations():
                 Wish.id.in_(
                     select(Wish.id)
                     .join(Wish.user)
-                    .where(User.firebase_push_token.in_(push_tokens))
+                    .where(User.firebase_push_token.in_(users_to_send_pushes))
                 )
             )
             .values(is_reservation_notification_sent=True)
         )
         db.commit()
     send_push(
-        push_tokens=push_tokens,
+        target_users=users_to_send_pushes,
         title='Кто-то хочет сделать Вам подарок!',
         body=f'Одно из ваших желаний было зарезервировано',
     )
@@ -72,13 +70,13 @@ def send_wish_creation_notifications():
                     dest=[str(user.id) for user in followers_to_send_push],
                 )
                 verb = 'обновила' if user.gender == Gender.female else 'обновил'
-                followers_push_tokens = [
-                    follower.firebase_push_token
+                followers_to_send_pushes = [
+                    follower
                     for follower in followers_to_send_push
                     if follower.firebase_push_token
                 ]
                 send_push(
-                    push_tokens=followers_push_tokens,
+                    target_users=followers_to_send_pushes,
                     title=f'{user.display_name} {verb} список желаний',
                     body=f'Узнайте, что {user.display_name} хочет получить в подарок',
                     link=get_user_deep_link(user),

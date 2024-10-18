@@ -733,7 +733,7 @@ def send_push_about_new_follower(target: User, follower: User):
     if not target.firebase_push_token:
         return
     send_push(
-        push_tokens=[target.firebase_push_token],
+        target_users=[target],
         title='У вас новый подписчик',
         body=f'На вас подписался {follower.display_name}',
         link=get_user_deep_link(follower),

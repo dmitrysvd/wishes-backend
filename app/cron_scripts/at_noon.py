@@ -45,7 +45,7 @@ def send_upcoming_birthday_of_current_user_notification():
             ).first():
                 continue
         send_push(
-            push_tokens=[user.firebase_push_token],
+            target_users=[user],
             title='🎉Скоро твой день рождения!🎉',
             body=(
                 'Не забудь обновить свои хотелки и поделиться ими с друзьями и близкими, чтобы они узнали, что ты хочешь получить в подарок! ✨🎁'
@@ -101,7 +101,7 @@ def send_upcoming_birthday_of_followed_user_notification():
                 if not follower.firebase_push_token:
                     continue
                 send_push(
-                    push_tokens=[follower.firebase_push_token],
+                    target_users=[follower],
                     title=f'🎉Скоро день рождения у {user.display_name}!🎉',
                     body=('Загляни в вишлист, чтобы выбрать идеальный подарок! 🎈'),
                     link=get_user_deep_link(user),

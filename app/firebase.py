@@ -13,8 +13,8 @@ cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
 firebase_admin.initialize_app(cred)
 
 
-def send_push(push_tokens: list[str], title: str, body: str, link: str | None = None):
-    if not push_tokens:
+def send_push(target_users: list[User], title: str, body: str, link: str | None = None):
+    if not target_users:
         logger.info('Пустой список получателей. Пуши не отправлены.')
         return
     data = {
@@ -28,14 +28,24 @@ def send_push(push_tokens: list[str], title: str, body: str, link: str | None = 
     )
     android_config = messaging.AndroidConfig(notification=android_notification)
     messages = []
-    for push_token in push_tokens:
+    users_with_message_ids = []
+    for user in target_users:
+        if not user.firebase_push_token:
+            logger.warning(
+                'Не отправлено сообщение из-за отсутствия пуш-токена: {user_id}',
+                user_id=user.id,
+            )
+            continue
         message = messaging.Message(
             android=android_config,
-            token=push_token,
+            token=user.firebase_push_token,
             data=data,
         )
         messages.append(message)
-    logger.info(f'Отправка {len(messages)} собщений')
+        users_with_message_ids.append(user.id)
+    logger.info(
+        f'Отправка {len(messages)} собщений пользователям: {users_with_message_ids}'
+    )
     messaging.send_each(messages, dry_run=settings.IS_DEBUG)
 
 
