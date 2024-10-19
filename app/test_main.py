@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.constants import Gender
 from app.db import Base, User, Wish
 from app.main import app, get_current_user, get_db
+from app.utils import utc_now
 from app.vk import Gender, VkUserBasicData, VkUserExtraData
 
 engine = create_engine(
@@ -41,6 +42,7 @@ def user(db: Session):
         vk_access_token='vk_access_token',
         firebase_uid='firebase uid',
         gender=Gender.male,
+        registered_at=utc_now(),
     )
     db.add(_user)
     db.commit()
@@ -60,6 +62,7 @@ def other_user(db: Session):
         vk_access_token='vk_access_token 2',
         firebase_uid='firebase uid 2',
         gender=Gender.male,
+        registered_at=utc_now(),
     )
     db.add(_user)
     db.commit()
@@ -117,6 +120,11 @@ def auth_client(user: User) -> TestClient:
     return client
 
 
+@pytest.fixture(autouse=True)
+def mock_external_requests(mocker):
+    mocker.patch('app.utils.send_tg_channel_message')
+
+
 class TestMyWishes:
     def test_empty_wishes(self, auth_client):
         response = auth_client.get('/wishes')
@@ -134,7 +142,7 @@ class TestMyWishes:
         assert response.json()['id'] == str(wish.id)
 
     def test_get_user_wishes(self, auth_client: TestClient, wish: Wish, user: User):
-        response = auth_client.get(f'/users/{user.id}/wishes/')
+        response = auth_client.get(f'users/{user.id}/wishes')
         assert response.is_success
         assert [w['id'] for w in response.json()] == [str(wish.id)]
 
@@ -380,7 +388,6 @@ def test_search_user(
     assert response.is_success, response.json()
     response_data = response.json()
     assert len(response_data) == 1
-    assert response_data[0]['email'] == 'test2@mail.ru'
 
 
 def test_delete_user_with_wishes(

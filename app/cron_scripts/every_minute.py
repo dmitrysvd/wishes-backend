@@ -9,10 +9,10 @@ from app.config import settings
 async def check_cpu_usage():
     cpu_percent = psutil.cpu_percent()
     if cpu_percent > settings.CPU_ALERT_TRESHOLD:
-        await alert_warning(f'CPU usage: {cpu_percent}%')
+        alert_warning(f'CPU usage: {cpu_percent}%')
     memory_usage = psutil.virtual_memory()
     if memory_usage.percent > settings.RAM_ALERT_TRESHOLD:
-        await alert_warning(f'RAM usage: {memory_usage.percent}%')
+        alert_warning(f'RAM usage: {memory_usage.percent}%')
 
 
 def main():

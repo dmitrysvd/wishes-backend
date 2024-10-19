@@ -84,7 +84,7 @@ from app.schemas import (
     WishReadSchema,
     WishWriteSchema,
 )
-from app.utils import utc_now
+from app.utils import new_user_handler, utc_now
 from app.vk import (
     VkUserExtraData,
     exchange_tokens,
@@ -193,8 +193,8 @@ async def internal_exception_handler(request: Request, call_next):
         response = await call_next(request)
     except Exception as exc:
         if not settings.IS_DEBUG:
-            logger.log
-            await alert_exception(request, exc)
+            logger.exception('Exception')
+            alert_exception(request, exc)
         raise exc
     return response
 
@@ -296,10 +296,7 @@ def auth_vk(
     db.commit()
 
     if is_new_user:
-        logger.info(
-            'Зарегистрирован новый пользователь: firebase_uid={firebase_uid}',
-            firebase_uid=firebase_uid,
-        )
+        new_user_handler(user)
 
     firebase_token = create_custom_firebase_token(firebase_uid)
     return firebase_uid, firebase_token, is_new_user
@@ -392,10 +389,7 @@ def auth_firebase(
     db.commit()
 
     if is_new_user:
-        logger.info(
-            'Зарегистрирован новый пользователь: firebase_uid={firebase_uid}',
-            firebase_uid=uid,
-        )
+        new_user_handler(user)
 
 
 @app.post('/save_push_token', response_class=Response, tags=[AUTH_TAG])
