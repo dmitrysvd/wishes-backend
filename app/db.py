@@ -73,6 +73,7 @@ class User(Base):
     firebase_push_token_saved_at: Mapped[datetime | None] = mapped_column()
 
     registered_at: Mapped[datetime] = mapped_column(nullable=False)
+    last_login_at: Mapped[datetime | None] = mapped_column()
 
     pre_bday_push_for_followers_last_sent_at: Mapped[datetime | None] = mapped_column()
 

@@ -259,7 +259,7 @@ def auth_vk(
     user.vk_id = str(vk_basic_data.id)
     if not user.vk_friends_data:
         user.vk_friends_data = get_vk_user_friends(access_token)
-
+    user.last_login_at = utc_now()
     db.add(user)
     db.commit()
 
@@ -355,6 +355,7 @@ def auth_firebase(
     else:
         user.firebase_uid = uid
 
+    user.last_login_at = utc_now()
     db.add(user)
     db.commit()
 
