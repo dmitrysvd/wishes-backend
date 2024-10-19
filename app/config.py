@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    SECRET_KEY: str
     IS_DEBUG: bool
     VK_SERVICE_KEY: str
     VK_APP_ID: int
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     RAM_ALERT_TRESHOLD: float = 70.0
     URL_ROOT_PATH: str = '/'
     SENTRY_DSN: Optional[str] = None
+    USER_IDS_WITH_ADMIN_ACCESS: Optional[list[str]] = None
 
     model_config = SettingsConfigDict(env_file=".env")
 

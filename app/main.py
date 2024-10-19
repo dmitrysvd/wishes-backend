@@ -46,6 +46,7 @@ from firebase_admin.exceptions import FirebaseError
 from httpx import ConnectError
 from pydantic import HttpUrl, ValidationError
 from sqladmin import Admin, ModelView
+from sqladmin.authentication import AuthenticationBackend
 from sqlalchemy import Select, delete, select, update
 from sqlalchemy.orm import Query, Session
 from starlette.status import (
@@ -125,8 +126,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-admin = Admin(app, engine)
-
 
 AUTH_TAG = 'auth'
 WISHES_TAG = 'wishes'
@@ -141,9 +140,42 @@ class WishAdmin(ModelView, model=Wish):
     column_list = [Wish.id, Wish.name]
 
 
-if settings.IS_DEBUG:
-    admin.add_view(UserAdmin)
-    admin.add_view(WishAdmin)
+class AdminAuth(AuthenticationBackend):
+    async def login(self, request: Request) -> bool:
+        return True
+
+    async def logout(self, request: Request) -> bool:
+        return True
+
+    async def authenticate(self, request: Request) -> bool:
+        if settings.IS_DEBUG:
+            return True
+        token = request.headers.get('Authorization')
+        if not token:
+            return False
+        try:
+            decoded_token = verify_id_token(token)
+        except InvalidIdTokenError:
+            return False
+        uid = decoded_token['uid']
+        with SessionLocal() as db:
+            user = db.scalars(
+                select(User).where(User.firebase_uid == uid)
+            ).one_or_none()
+        if not user:
+            return False
+        if user.id not in (settings.USER_IDS_WITH_ADMIN_ACCESS or []):
+            return False
+        return True
+
+
+admin = Admin(
+    app,
+    engine,
+    authentication_backend=AdminAuth(secret_key=settings.SECRET_KEY),
+)
+admin.add_view(UserAdmin)
+admin.add_view(WishAdmin)
 
 
 class HolidayEvent(enum.Enum):
