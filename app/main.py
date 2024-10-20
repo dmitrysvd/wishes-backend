@@ -507,7 +507,9 @@ def delete_wish_image(
     '/users/{user_id}/wishes', response_model=list[WishReadSchema], tags=[WISHES_TAG]
 )
 def user_wishes(user_id: UUID, db: Session = Depends(get_db)):
-    user = db.scalars(select(User).where(User.id == user_id)).one()
+    user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
+    if not user:
+        raise HTTPException(404, 'Пользователь не найден')
     query = Wish.get_active_wish_query().where(Wish.user == user)
     return db.scalars(query)
 
