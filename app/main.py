@@ -137,6 +137,9 @@ class UserAdmin(ModelView, model=User):
     icon = "fa-solid fa-user"
     column_searchable_list = [User.display_name, User.id]
     column_default_sort = ('registered_at', True)
+    column_details_exclude_list = [User.vk_access_token, User.firebase_push_token]
+    form_excluded_columns = [User.vk_access_token, User.firebase_push_token]
+    can_export = False
 
 
 class WishAdmin(ModelView, model=Wish):
@@ -145,6 +148,7 @@ class WishAdmin(ModelView, model=Wish):
     icon = "fa-solid fa-gift"
     column_searchable_list = [Wish.name, User.id]
     column_default_sort = ('created_at', True)
+    can_export = False
 
 
 class AdminAuth(AuthenticationBackend):
