@@ -135,7 +135,7 @@ USERS_TAG = 'users'
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.display_name, User.registered_at]
     icon = "fa-solid fa-user"
-    column_searchable_list = [User.display_name]
+    column_searchable_list = [User.display_name, User.id]
     column_default_sort = ('registered_at', True)
 
 
@@ -143,7 +143,7 @@ class WishAdmin(ModelView, model=Wish):
     name_plural = 'Wishes'
     column_list = [Wish.id, Wish.name, Wish.user, Wish.created_at]
     icon = "fa-solid fa-gift"
-    column_searchable_list = [Wish.name]
+    column_searchable_list = [Wish.name, User.id]
     column_default_sort = ('created_at', True)
 
 
