@@ -142,31 +142,25 @@ class WishAdmin(ModelView, model=Wish):
 
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
-        return True
+        form = await request.form()
+        username, password = form["username"], form["password"]
+        if (
+            username == 'admin'
+            and settings.ADMIN_PASSWORD
+            and password == settings.ADMIN_PASSWORD
+        ):
+            request.session.update({"has_admin_access": True})
+            return True
+        else:
+            return False
 
     async def logout(self, request: Request) -> bool:
+        request.session.clear()
         return True
 
     async def authenticate(self, request: Request) -> bool:
-        if settings.IS_DEBUG:
-            return True
-        token = request.headers.get('Authorization')
-        if not token:
-            return False
-        try:
-            decoded_token = verify_id_token(token)
-        except InvalidIdTokenError:
-            return False
-        uid = decoded_token['uid']
-        with SessionLocal() as db:
-            user = db.scalars(
-                select(User).where(User.firebase_uid == uid)
-            ).one_or_none()
-        if not user:
-            return False
-        if user.id not in (settings.USER_IDS_WITH_ADMIN_ACCESS or []):
-            return False
-        return True
+        has_admin_access = request.session.get("has_admin_access", False)
+        return has_admin_access
 
 
 admin = Admin(

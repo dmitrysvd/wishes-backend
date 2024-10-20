@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     RAM_ALERT_TRESHOLD: float = 70.0
     URL_ROOT_PATH: str = '/'
     SENTRY_DSN: Optional[str] = None
-    USER_IDS_WITH_ADMIN_ACCESS: Optional[list[str]] = None
+    ADMIN_PASSWORD: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=".env")
 
