@@ -43,7 +43,7 @@ from firebase_admin.auth import (
     verify_id_token,
 )
 from firebase_admin.exceptions import FirebaseError
-from httpx import ConnectError
+from httpx import HTTPError
 from pydantic import HttpUrl, ValidationError
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
@@ -847,7 +847,7 @@ async def get_item_info_from_page(
                     result = await try_parse_item_by_link(str(request_data.link))
                 except ItemInfoParseError:
                     logger.warning(str(ex))
-    except ConnectError as ex:
+    except HTTPError as ex:
         logger.warning(repr(ex))
         result = None
     if result is None:
