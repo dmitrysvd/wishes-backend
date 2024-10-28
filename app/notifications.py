@@ -22,6 +22,7 @@ def send_reservation_notifincations():
         )
         users = db.scalars(users_with_reserved_wishes_q).all()
     users_to_send_pushes = [user for user in users if user.firebase_push_token]
+    user_ids_to_send_pushes = {user.id for user in users_to_send_pushes}
     with SessionLocal() as db:
         db.execute(
             update(Wish)
@@ -29,7 +30,7 @@ def send_reservation_notifincations():
                 Wish.id.in_(
                     select(Wish.id)
                     .join(Wish.user)
-                    .where(User.id.in_([user.id for user in users_to_send_pushes]))
+                    .where(User.id.in_(user_ids_to_send_pushes))
                 )
             )
             .values(is_reservation_notification_sent=True)
