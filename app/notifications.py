@@ -29,7 +29,7 @@ def send_reservation_notifincations():
                 Wish.id.in_(
                     select(Wish.id)
                     .join(Wish.user)
-                    .where(User.firebase_push_token.in_(users_to_send_pushes))
+                    .where(User.id.in_([user.id for user in users_to_send_pushes]))
                 )
             )
             .values(is_reservation_notification_sent=True)
