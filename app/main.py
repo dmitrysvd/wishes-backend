@@ -42,7 +42,7 @@ from firebase_admin.auth import (
     InvalidIdTokenError,
     verify_id_token,
 )
-from firebase_admin.exceptions import FirebaseError
+from firebase_admin.exceptions import AlreadyExistsError, FirebaseError
 from httpx import HTTPError
 from pydantic import HttpUrl, ValidationError
 from sqladmin import Admin, ModelView
@@ -271,12 +271,19 @@ def auth_vk(
 
     is_new_user = not bool(user)
     if is_new_user:
-        firebase_uid = create_firebase_user(
-            email=vk_extra_data.email,
-            display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
-            photo_url=vk_basic_data.photo_url,
-            phone=vk_extra_data.phone,
-        )
+        try:
+            firebase_uid = create_firebase_user(
+                email=vk_extra_data.email,
+                display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
+                photo_url=vk_basic_data.photo_url,
+                phone=vk_extra_data.phone,
+            )
+        except AlreadyExistsError as exc:
+            logger.error('Ошибка при создании пользователя {exc}', exc=exc)
+            raise HTTPException(
+                409,
+                'Пользователь с таким email уже существует. Зайдите через соответствующий аккаунт.',
+            )
         user = User(
             vk_id=vk_basic_data.id,
             vk_access_token=access_token,
