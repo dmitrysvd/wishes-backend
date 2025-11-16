@@ -11,7 +11,6 @@ class Settings(BaseSettings):
     VK_APP_ID: int
     FIREBASE_KEY_PATH: Path
     TEST_TOKEN: str
-    STATIC_ROOT: Path
     MEDIA_ROOT: Path
     LOGS_DIR: Path
     TG_ALERTS_BOT_TOKEN: str

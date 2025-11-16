@@ -1,6 +1,7 @@
 import json
 import re
 from typing import Optional
+import urllib.parse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -111,6 +112,11 @@ async def _request_ya_market_html(link: str) -> str:
         return response_2.text
 
 
+def is_absolute_url(url: str) -> bool:
+    parsed_url = urllib.parse.urlparse(url)
+    return bool(parsed_url.netloc)
+
+
 async def try_parse_item_by_link(
     link: str,
     html: str | None = None,
@@ -160,6 +166,20 @@ async def try_parse_item_by_link(
         assert isinstance(image_url, str)
     except IndexError:
         raise ItemInfoParseError('Не найден тег метаданных')
+    if not is_absolute_url(image_url):
+        # если был указан относительный путь, конструируем абсолютный путь, используя link,
+        # чтобы фронт смог подтянуть картинку.
+        base_url_parsed = urllib.parse.urlparse(link)
+        image_url = urllib.parse.urlunparse(
+            (
+                base_url_parsed.scheme,
+                base_url_parsed.netloc,
+                image_url,
+                '',
+                '',
+                '',
+            )
+        )
     return ItemInfoResponseSchema(
         title=title,
         description=description,
