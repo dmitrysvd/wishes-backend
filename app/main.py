@@ -114,7 +114,7 @@ app = FastAPI(
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 if settings.IS_DEBUG:
-    app.mount('/static', StaticFiles(directory=settings.STATIC_ROOT), name='static')
+    app.mount('/static', StaticFiles(directory=BASE_DIR / 'static'), name='static')
     app.mount('/media', StaticFiles(directory=settings.MEDIA_ROOT), name='media')
 
 # TODO: ограничить CORS-origin
