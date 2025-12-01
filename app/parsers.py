@@ -57,7 +57,10 @@ async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
         )
         raise ItemInfoParseError('Не найдена переменная с данными в ответе')
     meta_data_str = match.group(1)
-    meta_data = json.loads(meta_data_str)
+    try:
+        meta_data = json.loads(meta_data_str)
+    except json.JSONDecodeError as exc:
+        raise ItemInfoParseError('Ошибка парсинга json') from exc
     attrs = {}
     for item in meta_data:
         if item['tagName'] == 'meta' and item['attrs'].get('property', '').startswith(
