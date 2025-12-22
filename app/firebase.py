@@ -29,6 +29,8 @@ def send_push(target_users: list[User], title: str, body: str, link: str | None 
     android_config = messaging.AndroidConfig(notification=android_notification)
     messages = []
     users_with_message_ids = []
+
+    target_users = list(set(target_users))
     for user in target_users:
         if not user.firebase_push_token:
             logger.warning(
