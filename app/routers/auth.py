@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from firebase_admin.auth import verify_id_token
 from firebase_admin.exceptions import AlreadyExistsError, FirebaseError
@@ -57,8 +57,6 @@ def auth_vk(
             )
         except AlreadyExistsError as exc:
             logger.error('Ошибка при создании пользователя {exc}', exc=exc)
-            from fastapi import HTTPException
-
             raise HTTPException(
                 409,
                 'Пользователь с таким email уже существует. Зайдите через соответствующий аккаунт.',
@@ -152,8 +150,6 @@ def auth_firebase(
     try:
         decoded_token = verify_id_token(id_token)
     except FirebaseError as ex:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=403, detail="Not authenticated")
     uid = decoded_token['uid']
     firebase_user = get_firebase_user_data(uid)
@@ -186,7 +182,7 @@ def auth_firebase(
 
 
 @router.post('/save_push_token', response_class=Response)
-def save_push_tokenсейчас(
+def save_push_token(
     schema: SavePushTokenSchema,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
