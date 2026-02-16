@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     URL_ROOT_PATH: str = '/'
     SENTRY_DSN: Optional[str] = None
     ADMIN_PASSWORD: Optional[str] = None
+    FRONTEND_URL: str = 'https://hotelki.pro'
 
     model_config = SettingsConfigDict(env_file=".env")
 

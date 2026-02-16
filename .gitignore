@@ -1,5 +1,6 @@
 copy_dump.sh
 .vscode
+.claude
 *.sqlite*
 .env
 *firebase-adminsdk*
