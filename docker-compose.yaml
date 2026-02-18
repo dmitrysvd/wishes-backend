@@ -6,7 +6,7 @@ services:
     #   target: dev
     command: >
       uv run gunicorn
-        --bind 0.0.0.0:8000
+        --bind localhost:8000
         --worker-class uvicorn.workers.UvicornWorker
         --workers 1
         --forwarded-allow-ips='*'
