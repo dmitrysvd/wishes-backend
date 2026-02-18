@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: Optional[str] = None
     FRONTEND_URL: str = 'https://hotelki.pro'
 
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env", extra='ignore')
 
 
 settings = Settings()  # type: ignore
