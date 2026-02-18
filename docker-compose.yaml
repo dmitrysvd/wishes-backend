@@ -26,6 +26,7 @@ services:
     # depends_on:
     #   - db
     env_file: .env
+    restart: always
 
 #   db:
 #     image: postgres:18
