@@ -22,7 +22,7 @@ services:
       - ./db.sqlite-shm:/app/db.sqlite-shm
       - ./db.sqlite-wal:/app/db.sqlite-wal
     ports:
-      - 8000:8000
+      - "127.0.0.1:8000:8000"
     # depends_on:
     #   - db
     env_file: .env
