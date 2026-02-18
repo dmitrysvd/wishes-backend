@@ -6,7 +6,7 @@ services:
     #   target: dev
     command: >
       uv run gunicorn
-        --bind localhost:8000
+        --bind 0.0.0.0:8000
         --worker-class uvicorn.workers.UvicornWorker
         --workers 1
         --forwarded-allow-ips='*'
@@ -22,7 +22,7 @@ services:
       - ./db.sqlite-shm:/app/db.sqlite-shm
       - ./db.sqlite-wal:/app/db.sqlite-wal
     ports:
-      - "127.0.0.1:8000:8000"
+      - 8000:8000
     # depends_on:
     #   - db
     env_file: .env
