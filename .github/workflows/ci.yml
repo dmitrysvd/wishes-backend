@@ -2,7 +2,7 @@ name: CI/CD
 
 on:
   push:
-    branches: [ prod docker ]
+    branches: [ prod docker master]
 
 jobs:
   build:
