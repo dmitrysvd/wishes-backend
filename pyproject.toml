@@ -21,6 +21,7 @@ dependencies = [
     "psutil>=5.9.8",
     "sentry-sdk[fastapi]>=2.2.0",
     "websockets>=13.1",
+    "psycopg2-binary>=2.9.11",
 ]
 
 [dependency-groups]

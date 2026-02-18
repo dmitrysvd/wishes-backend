@@ -21,8 +21,11 @@ class Settings(BaseSettings):
     SENTRY_DSN: Optional[str] = None
     ADMIN_PASSWORD: Optional[str] = None
     FRONTEND_URL: str = 'https://hotelki.pro'
+    # DATABASE_URL: str = 'sqlite:///db.sqlite'
+    DATABASE_URL: str
+    TEST_DATABASE_URL: str = 'sqlite://'
 
-    model_config = SettingsConfigDict(env_file=".env", extra='ignore')
+    model_config = SettingsConfigDict()
 
 
 settings = Settings()  # type: ignore

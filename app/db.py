@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Numeric,
     Table,
     Uuid,
     create_engine,
@@ -31,7 +32,6 @@ from sqlalchemy.orm import (
     sessionmaker,
 )
 from sqlalchemy.sql import func
-from sqlalchemy.types import DECIMAL
 
 from app.config import settings
 from app.constants import Gender
@@ -124,7 +124,7 @@ class Wish(Base):
     description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     price: Mapped[Optional[Decimal]] = mapped_column(
-        DECIMAL(precision=2), nullable=True
+        Numeric(precision=10, scale=2), nullable=True
     )
     image: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean(), default=True)  # TODO: убрать
@@ -177,7 +177,7 @@ class PushSendingLog(Base):
 
 
 engine = create_engine(
-    'sqlite:///db.sqlite',
+    settings.DATABASE_URL,
     echo=settings.IS_DEBUG,
     connect_args={"check_same_thread": False},
 )
@@ -188,7 +188,8 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 @event.listens_for(Engine, "connect")
 def do_connect(dbapi_connection, connection_record):
     if not isinstance(dbapi_connection, SQLite3Connection):
-        raise Exception('Not supported')
+        # для postgres не выполняем
+        return
 
     # disable pysqlite's emitting of the BEGIN statement entirely.
     # also stops it from emitting COMMIT before any DDL.

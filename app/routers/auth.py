@@ -40,7 +40,7 @@ def auth_vk(
 ) -> tuple[str, str, bool]:
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
-    user = db.scalars(select(User).where(User.vk_id == vk_basic_data.id)).one_or_none()
+    user = db.scalars(select(User).where(User.vk_id == str(vk_basic_data.id))).one_or_none()
     if not user and vk_extra_data.email:
         user = db.scalars(
             select(User).where(User.email == vk_extra_data.email)
@@ -140,7 +140,7 @@ def auth_firebase(
     db: Session = Depends(get_db),
 ):
     """
-    Аутентификация через firebase Google.
+    Аутентификация через firebase Google trololo.
 
     Клиент уже должен быть залогинен в firebase.
     Если пользователя с email из firebase нет в БД, создаст его.

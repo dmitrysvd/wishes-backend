@@ -6,20 +6,44 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import StaticPool, create_engine, delete, func, select, update
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import create_engine, text
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
+import psycopg2
 
 from app.constants import Gender
 from app.db import Base, User, Wish
 from app.main import app, get_current_user, get_db
 from app.utils import utc_now
 from app.vk import Gender, VkUserBasicData, VkUserExtraData
+from app.config import settings
+
 
 engine = create_engine(
-    'sqlite://',
-    connect_args={"check_same_thread": False},
+    settings.TEST_DATABASE_URL,
+    # connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+def ensure_test_database_exists():
+    """Создаёт тестовую БД, если она отсутствует."""
+    test_db_name = 'test_db'
+    engine = create_engine(settings.DATABASE_URL, isolation_level="AUTOCOMMIT")
+    if engine.dialect.name != 'postgresql':
+        return
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": test_db_name}
+        ).fetchone()
+        if not result:
+            conn.execute(text(f'CREATE DATABASE "{test_db_name}"'))
+            print(f"✅ Создана база {test_db_name}")
+
+
+@pytest.fixture(scope='session', autouse=True)
+def setup_test_db():
+    ensure_test_database_exists()
 
 
 @pytest.fixture
