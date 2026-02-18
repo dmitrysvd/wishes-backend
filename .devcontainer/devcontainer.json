@@ -1,0 +1,41 @@
+{
+	"name": "Wishes Dev Container",
+	"dockerComposeFile": [
+		"../docker-compose.yaml",
+		"docker-compose.devcontainer.yaml"
+	],
+	"service": "app",
+	"workspaceFolder": "/workspace",
+	"overrideCommand": true,
+	"postCreateCommand": "uv sync",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"ms-python.black-formatter",
+				"charliermarsh.ruff"
+			],
+			"settings": {
+				"python.defaultInterpreterPath": "/workspace/.venv/bin/python",
+				"python.testing.pytestEnabled": true,
+				"python.testing.pytestArgs": [
+					"-v"
+				],
+				"editor.formatOnSave": true,
+				"[python]": {
+					"editor.defaultFormatter": "ms-python.black-formatter"
+				}
+			}
+		}
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/common-utils": {
+			"installZsh": true,
+			"installOhMyZsh": true,
+			"configureZshAsDefaultShell": true
+		},
+		"ghcr.io/devcontainers/features/git:1": {},
+		"ghcr.io/devcontainers-extra/features/zsh-plugins": {}
+	}
+}
