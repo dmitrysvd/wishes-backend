@@ -1,45 +1,41 @@
-[tool.poetry]
+[project]
 name = "wishes"
 version = "0.1.0"
 description = ""
-package-mode = false
-authors = []
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.104.1",
+    "sqlalchemy>=2.0.23",
+    "pydantic[email]>=2.5.1",
+    "gunicorn>=21.2.0",
+    "uvicorn[standard]>=0.24.0.post1",
+    "jinja2>=3.1.2",
+    "pydantic-settings>=2.1.0",
+    "httpx>=0.25.1",
+    "alembic>=1.12.1",
+    "firebase-admin>=6.2.0",
+    "sqladmin[full]>=0.16.0",
+    "loguru>=0.7.2",
+    "beautifulsoup4>=4.12.2",
+    "ipython>=8.20.0",
+    "psutil>=5.9.8",
+    "sentry-sdk[fastapi]>=2.2.0",
+    "websockets>=13.1",
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-fastapi = "^0.104.1"
-sqlalchemy = "^2.0.23"
-pydantic = {extras = ["email"], version = "^2.5.1"}
-gunicorn = "^21.2.0"
-uvicorn = {extras = ["standard"], version = "^0.24.0.post1"}
-jinja2 = "^3.1.2"
-pydantic-settings = "^2.1.0"
-httpx = "^0.25.1"
-alembic = "^1.12.1"
-firebase-admin = "^6.2.0"
-sqladmin = {extras = ["full"], version = "^0.16.0"}
-loguru = "^0.7.2"
-beautifulsoup4 = "^4.12.2"
-ipython = "^8.20.0"
-psutil = "^5.9.8"
-sentry-sdk = {extras = ["fastapi"], version = "^2.2.0"}
-websockets = "^13.1"
-
-[tool.poetry.group.dev.dependencies]
-black = "^23.11.0"
-isort = "^5.12.0"
-pre-commit = "^3.5.0"
-pyright = "^1.1.337"
-pytest = "^7.4.3"
-pytest-cov = "^4.1.0"
-pytest-mock = "^3.12.0"
+[dependency-groups]
+dev = [
+    "black>=23.11.0",
+    "isort>=5.12.0",
+    "pre-commit>=3.5.0",
+    "pyright>=1.1.337",
+    "pytest>=7.4.3",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+]
 
 [tool.black]
 skip-string-normalization = true
 
 [tool.isort]
 profile = "black"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
