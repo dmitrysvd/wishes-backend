@@ -1,9 +1,6 @@
 services:
   app:
     image: dmitrysvd1/wishes-app:latest
-    # build:
-    #   context: .
-    #   target: dev
     command: >
       uv run gunicorn
         --bind 0.0.0.0:8000

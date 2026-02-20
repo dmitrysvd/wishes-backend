@@ -1,13 +1,17 @@
 {
+	"containerUser": "vscode",
+	"remoteUser": "vscode",
+	"updateRemoteUserUID": true,
 	"name": "Wishes Dev Container",
 	"dockerComposeFile": [
 		"../docker-compose.yaml",
+		"../docker-compose.dev.yaml",
 		"docker-compose.devcontainer.yaml"
 	],
 	"service": "app",
 	"workspaceFolder": "/workspace",
 	"overrideCommand": true,
-	"postCreateCommand": "uv sync",
+	"postCreateCommand": "sudo chown -R vscode:vscode /workspace && uv sync",
 	"customizations": {
 		"vscode": {
 			"extensions": [
@@ -30,12 +34,12 @@
 		}
 	},
 	"features": {
+		"ghcr.io/devcontainers/features/git:1": {},
 		"ghcr.io/devcontainers/features/common-utils": {
 			"installZsh": true,
 			"installOhMyZsh": true,
+			"installOhMyZshConfig": true,
 			"configureZshAsDefaultShell": true
-		},
-		"ghcr.io/devcontainers/features/git:1": {},
-		"ghcr.io/devcontainers-extra/features/zsh-plugins": {}
+		}
 	}
 }
