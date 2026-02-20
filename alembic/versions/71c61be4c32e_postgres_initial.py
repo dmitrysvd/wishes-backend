@@ -10,6 +10,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision: str = '71c61be4c32e'
@@ -26,7 +27,7 @@ def upgrade() -> None:
         sa.Column('email', sa.String(length=100), nullable=True),
         sa.Column('phone', sa.String(length=15), nullable=True),
         sa.Column('birth_date', sa.Date(), nullable=True),
-        sa.Column('gender', sa.Enum('male', 'female', name='gender'), nullable=True),
+        sa.Column('gender', postgresql.ENUM('male', 'female', name='gender', create_type=False), nullable=True),
         sa.Column('photo_url', sa.String(length=200), nullable=True),
         sa.Column('photo_path', sa.String(length=200), nullable=True),
         sa.Column('vk_id', sa.String(length=15), nullable=True),
@@ -54,7 +55,7 @@ def upgrade() -> None:
         sa.Column('target_user_id', sa.Uuid(), nullable=False),
         sa.Column(
             'reason',
-            sa.Enum('CURRENT_USER_BIRTHDAY', 'FOLLOWER_BIRTHDAY', name='pushreason'),
+            postgresql.ENUM('CURRENT_USER_BIRTHDAY', 'FOLLOWER_BIRTHDAY', name='pushreason', create_type=False),
             nullable=False,
         ),
         sa.ForeignKeyConstraint(['reason_user_id'], ['user.id'], ondelete='CASCADE'),
