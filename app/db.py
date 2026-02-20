@@ -53,7 +53,7 @@ user_following_table = Table(
 class User(Base):
     __tablename__ = 'user'
 
-    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
     display_name: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     phone: Mapped[Optional[str]] = mapped_column(String(15))
@@ -179,7 +179,7 @@ class PushSendingLog(Base):
 engine = create_engine(
     settings.DATABASE_URL,
     echo=settings.IS_DEBUG,
-    connect_args={"check_same_thread": False},
+    # connect_args={"check_same_thread": False},
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
