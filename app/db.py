@@ -195,10 +195,9 @@ def do_connect(dbapi_connection, connection_record):
     # also stops it from emitting COMMIT before any DDL.
     dbapi_connection.isolation_level = None
 
-    # enable FK constraints and WAL mode
+    # enable FK constraints
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON;")
-    cursor.execute('PRAGMA journal_mode=WAL;')
     cursor.close()
 
 

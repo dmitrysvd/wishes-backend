@@ -19,8 +19,6 @@ services:
       - ./media:/app/media
       - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
       - ./db.sqlite:/app/db.sqlite
-      - ./db.sqlite-shm:/app/db.sqlite-shm
-      - ./db.sqlite-wal:/app/db.sqlite-wal
     ports:
       - 8000:8000
     depends_on:
