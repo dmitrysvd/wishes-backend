@@ -16,7 +16,7 @@ services:
         app.main:app
     volumes:
       - ./static:/app/static:ro
-      - ./media:/app/media
+      - /data/media:/media
       - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
       - ./db.sqlite:/app/db.sqlite
     ports:
