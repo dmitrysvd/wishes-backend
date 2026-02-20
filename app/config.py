@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     TEST_DATABASE_URL: str = 'sqlite://'
 
-    model_config = SettingsConfigDict()
+    model_config = SettingsConfigDict(env_file='.env', extra='ignore')
 
 
 settings = Settings()  # type: ignore
