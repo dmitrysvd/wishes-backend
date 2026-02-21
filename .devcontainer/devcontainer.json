@@ -12,6 +12,9 @@
 	"workspaceFolder": "/workspace",
 	"overrideCommand": true,
 	"postCreateCommand": "sudo chown -R vscode:vscode /workspace && uv sync",
+	"mounts": [
+    	"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+	],
 	"customizations": {
 		"vscode": {
 			"extensions": [
