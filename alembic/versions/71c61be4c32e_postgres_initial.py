@@ -18,8 +18,19 @@ down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+gender_type = postgresql.ENUM('male', 'female', name='gender', create_type=False)
+push_reason_type = postgresql.ENUM(
+    'CURRENT_USER_BIRTHDAY',
+    'FOLLOWER_BIRTHDAY',
+    name='pushreason',
+    create_type=False,
+)
+
 
 def upgrade() -> None:
+    gender_type.create(op.get_bind(), checkfirst=True)
+    push_reason_type.create(op.get_bind(), checkfirst=True)
+
     op.create_table(
         'user',
         sa.Column('id', sa.Uuid(), nullable=False),
@@ -27,7 +38,7 @@ def upgrade() -> None:
         sa.Column('email', sa.String(length=100), nullable=True),
         sa.Column('phone', sa.String(length=15), nullable=True),
         sa.Column('birth_date', sa.Date(), nullable=True),
-        sa.Column('gender', postgresql.ENUM('male', 'female', name='gender', create_type=False), nullable=True),
+        sa.Column('gender', gender_type, nullable=True),
         sa.Column('photo_url', sa.String(length=1024), nullable=True),
         sa.Column('photo_path', sa.String(length=200), nullable=True),
         sa.Column('vk_id', sa.String(length=15), nullable=True),
@@ -55,7 +66,7 @@ def upgrade() -> None:
         sa.Column('target_user_id', sa.Uuid(), nullable=False),
         sa.Column(
             'reason',
-            postgresql.ENUM('CURRENT_USER_BIRTHDAY', 'FOLLOWER_BIRTHDAY', name='pushreason', create_type=False),
+            push_reason_type,
             nullable=False,
         ),
         sa.ForeignKeyConstraint(['reason_user_id'], ['user.id'], ondelete='CASCADE'),
@@ -111,3 +122,6 @@ def downgrade() -> None:
     op.drop_table('user_following')
     op.drop_table('push_sending_log')
     op.drop_table('user')
+
+    gender_type.drop(op.get_bind(), checkfirst=True)
+    push_reason_type.drop(op.get_bind(), checkfirst=True)
