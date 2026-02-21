@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -34,7 +35,8 @@ def ensure_test_database_exists():
         return
     with engine.connect() as conn:
         result = conn.execute(
-            text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": test_db_name}
+            text("SELECT 1 FROM pg_database WHERE datname = :name"),
+            {"name": test_db_name},
         ).fetchone()
         if not result:
             conn.execute(text(f'CREATE DATABASE "{test_db_name}"'))
@@ -295,7 +297,9 @@ class TestAuth:
         def _fake_get_friends(access_token):
             return []
 
-        mocker.patch('app.routers.auth.get_vk_user_data_by_access_token', _fake_get_data)
+        mocker.patch(
+            'app.routers.auth.get_vk_user_data_by_access_token', _fake_get_data
+        )
         mocker.patch('app.routers.auth.get_vk_user_friends', _fake_get_friends)
 
     @pytest.fixture(autouse=True)
@@ -453,7 +457,12 @@ class TestWishPermissions:
     ):
         response = auth_client.put(
             f'/wishes/{other_user_wish.id}',
-            json={'name': 'Hacked name', 'description': '', 'price': None, 'link': None},
+            json={
+                'name': 'Hacked name',
+                'description': '',
+                'price': None,
+                'link': None,
+            },
         )
         assert response.status_code == HTTP_403_FORBIDDEN
 
@@ -638,9 +647,7 @@ class TestSearchEdgeCases:
         assert response.is_success
         assert response.json() == []
 
-    def test_search_excludes_current_user(
-        self, auth_client: TestClient, user: User
-    ):
+    def test_search_excludes_current_user(self, auth_client: TestClient, user: User):
         # Ищем по имени текущего пользователя
         response = auth_client.get('/users/search', params={'q': user.display_name})
         assert response.is_success
@@ -676,9 +683,19 @@ class TestArchivedWishAccess:
         assert response.json()['id'] == str(wish.id)
 
 
+@pytest.fixture
+def mocked_media(tmp_path: Path, mocker) -> Path:
+    mocker.patch('app.routers.wishes.WISH_IMAGES_DIR', tmp_path)
+    return tmp_path
+
+
 class TestWishImageUpload:
     def test_upload_wish_image(
-        self, auth_client: TestClient, db: Session, wish: Wish
+        self,
+        auth_client: TestClient,
+        db: Session,
+        wish: Wish,
+        mocked_media: Path,
     ):
         response = auth_client.post(
             f'/wishes/{wish.id}/image',
@@ -688,9 +705,7 @@ class TestWishImageUpload:
         db.refresh(wish)
         assert wish.image is not None
 
-    def test_delete_wish_image(
-        self, auth_client: TestClient, db: Session, wish: Wish
-    ):
+    def test_delete_wish_image(self, auth_client: TestClient, db: Session, wish: Wish):
         # Сначала устанавливаем изображение
         wish.image = 'some_image_hash'
         db.add(wish)
