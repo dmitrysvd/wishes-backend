@@ -40,6 +40,6 @@ CAST
      column wish.name                                               to varchar,
      column wish.link                                               to varchar,
      column wish.image                                              to varchar
-WITH data only, truncate, create no tables, create no indexes, no foreign keys
-EXCLUDING TABLE NAMES like 'alembic_version'
+WITH data only, truncate, create no tables, create no indexes, no foreign keys, disable triggers
+INCLUDING ONLY TABLE NAMES like 'user', 'wish', 'user_following', 'push_sending_log'
 ;
