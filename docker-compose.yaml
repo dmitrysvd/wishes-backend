@@ -15,7 +15,6 @@ services:
       - ./static:/app/static:ro
       - /data/media:/media
       - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
-      - ./db.sqlite:/app/db.sqlite
     ports:
       - 8000:8000
     depends_on:
