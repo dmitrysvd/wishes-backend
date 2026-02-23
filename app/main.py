@@ -131,6 +131,11 @@ async def trigger_error():
     division_by_zero = 1 / 0
 
 
+@app.get('/health')
+async def health():
+    return {'status': 'ok'}
+
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
