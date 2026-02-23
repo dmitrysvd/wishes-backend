@@ -13,7 +13,7 @@
 	"overrideCommand": true,
 	"postCreateCommand": "sudo chown -R vscode:vscode /workspace && uv sync",
 	"mounts": [
-    	"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
+		"source=${localEnv:HOME}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached"
 	],
 	"customizations": {
 		"vscode": {
@@ -21,7 +21,8 @@
 				"ms-python.python",
 				"ms-python.vscode-pylance",
 				"ms-python.black-formatter",
-				"charliermarsh.ruff"
+				"charliermarsh.ruff",
+				"anthropic.claude-code"
 			],
 			"settings": {
 				"python.defaultInterpreterPath": "/workspace/.venv/bin/python",
