@@ -16,7 +16,7 @@ COPY app/ ./app
 
 COPY alembic.ini ./
 COPY alembic/ ./alembic
-COPY migration.load migrate_to_pg.sh ./
+COPY migration.load migrate_to_pg.sh migrate_to_pg.py ./
 
 FROM base AS dev
 
