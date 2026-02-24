@@ -718,6 +718,25 @@ class TestWishImageUpload:
         assert wish.image is None
 
 
+class TestPossibleFriends:
+    def test_possible_friends_returns_vk_friends_not_yet_followed(
+        self, auth_client: TestClient, db: Session, user: User, other_user: User
+    ):
+        # vk_friends_data хранит integer-идентификаторы (VK API возвращает int),
+        # тогда как User.vk_id — строковая колонка (String).
+        # В SQLite неявное приведение типов работало; PostgreSQL бросает ошибку
+        # при сравнении varchar = integer без явного CAST.
+        user.vk_friends_data = [{'id': 123456}]
+        other_user.vk_id = '123456'
+        db.add(user)
+        db.add(other_user)
+        db.commit()
+
+        response = auth_client.get('/possible_friends')
+        assert response.is_success, response.json()
+        assert any(u['id'] == str(other_user.id) for u in response.json())
+
+
 class TestWishCRUD:
     def test_create_wish(self, auth_client: TestClient, db: Session, user: User):
         response = auth_client.post(

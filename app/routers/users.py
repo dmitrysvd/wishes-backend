@@ -209,7 +209,7 @@ def possible_friends(
 ) -> list[AnnotatedOtherUserSchema]:
     if not user.vk_friends_data:
         return []
-    vk_friend_ids = [vk_friend_data['id'] for vk_friend_data in user.vk_friends_data]
+    vk_friend_ids = [str(vk_friend_data['id']) for vk_friend_data in user.vk_friends_data]
     query = (
         select(User)
         .where(User.vk_id.in_(vk_friend_ids))
