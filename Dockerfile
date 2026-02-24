@@ -9,7 +9,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked
 
 RUN apt-get update \
-    && apt-get install -y git vim sqlite3 pgloader \
+    && apt-get install -y git vim \
     && rm -rf /var/lib/apt/lists/*
 
 COPY app/ ./app
