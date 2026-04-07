@@ -33,7 +33,6 @@ from app.schemas import (
     CurrentUserUpdateSchema,
     ItemInfoRequestSchema,
     ItemInfoResponseSchema,
-    OtherUserSchema,
 )
 
 router = APIRouter(tags=[USERS_TAG])
@@ -84,7 +83,7 @@ def set_profile_image(
     file_path.write_bytes(content)
     related_media_path = file_path.relative_to(settings.MEDIA_ROOT)
     user.photo_url = (
-        f"{request.url.scheme}://{request.headers['host']}/media/{related_media_path}"
+        f'{request.url.scheme}://{request.headers["host"]}/media/{related_media_path}'
     )
     user.photo_path = str(file_path)
     db.add(user)
@@ -209,7 +208,9 @@ def possible_friends(
 ) -> list[AnnotatedOtherUserSchema]:
     if not user.vk_friends_data:
         return []
-    vk_friend_ids = [str(vk_friend_data['id']) for vk_friend_data in user.vk_friends_data]
+    vk_friend_ids = [
+        str(vk_friend_data['id']) for vk_friend_data in user.vk_friends_data
+    ]
     query = (
         select(User)
         .where(User.vk_id.in_(vk_friend_ids))

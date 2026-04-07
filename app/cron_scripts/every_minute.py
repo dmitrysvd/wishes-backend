@@ -1,5 +1,3 @@
-import asyncio
-
 import psutil
 
 from app.alerts import alert_warning

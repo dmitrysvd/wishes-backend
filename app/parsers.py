@@ -1,11 +1,9 @@
 import json
 import re
 import urllib.parse
-from typing import Optional
 
 import httpx
 from bs4 import BeautifulSoup
-from fastapi import HTTPException
 from loguru import logger
 
 from app.schemas import ItemInfoResponseSchema
@@ -19,34 +17,34 @@ def _get_wb_basket(nm_id: int):
     # Взято из исходников js-файла на сайте.
     nm_id = nm_id // 100000
     if nm_id >= 0 and nm_id <= 143:
-        return "01"
+        return '01'
     if nm_id >= 144 and nm_id <= 287:
-        return "02"
+        return '02'
     if nm_id >= 288 and nm_id <= 431:
-        return "03"
+        return '03'
     if nm_id >= 432 and nm_id <= 719:
-        return "04"
+        return '04'
     if nm_id >= 720 and nm_id <= 1007:
-        return "05"
+        return '05'
     if nm_id >= 1008 and nm_id <= 1061:
-        return "06"
+        return '06'
     if nm_id >= 1062 and nm_id <= 1115:
-        return "07"
+        return '07'
     if nm_id >= 1116 and nm_id <= 1169:
-        return "08"
+        return '08'
     if nm_id >= 1170 and nm_id <= 1313:
-        return "09"
+        return '09'
     if nm_id >= 1314 and nm_id <= 1601:
-        return "10"
+        return '10'
     if nm_id >= 1602 and nm_id <= 1655:
-        return "11"
+        return '11'
     if nm_id >= 1656 and nm_id <= 1919:
-        return "12"
+        return '12'
     if nm_id >= 1920 and nm_id <= 2045:
-        return "13"
+        return '13'
     if nm_id >= 2046 and nm_id <= 2189:
-        return "14"
-    return "15"
+        return '14'
+    return '15'
 
 
 async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
@@ -83,11 +81,17 @@ async def _request_ya_market_html(link: str) -> str:
         async with httpx.AsyncClient() as client:
             client.headers = {
                 'authority': 'market.yandex.ru',
-                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'accept': (
+                    'text/html,application/xhtml+xml,application/xml;q=0.9,'
+                    'image/avif,image/webp,image/apng,*/*;q=0.8,'
+                    'application/signed-exchange;v=b3;q=0.7'
+                ),
                 'accept-language': 'en-US,en;q=0.9',
                 'cache-control': 'no-cache',
                 'pragma': 'no-cache',
-                'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                'sec-ch-ua': (
+                    '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"'
+                ),
                 'sec-ch-ua-mobile': '?0',
                 'sec-ch-ua-platform': '"Linux"',
                 'sec-fetch-dest': 'document',
@@ -95,7 +99,10 @@ async def _request_ya_market_html(link: str) -> str:
                 'sec-fetch-site': 'none',
                 'sec-fetch-user': '?1',
                 'upgrade-insecure-requests': '1',
-                'user-agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'user-agent': (
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+                    '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                ),
             }
             response = await client.get(
                 link,
@@ -168,10 +175,10 @@ async def try_parse_item_by_link(
         assert isinstance(description, str)
         assert isinstance(image_url, str)
     except IndexError:
-        raise ItemInfoParseError('Не найден тег метаданных')
+        raise ItemInfoParseError('Не найден тег метаданных') from None
     if not is_absolute_url(image_url):
-        # если был указан относительный путь, конструируем абсолютный путь, используя link,
-        # чтобы фронт смог подтянуть картинку.
+        # если был указан относительный путь, конструируем абсолютный путь,
+        # используя link, чтобы фронт смог подтянуть картинку.
         base_url_parsed = urllib.parse.urlparse(link)
         image_url = urllib.parse.urlunparse(
             (

@@ -181,4 +181,4 @@ def unarchive_wish(
 def archived_wishes(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    return db.scalars(select(Wish).where(Wish.user == user, Wish.is_archived == True))
+    return db.scalars(select(Wish).where(Wish.user == user, Wish.is_archived))

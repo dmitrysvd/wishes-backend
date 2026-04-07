@@ -18,5 +18,5 @@ def new_user_handler(user: User):
     msg = f'Зарегистрирован новый пользователь {user.display_name} https://hotelki.pro/user?userId={user.id}'
     try:
         send_tg_channel_message(msg)
-    except Exception as ex:
+    except Exception:
         pass

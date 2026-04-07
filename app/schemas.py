@@ -1,14 +1,10 @@
 from datetime import date
-from decimal import Decimal
-from typing import Annotated, Optional, Union
 from uuid import UUID
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     EmailStr,
-    Field,
-    FilePath,
     HttpUrl,
     field_validator,
 )
@@ -18,10 +14,10 @@ from app.constants import Gender
 
 class BaseWishSchema(BaseModel):
     name: str
-    description: Optional[str]
+    description: str | None
     # price: Union[Annotated[Decimal, Field(decimal_places=2)], None]
-    price: Optional[int]
-    link: Optional[HttpUrl]
+    price: int | None
+    link: HttpUrl | None
 
 
 class WishWriteSchema(BaseWishSchema):
@@ -45,13 +41,13 @@ class OtherUserSchema(BaseUserSchema):
 class WishReadSchema(BaseWishSchema):
     id: UUID
     is_archived: bool
-    reserved_by_id: Optional[UUID]
-    image: Optional[str]
+    reserved_by_id: UUID | None
+    image: str | None
     user: OtherUserSchema
 
     @field_validator('image', mode='before')
     @staticmethod
-    def make_image_url(image_name: str) -> Optional[str]:
+    def make_image_url(image_name: str) -> str | None:
         if not image_name:
             return None
         return f'/media/wish_images/{image_name}'
@@ -67,7 +63,7 @@ class AnnotatedOtherUserSchema(BaseUserSchema):
 
 
 class CurrentUserReadSchema(BaseUserSchema):
-    phone: Optional[str]
+    phone: str | None
     email: EmailStr | None
     follows: list[OtherUserSchema]
     followed_by: list[OtherUserSchema]
@@ -76,7 +72,7 @@ class CurrentUserReadSchema(BaseUserSchema):
 class CurrentUserUpdateSchema(BaseModel):
     display_name: str
     gender: Gender
-    birth_date: Optional[date]
+    birth_date: date | None
 
 
 class RequestFirebaseAuthSchema(BaseModel):

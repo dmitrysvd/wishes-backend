@@ -2,8 +2,6 @@ from datetime import timedelta
 
 from sqlalchemy import select, update
 
-from app.alerts import alert_warning
-from app.config import settings
 from app.constants import Gender
 from app.db import SessionLocal, User, Wish
 from app.firebase import send_push
@@ -39,7 +37,7 @@ def send_reservation_notifincations():
     send_push(
         target_users=users_to_send_pushes,
         title='Кто-то хочет сделать Вам подарок!',
-        body=f'Одно из ваших желаний было зарезервировано',
+        body='Одно из ваших желаний было зарезервировано',
     )
 
 
@@ -66,7 +64,8 @@ def send_wish_creation_notifications():
             ]
             if followers_to_send_push:
                 logger.info(
-                    'Отправляются сообщения о создании хотелок: source={user_id}, dest={dest}',
+                    'Отправляются сообщения о создании хотелок: '
+                    'source={user_id}, dest={dest}',
                     user_id=user.id,
                     dest=[str(user.id) for user in followers_to_send_push],
                 )

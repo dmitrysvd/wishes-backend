@@ -1,23 +1,20 @@
 from dataclasses import dataclass
 from datetime import date
-from uuid import UUID
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import StaticPool, create_engine, delete, func, select, update
+from sqlalchemy import StaticPool, create_engine, func, select, text, update
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy import create_engine, text
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
-import psycopg2
 
+from app.config import settings
 from app.constants import Gender
 from app.db import Base, User, Wish
 from app.main import app, get_current_user, get_db
 from app.utils import utc_now
-from app.vk import Gender, VkUserBasicData, VkUserExtraData
-from app.config import settings
-
+from app.vk import VkUserBasicData
 
 engine = create_engine(
     settings.TEST_DATABASE_URL,
@@ -30,17 +27,17 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 def ensure_test_database_exists():
     """Создаёт тестовую БД, если она отсутствует."""
     test_db_name = 'test_db'
-    engine = create_engine(settings.DATABASE_URL, isolation_level="AUTOCOMMIT")
+    engine = create_engine(settings.DATABASE_URL, isolation_level='AUTOCOMMIT')
     if engine.dialect.name != 'postgresql':
         return
     with engine.connect() as conn:
         result = conn.execute(
-            text("SELECT 1 FROM pg_database WHERE datname = :name"),
-            {"name": test_db_name},
+            text('SELECT 1 FROM pg_database WHERE datname = :name'),
+            {'name': test_db_name},
         ).fetchone()
         if not result:
             conn.execute(text(f'CREATE DATABASE "{test_db_name}"'))
-            print(f"✅ Создана база {test_db_name}")
+            print(f'✅ Создана база {test_db_name}')
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -272,7 +269,7 @@ class TestArchiveWish:
     def test_read_archived(
         self, auth_client: TestClient, db: Session, archived_wish: Wish
     ):
-        response = auth_client.get(f'/archived_wishes')
+        response = auth_client.get('/archived_wishes')
         assert response.is_success, response.json()
         assert str(archived_wish.id) in [
             wish_data['id'] for wish_data in response.json()
@@ -434,7 +431,7 @@ def test_search_user(
     auth_client: TestClient,
     other_user: User,
 ):
-    response = auth_client.get(f'/users/search', params={'q': 'Other test user'})
+    response = auth_client.get('/users/search', params={'q': 'Other test user'})
     assert response.is_success, response.json()
     response_data = response.json()
     assert len(response_data) == 1

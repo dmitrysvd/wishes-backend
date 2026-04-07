@@ -1,5 +1,5 @@
 import os
-from typing import Union
+from collections.abc import Sequence
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ from app.schemas import AnnotatedOtherUserSchema
 def get_annotated_users(
     db: Session,
     current_user: User,
-    outer_users: Union[Select[tuple[User]], list[User], None] = None,
+    outer_users: Select[tuple[User]] | Sequence[User] | None = None,
 ) -> list[AnnotatedOtherUserSchema]:
     query = select(
         User,
@@ -24,7 +24,7 @@ def get_annotated_users(
     if isinstance(outer_users, Select):
         user_ids = [user.id for user in db.execute(outer_users).scalars()]
         query = query.where(User.id.in_(user_ids))
-    elif isinstance(outer_users, list):
+    elif outer_users is not None:
         user_ids = [user.id for user in outer_users]
         query = query.where(User.id.in_(user_ids))
     values = db.execute(query).all()

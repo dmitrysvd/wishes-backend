@@ -1,7 +1,5 @@
-from typing import Optional, cast
-
 import firebase_admin
-from firebase_admin import App, auth, messaging
+from firebase_admin import auth, messaging
 from firebase_admin.auth import UserRecord
 
 from app.config import settings

@@ -2,7 +2,7 @@ import enum
 from datetime import date, datetime
 from decimal import Decimal
 from sqlite3 import Connection as SQLite3Connection
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -15,8 +15,8 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
-    String,
     Numeric,
+    String,
     Table,
     Uuid,
     create_engine,
@@ -53,23 +53,25 @@ user_following_table = Table(
 class User(Base):
     __tablename__ = 'user'
 
-    id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
     display_name: Mapped[str] = mapped_column(String(50), nullable=False)
     email: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(15))
-    birth_date: Mapped[Optional[date]] = mapped_column(Date())
-    gender: Mapped[Optional[Gender]] = mapped_column(Enum(Gender))
-    photo_url: Mapped[Optional[str]] = mapped_column(String(200))
-    photo_path: Mapped[Optional[str]] = mapped_column(String(200))
+    phone: Mapped[str | None] = mapped_column(String(15))
+    birth_date: Mapped[date | None] = mapped_column(Date())
+    gender: Mapped[Gender | None] = mapped_column(Enum(Gender))
+    photo_url: Mapped[str | None] = mapped_column(String(200))
+    photo_path: Mapped[str | None] = mapped_column(String(200))
 
-    vk_id: Mapped[Optional[str]] = mapped_column(String(15), unique=True)
-    vk_access_token: Mapped[Optional[str]] = mapped_column(
+    vk_id: Mapped[str | None] = mapped_column(String(15), unique=True)
+    vk_access_token: Mapped[str | None] = mapped_column(
         String(500),
         unique=True,
     )
-    vk_friends_data: Mapped[Optional[list[Any]]] = mapped_column(JSON)
+    vk_friends_data: Mapped[list[Any] | None] = mapped_column(JSON)
     firebase_uid: Mapped[str] = mapped_column(String(100), unique=True)
-    firebase_push_token: Mapped[Optional[str]] = mapped_column(String(100))
+    firebase_push_token: Mapped[str | None] = mapped_column(String(100))
     firebase_push_token_saved_at: Mapped[datetime | None] = mapped_column()
 
     registered_at: Mapped[datetime] = mapped_column(nullable=False)
@@ -117,16 +119,16 @@ class Wish(Base):
 
     id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey('user.id'))
-    reserved_by_id: Mapped[Optional[UUID]] = mapped_column(
+    reserved_by_id: Mapped[UUID | None] = mapped_column(
         ForeignKey('user.id'), nullable=True
     )
     name: Mapped[str] = mapped_column(String(50))
-    description: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
-    link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    price: Mapped[Optional[Decimal]] = mapped_column(
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    link: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    price: Mapped[Decimal | None] = mapped_column(
         Numeric(precision=10, scale=2), nullable=True
     )
-    image: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    image: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean(), default=True)  # TODO: убрать
     is_archived: Mapped[bool] = mapped_column(Boolean(), default=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -141,7 +143,7 @@ class Wish(Base):
     )
 
     user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
-    reserved_by: Mapped[Optional['User']] = relationship(
+    reserved_by: Mapped['User | None'] = relationship(
         back_populates='reserved_wishes', foreign_keys=[reserved_by_id]
     )
 
@@ -185,7 +187,7 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-@event.listens_for(Engine, "connect")
+@event.listens_for(Engine, 'connect')
 def do_connect(dbapi_connection, connection_record):
     if not isinstance(dbapi_connection, SQLite3Connection):
         # для postgres не выполняем
@@ -197,11 +199,11 @@ def do_connect(dbapi_connection, connection_record):
 
     # enable FK constraints
     cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON;")
+    cursor.execute('PRAGMA foreign_keys=ON;')
     cursor.close()
 
 
-@event.listens_for(engine, "begin")
+@event.listens_for(engine, 'begin')
 def do_begin(conn):
     # emit our own BEGIN
-    conn.exec_driver_sql("BEGIN")
+    conn.exec_driver_sql('BEGIN')

@@ -1,7 +1,5 @@
-import enum
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Optional
 
 import httpx
 from fastapi import HTTPException
@@ -40,8 +38,8 @@ class VkUserExtraData:
     Доступны только при аутентификации.
     """
 
-    email: Optional[str]
-    phone: Optional[str]
+    email: str | None
+    phone: str | None
 
 
 def get_extra_user_data_by_silent_token(
@@ -50,17 +48,17 @@ def get_extra_user_data_by_silent_token(
     response = httpx.post(
         'https://api.vk.com/method/auth.getProfileInfoBySilentToken',
         params={
-            "v": VK_API_VERSION,
-            "access_token": settings.VK_SERVICE_KEY,
-            "token": [silent_token],
-            "uuid": [uuid],
-            "event": [""],
+            'v': VK_API_VERSION,
+            'access_token': settings.VK_SERVICE_KEY,
+            'token': [silent_token],
+            'uuid': [uuid],
+            'event': [''],
         },
     )
     response.raise_for_status()
     response_json = response.json()
     if response_json['response'].get('errors', []):
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(status_code=401, detail='Not authenticated')
     user_data = response_json['response']['success'][0]
     return user_data
 
@@ -116,7 +114,7 @@ def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]
     response_json = response.json()
     if 'error' in response_json:
         logger.debug('Ошибка авторизации vk: {text}', text=response_json['error'])
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        raise HTTPException(status_code=401, detail='Not authenticated')
     response.raise_for_status()
     exchange_token_response = response_json['response']
     access_token = exchange_token_response['access_token']

@@ -5,7 +5,6 @@ from firebase_admin.exceptions import AlreadyExistsError, FirebaseError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.db import User
 from app.dependencies import AUTH_TAG, get_current_user, get_db
 from app.firebase import (
@@ -40,7 +39,9 @@ def auth_vk(
 ) -> tuple[str, str, bool]:
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
-    user = db.scalars(select(User).where(User.vk_id == str(vk_basic_data.id))).one_or_none()
+    user = db.scalars(
+        select(User).where(User.vk_id == str(vk_basic_data.id))
+    ).one_or_none()
     if not user and vk_extra_data.email:
         user = db.scalars(
             select(User).where(User.email == vk_extra_data.email)
@@ -59,8 +60,11 @@ def auth_vk(
             logger.error('Ошибка при создании пользователя {exc}', exc=exc)
             raise HTTPException(
                 409,
-                'Пользователь с таким email уже существует. Зайдите через соответствующий аккаунт.',
-            )
+                (
+                    'Пользователь с таким email уже существует. '
+                    'Зайдите через соответствующий аккаунт.'
+                ),
+            ) from None
         user = User(
             vk_id=vk_basic_data.id,
             vk_access_token=access_token,
@@ -149,8 +153,8 @@ def auth_firebase(
     id_token = firebase_auth_schema.id_token
     try:
         decoded_token = verify_id_token(id_token)
-    except FirebaseError as ex:
-        raise HTTPException(status_code=403, detail="Not authenticated")
+    except FirebaseError:
+        raise HTTPException(status_code=403, detail='Not authenticated') from None
     uid = decoded_token['uid']
     firebase_user = get_firebase_user_data(uid)
 

@@ -51,9 +51,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     try:
         decoded_token = verify_id_token(token)
     except ExpiredIdTokenError:
-        raise HTTPException(HTTP_401_UNAUTHORIZED, 'Token expired')
+        raise HTTPException(HTTP_401_UNAUTHORIZED, 'Token expired') from None
     except InvalidIdTokenError:
-        raise HTTPException(HTTP_401_UNAUTHORIZED, 'Invalid token')
+        raise HTTPException(HTTP_401_UNAUTHORIZED, 'Invalid token') from None
     uid = decoded_token['uid']
     user = db.execute(select(User).where(User.firebase_uid == uid)).scalar_one_or_none()
     if not user:

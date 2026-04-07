@@ -4,7 +4,6 @@ from pathlib import Path
 import sentry_sdk
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.utils import get_openapi
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
@@ -15,7 +14,7 @@ from app.config import settings
 from app.db import engine
 
 # Реэкспорт для обратной совместимости
-from app.dependencies import get_current_user, get_current_user_wish, get_db
+from app.dependencies import get_current_user, get_db
 from app.helpers import get_user_deep_link
 from app.logging import logger
 from app.routers import auth, users, wishes
@@ -51,8 +50,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=['*'],
+    allow_headers=['*'],
 )
 
 
@@ -126,9 +125,9 @@ async def ws_chat(websocket: WebSocket):
         ws_manager.disconnect(websocket)
 
 
-@app.get("/sentry-debug")
+@app.get('/sentry-debug')
 async def trigger_error():
-    division_by_zero = 1 / 0
+    pass
 
 
 @app.get('/health')

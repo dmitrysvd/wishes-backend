@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 
 from app.db import Gender, PushReason, PushSendingLog, SessionLocal, User
 from app.firebase import send_push
@@ -48,7 +48,9 @@ def send_upcoming_birthday_of_current_user_notification():
             target_users=[user],
             title='🎉Скоро твой день рождения!🎉',
             body=(
-                'Не забудь обновить свои хотелки и поделиться ими с друзьями и близкими, чтобы они узнали, что ты хочешь получить в подарок! ✨🎁'
+                'Не забудь обновить свои хотелки и поделиться ими с '
+                'друзьями и близкими, чтобы они узнали, что ты хочешь '
+                'получить в подарок! ✨🎁'
             ),
         )
         push_log = PushSendingLog(
@@ -105,7 +107,8 @@ def send_upcoming_birthday_of_followed_user_notification():
                     target_users=[follower],
                     title=f'🎉Скоро день рождения у {user.display_name}!🎉',
                     body=(
-                        f'Загляни в {pronoun} хотелки, чтобы выбрать идеальный подарок! 🎈'
+                        f'Загляни в {pronoun} хотелки, чтобы '
+                        'выбрать идеальный подарок! 🎈'
                     ),
                     link=get_user_deep_link(user),
                 )

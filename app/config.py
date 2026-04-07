@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,8 +17,8 @@ class Settings(BaseSettings):
     CPU_ALERT_TRESHOLD: float = 70.0
     RAM_ALERT_TRESHOLD: float = 70.0
     URL_ROOT_PATH: str = '/'
-    SENTRY_DSN: Optional[str] = None
-    ADMIN_PASSWORD: Optional[str] = None
+    SENTRY_DSN: str | None = None
+    ADMIN_PASSWORD: str | None = None
     FRONTEND_URL: str = 'https://hotelki.pro'
     # DATABASE_URL: str = 'sqlite:///db.sqlite'
     DATABASE_URL: str

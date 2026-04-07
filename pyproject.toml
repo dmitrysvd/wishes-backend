@@ -26,13 +26,12 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "black>=23.11.0",
-    "isort>=5.12.0",
     "pre-commit>=3.5.0",
     "pyright>=1.1.337",
     "pytest>=7.4.3",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
+    "ruff>=0.15.9",
 ]
 
 [tool.black]
@@ -40,3 +39,16 @@ skip-string-normalization = true
 
 [tool.isort]
 profile = "black"
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B"]
+ignore = ["B008"]
+
+[tool.ruff.format]
+quote-style = "single"
+skip-magic-trailing-comma = false
+line-ending = "auto"

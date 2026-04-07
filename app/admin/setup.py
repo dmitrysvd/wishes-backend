@@ -8,7 +8,7 @@ from app.db import User, Wish
 
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.display_name, User.registered_at]
-    icon = "fa-solid fa-user"
+    icon = 'fa-solid fa-user'
     column_searchable_list = [User.display_name, User.id]
     column_default_sort = ('registered_at', True)
     column_details_exclude_list = [User.vk_access_token, User.firebase_push_token]
@@ -19,7 +19,7 @@ class UserAdmin(ModelView, model=User):
 class WishAdmin(ModelView, model=Wish):
     name_plural = 'Wishes'
     column_list = [Wish.id, Wish.name, Wish.user, Wish.created_at]
-    icon = "fa-solid fa-gift"
+    icon = 'fa-solid fa-gift'
     column_searchable_list = [Wish.name, User.id]
     column_default_sort = ('created_at', True)
     can_export = False
@@ -28,13 +28,13 @@ class WishAdmin(ModelView, model=Wish):
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
         form = await request.form()
-        username, password = form["username"], form["password"]
+        username, password = form['username'], form['password']
         if (
             username == 'admin'
             and settings.ADMIN_PASSWORD
             and password == settings.ADMIN_PASSWORD
         ):
-            request.session.update({"has_admin_access": True})
+            request.session.update({'has_admin_access': True})
             return True
         else:
             return False
@@ -44,7 +44,7 @@ class AdminAuth(AuthenticationBackend):
         return True
 
     async def authenticate(self, request: Request) -> bool:
-        has_admin_access = request.session.get("has_admin_access", False)
+        has_admin_access = request.session.get('has_admin_access', False)
         return has_admin_access
 
 
