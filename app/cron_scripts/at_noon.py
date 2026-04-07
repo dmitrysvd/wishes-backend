@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, cast, func, select
 
 from app.db import Gender, PushReason, PushSendingLog, SessionLocal, User
 from app.firebase import send_push
@@ -71,11 +71,21 @@ def get_upcoming_birthday_users_condition_q(min_days: int, max_days: int):
     current_year = today.year
     next_year = current_year + 1
 
-    bday_1 = func.concat(current_year, func.strftime('-%m-%d', User.birth_date))
-    bday_2 = func.concat(next_year, func.strftime('-%m-%d', User.birth_date))
+    # PostgreSQL-compatible birthday comparison.
+    bday_1 = func.make_date(
+        current_year,
+        cast(func.extract('month', User.birth_date), Integer),
+        cast(func.extract('day', User.birth_date), Integer),
+    )
+    bday_2 = func.make_date(
+        next_year,
+        cast(func.extract('month', User.birth_date), Integer),
+        cast(func.extract('day', User.birth_date), Integer),
+    )
 
-    condition_q = bday_1.between(lower_limit, upper_limit) | bday_2.between(
-        lower_limit, upper_limit
+    condition_q = (User.birth_date.isnot(None)) & (
+        bday_1.between(lower_limit, upper_limit)
+        | bday_2.between(lower_limit, upper_limit)
     )
     return condition_q
 

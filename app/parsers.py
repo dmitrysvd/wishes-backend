@@ -48,7 +48,10 @@ def _get_wb_basket(nm_id: int):
 
 
 async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
-    match = re.search(r'window.\__apiary\.deferredMetaGenerator\((.*?.)\);', html)
+    # Исправленный регуляр: убираем лишнюю точку в группе захвата и экранируем точку
+    match = re.search(
+        r'window\.__apiary\.deferredMetaGenerator\((.*?)\);', html, re.DOTALL
+    )
     if not match:
         logger.debug(
             'html content:\n{html}\n\n{html_repr}', html=html, html_repr=repr(html)
@@ -67,6 +70,8 @@ async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
             key = item['attrs']['property']
             value = item['attrs']['content']
             attrs[key] = value
+    if 'og:image' not in attrs:
+        raise ItemInfoParseError('Не найдена картинка')
     return ItemInfoResponseSchema(
         title=attrs['og:title'],
         image_url=attrs['og:image'],
