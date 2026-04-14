@@ -3,7 +3,7 @@ from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 
 from app.config import settings
-from app.db import User, Wish
+from app.db import User, Wish, WishRecommendation
 
 
 class UserAdmin(ModelView, model=User):
@@ -22,6 +22,19 @@ class WishAdmin(ModelView, model=Wish):
     icon = 'fa-solid fa-gift'
     column_searchable_list = [Wish.name, User.id]
     column_default_sort = ('created_at', True)
+    can_export = False
+
+
+class WishRecommendationAdmin(ModelView, model=WishRecommendation):
+    name = 'Wish Recommendation'
+    name_plural = 'Wish Recommendations'
+    column_list = [
+        WishRecommendation.id,
+        WishRecommendation.title,
+        WishRecommendation.link,
+    ]
+    icon = 'fa-solid fa-bullhorn'
+    column_searchable_list = [WishRecommendation.title]
     can_export = False
 
 
@@ -57,4 +70,5 @@ def setup_admin(app, engine):
     )
     admin.add_view(UserAdmin)
     admin.add_view(WishAdmin)
+    admin.add_view(WishRecommendationAdmin)
     return admin

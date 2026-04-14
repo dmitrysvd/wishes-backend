@@ -17,7 +17,7 @@ from app.db import engine
 from app.dependencies import get_current_user, get_db
 from app.helpers import get_user_deep_link
 from app.logging import logger
-from app.routers import auth, users, wishes
+from app.routers import auth, recommendations, users, wishes
 from app.schemas import ChatMessageSchema
 
 __all__ = ['app', 'get_db', 'get_current_user', 'get_user_deep_link']
@@ -69,6 +69,7 @@ async def internal_exception_handler(request: Request, call_next):
 
 # Подключение роутеров
 app.include_router(auth.router)
+app.include_router(recommendations.router)
 app.include_router(wishes.router)
 app.include_router(users.router)
 

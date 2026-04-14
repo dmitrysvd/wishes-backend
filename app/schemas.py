@@ -15,13 +15,37 @@ from app.constants import Gender
 class BaseWishSchema(BaseModel):
     name: str
     description: str | None
-    # price: Union[Annotated[Decimal, Field(decimal_places=2)], None]
     price: int | None
     link: HttpUrl | None
 
 
 class WishWriteSchema(BaseWishSchema):
-    pass
+    recommendation_id: UUID | None = None
+
+
+class RecommendationSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    description: str | None
+    price: int | None
+    link: str
+    image_url: str | None
+
+
+class RecommendationCreateSchema(BaseModel):
+    title: str
+    description: str | None = None
+    price: int | None = None
+    link: HttpUrl
+    image_url: HttpUrl | None = None
+
+
+class RecommendationFullReadSchema(RecommendationSchema):
+    model_config = ConfigDict(from_attributes=True)
+
+    wishes_count: int = 0
 
 
 class BaseUserSchema(BaseModel):
@@ -43,6 +67,7 @@ class WishReadSchema(BaseWishSchema):
     is_archived: bool
     reserved_by_id: UUID | None
     image: str | None
+    recommendation_id: UUID | None
     user: OtherUserSchema
 
     @field_validator('image', mode='before')

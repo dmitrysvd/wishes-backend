@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 
 from app.config import settings
-from app.db import User, Wish
+from app.db import User, Wish, WishRecommendation
 from app.dependencies import WISHES_TAG, get_current_user, get_current_user_wish, get_db
 from app.schemas import WishReadSchema, WishWriteSchema
 
@@ -27,12 +27,24 @@ def add_wish(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    recommendation_id = None
+    if wish_data.recommendation_id:
+        rec = db.scalars(
+            select(WishRecommendation).where(
+                WishRecommendation.id == wish_data.recommendation_id
+            )
+        ).one_or_none()
+        if not rec:
+            raise HTTPException(HTTP_404_NOT_FOUND, 'Recommendation not found')
+        recommendation_id = rec.id
+
     wish = Wish(
         user_id=user.id,
         name=wish_data.name,
         description=wish_data.description,
         price=wish_data.price,
         link=str(wish_data.link) if wish_data.link else None,
+        recommendation_id=recommendation_id,
     )
     db.add(wish)
     db.commit()

@@ -9,7 +9,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.constants import Gender
-from app.db import User, Wish
+from app.db import User, Wish, WishRecommendation
 from app.main import app, get_current_user, get_db
 from app.utils import utc_now
 from app.vk import VkUserBasicData, VkUserExtraData
@@ -765,3 +765,118 @@ class TestWishesExtra:
         db.commit()
         response = auth_client.post(f'/wishes/{other_user_wish.id}/cancel_reservation')
         assert response.status_code == 403
+
+
+class TestRecommendations:
+    @pytest.fixture
+    def recommendation(self, db: Session):
+        rec = WishRecommendation(
+            title='Recommended item',
+            description='A great thing',
+            price=500,
+            link='https://partner-shop.com/item',
+            image_url='https://partner-shop.com/img.jpg',
+        )
+        db.add(rec)
+        db.commit()
+        return rec
+
+    def test_list_recommendations_empty(self, auth_client: TestClient):
+        response = auth_client.get('/wish_recommendations')
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_list_recommendations(
+        self, auth_client: TestClient, recommendation: WishRecommendation
+    ):
+        response = auth_client.get('/wish_recommendations')
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]['title'] == 'Recommended item'
+        assert data[0]['link'] == 'https://partner-shop.com/item'
+
+    def test_get_recommendation(
+        self, auth_client: TestClient, recommendation: WishRecommendation
+    ):
+        response = auth_client.get(f'/wish_recommendations/{recommendation.id}')
+        assert response.status_code == 200
+        assert response.json()['title'] == 'Recommended item'
+        assert response.json()['wishes_count'] == 0
+
+    def test_get_recommendation_not_found(self, auth_client: TestClient):
+        response = auth_client.get(f'/wish_recommendations/{uuid4()}')
+        assert response.status_code == 404
+
+    def test_create_wish_with_recommendation(
+        self,
+        auth_client: TestClient,
+        db: Session,
+        recommendation: WishRecommendation,
+        user: User,
+    ):
+        response = auth_client.post(
+            '/wishes',
+            json={
+                'name': 'Rec wish',
+                'description': 'From recommendation',
+                'price': 500,
+                'link': recommendation.link,
+                'recommendation_id': str(recommendation.id),
+            },
+        )
+        assert response.status_code == 200
+        wish_data = response.json()
+        assert wish_data['recommendation_id'] == str(recommendation.id)
+
+        wish = db.scalars(select(Wish).where(Wish.id == wish_data['id'])).one()
+        assert wish.recommendation_id == recommendation.id
+
+    def test_create_wish_with_nonexistent_recommendation(self, auth_client: TestClient):
+        response = auth_client.post(
+            '/wishes',
+            json={
+                'name': 'Bad wish',
+                'description': None,
+                'price': None,
+                'link': 'https://example.com',
+                'recommendation_id': str(uuid4()),
+            },
+        )
+        assert response.status_code == 404
+
+    def test_create_wish_without_recommendation(
+        self, auth_client: TestClient, db: Session, user: User
+    ):
+        response = auth_client.post(
+            '/wishes',
+            json={
+                'name': 'Regular wish',
+                'description': None,
+                'price': None,
+                'link': None,
+            },
+        )
+        assert response.status_code == 200
+        wish_data = response.json()
+        assert wish_data['recommendation_id'] is None
+
+    def test_recommendation_wishes_count(
+        self,
+        auth_client: TestClient,
+        db: Session,
+        recommendation: WishRecommendation,
+        user: User,
+    ):
+        for i in range(3):
+            wish = Wish(
+                user_id=user.id,
+                name=f'Wish {i}',
+                recommendation_id=recommendation.id,
+            )
+            db.add(wish)
+        db.commit()
+
+        response = auth_client.get(f'/wish_recommendations/{recommendation.id}')
+        assert response.status_code == 200
+        assert response.json()['wishes_count'] == 3

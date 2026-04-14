@@ -109,6 +109,21 @@ class User(Base):
         return repr(self)
 
 
+class WishRecommendation(Base):
+    __tablename__ = 'wish_recommendation'
+
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    title: Mapped[str] = mapped_column(String(250))
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    price: Mapped[Decimal | None] = mapped_column(
+        Numeric(precision=10, scale=2), nullable=True
+    )
+    link: Mapped[str] = mapped_column(String(500))
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    wishes: Mapped[list['Wish']] = relationship(back_populates='recommendation')
+
+
 class Wish(Base):
     __tablename__ = 'wish'
     __table_args__ = (
@@ -142,9 +157,16 @@ class Wish(Base):
         default=False, nullable=False
     )
 
+    recommendation_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey('wish_recommendation.id'), nullable=True
+    )
+
     user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
     reserved_by: Mapped['User | None'] = relationship(
         back_populates='reserved_wishes', foreign_keys=[reserved_by_id]
+    )
+    recommendation: Mapped['WishRecommendation | None'] = relationship(
+        back_populates='wishes'
     )
 
     def __str__(self) -> str:
