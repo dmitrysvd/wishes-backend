@@ -35,6 +35,14 @@ def test_get_next_birthday():
     assert next_bday.year == today.year + 1
 
 
+def test_get_next_birthday_feb29_does_not_crash():
+    # 29 февраля — не должно падать в невисокосный год.
+    next_bday = get_next_birthday(date(2000, 2, 29))
+    assert next_bday.month == 2
+    assert next_bday.day in (28, 29)
+    assert next_bday >= datetime.now()
+
+
 @pytest.mark.anyio
 async def test_send_upcoming_birthday_of_current_user_notification(db, mocker):
     mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
@@ -162,3 +170,52 @@ def test_send_upcoming_birthday_followed_no_token(db, mocker):
     db.commit()
     send_upcoming_birthday_of_followed_user_notification()
     mock_send_push.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_current_user_no_push_when_birthday_far(db, mocker):
+    # ДР дальше окна в 21 день -> уведомление не отправляется.
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    bday = (datetime.now() + timedelta(days=60)).date()
+    user = User(
+        display_name='Far Birthday',
+        firebase_uid='far_uid',
+        firebase_push_token='token_far',
+        birth_date=bday,
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+
+    send_upcoming_birthday_of_current_user_notification()
+    mock_send_push.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_followed_user_no_push_when_birthday_outside_window(db, mocker):
+    # ДР подписки вне окна 3..14 дней -> подписчикам не отправляется.
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    mocker.patch(
+        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://link'
+    )
+    bday = date.today() + timedelta(days=30)
+    followed = User(
+        display_name='Far Followed',
+        firebase_uid='far_followed_uid',
+        birth_date=bday,
+        registered_at=utc_now(),
+    )
+    follower = User(
+        display_name='Follower',
+        firebase_uid='far_follower_uid',
+        firebase_push_token='token_follower2',
+        registered_at=utc_now(),
+    )
+    follower.follows.append(followed)
+    db.add_all([followed, follower])
+    db.commit()
+
+    send_upcoming_birthday_of_followed_user_notification()
+    mock_send_push.assert_not_called()
+    db.refresh(followed)
+    assert followed.pre_bday_push_for_followers_last_sent_at is None
