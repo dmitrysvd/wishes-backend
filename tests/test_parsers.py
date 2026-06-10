@@ -197,3 +197,54 @@ async def test_request_ya_market_html_cc_redirect(mocker):
     result = await _request_ya_market_html('https://market.yandex.ru/cc/short')
     assert result == 'success'
     assert mock_get.call_count == 2
+
+
+@pytest.mark.anyio
+async def test_try_parse_item_by_link_generic_relative_url(mocker):
+    # Coverage for line 172
+    html = """
+    <html>
+        <head>
+            <meta property="og:title" content="T">
+            <meta property="og:description" content="D">
+            <meta property="og:image" content="rel.png">
+        </head>
+    </html>
+    """
+    result = await try_parse_item_by_link('https://example.com/page/', html=html)
+    assert str(result.image_url) == 'https://example.com/rel.png'
+
+
+@pytest.mark.anyio
+async def test_try_parse_item_by_link_generic_success_request(mocker):
+    html = """
+    <html>
+        <head>
+            <meta property="og:title" content="Generic Title">
+            <meta property="og:description" content="Generic Description">
+            <meta property="og:image" content="https://generic.com/image.png">
+        </head>
+    </html>
+    """
+    mock_response = mocker.Mock()
+    mock_response.is_success = True
+    mock_response.status_code = 200
+    mock_response.text = html
+    mocker.patch('httpx.AsyncClient.get', mocker.AsyncMock(return_value=mock_response))
+
+    result = await try_parse_item_by_link('https://generic.com/item')
+    assert result.title == 'Generic Title'
+    assert str(result.image_url) == 'https://generic.com/image.png'
+
+
+def test_parsers_script_execution(mocker):
+    import os
+    import runpy
+
+    from app import parsers
+
+    # We need to mock something inside to avoid actual work
+    mocker.patch('app.parsers.try_parse_item_by_link')
+    # This covers if __name__ == '__main__': ...
+    script_path = os.path.abspath(parsers.__file__)
+    runpy.run_path(script_path, run_name='__main__')

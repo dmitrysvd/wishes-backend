@@ -98,3 +98,67 @@ async def test_send_upcoming_birthday_of_followed_user_notification(db, mocker):
 
     db.refresh(followed_user)
     assert followed_user.pre_bday_push_for_followers_last_sent_at is not None
+
+
+def test_at_noon_main(mocker):
+    from app.cron_scripts.at_noon import main
+
+    mock_1 = mocker.patch(
+        'app.cron_scripts.at_noon.send_upcoming_birthday_of_current_user_notification'
+    )
+    mock_2 = mocker.patch(
+        'app.cron_scripts.at_noon.send_upcoming_birthday_of_followed_user_notification'
+    )
+    main()
+    mock_1.assert_called_once()
+    mock_2.assert_called_once()
+
+
+def test_at_noon_script_execution(mocker):
+    # This covers line 134: if __name__ == '__main__': main()
+    import os
+    import runpy
+
+    from app.cron_scripts import at_noon
+
+    # Mock dependencies to avoid DB side effects and network calls
+    mocker.patch('app.db.SessionLocal')
+    mocker.patch('app.firebase.send_push')
+
+    script_path = os.path.abspath(at_noon.__file__)
+    runpy.run_path(script_path, run_name='__main__')
+
+
+def test_send_upcoming_birthday_current_user_no_token(db, mocker):
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    bday = (datetime.now() + timedelta(days=5)).date()
+    user = User(
+        display_name='No Token User',
+        firebase_uid='no_token_uid',
+        firebase_push_token=None,
+        birth_date=bday,
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+    send_upcoming_birthday_of_current_user_notification()
+    mock_send_push.assert_not_called()
+
+
+def test_send_upcoming_birthday_followed_no_token(db, mocker):
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    bday = date.today() + timedelta(days=10)
+    followed = User(
+        display_name='F', firebase_uid='f_uid', birth_date=bday, registered_at=utc_now()
+    )
+    follower = User(
+        display_name='R',
+        firebase_uid='r_uid',
+        firebase_push_token=None,
+        registered_at=utc_now(),
+    )
+    follower.follows.append(followed)
+    db.add_all([followed, follower])
+    db.commit()
+    send_upcoming_birthday_of_followed_user_notification()
+    mock_send_push.assert_not_called()

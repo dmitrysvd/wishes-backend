@@ -110,7 +110,19 @@ def test_get_current_user_firebase_uid_not_found(db, mocker):
     assert exc.value.status_code == 401
 
 
-def test_get_current_user_wish_not_found(db):
+def test_get_current_user_firebase_token_success(db, mocker):
+    mocker.patch('app.dependencies.settings.IS_DEBUG', False)
+    mocker.patch('app.dependencies.verify_id_token', return_value={'uid': 'valid_uid'})
+    user = User(display_name='User', firebase_uid='valid_uid', registered_at=utc_now())
+    db.add(user)
+    db.commit()
+
+    request = Request(
+        scope={'type': 'http', 'headers': [(b'authorization', b'valid_token')]}
+    )
+
+    result = get_current_user(request, db)
+    assert result.id == user.id
     user = User(display_name='User', firebase_uid='uid1', registered_at=utc_now())
     db.add(user)
     db.commit()
