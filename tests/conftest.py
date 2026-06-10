@@ -1,9 +1,30 @@
+import httpx
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.db import Base
+
+
+@pytest.fixture(autouse=True)
+def _httpx_ignore_env(monkeypatch):
+    """Заставляет любой httpx-клиент в тестах игнорировать окружение.
+
+    По умолчанию у httpx trust_env=True — он читает настройки прокси/SSL из
+    переменных окружения. Если в шелле выставлен прокси (например SOCKS), то даже
+    полностью замоканный запрос падает уже на создании клиента. Выставляем
+    trust_env=False по умолчанию на время каждого теста, чтобы поведение клиента
+    больше не зависело от окружения хоста.
+    """
+    for client_cls in (httpx.Client, httpx.AsyncClient):
+        original_init = client_cls.__init__
+
+        def patched_init(self, *args, _original_init=original_init, **kwargs):
+            kwargs.setdefault('trust_env', False)
+            _original_init(self, *args, **kwargs)
+
+        monkeypatch.setattr(client_cls, '__init__', patched_init)
 
 
 @pytest.fixture(scope='session', autouse=True)
