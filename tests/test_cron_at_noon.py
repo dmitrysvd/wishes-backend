@@ -1,9 +1,10 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
 
 from app.cron_scripts.at_noon import (
+    followers_push_recently_sent,
     get_next_birthday,
     send_upcoming_birthday_of_current_user_notification,
     send_upcoming_birthday_of_followed_user_notification,
@@ -106,6 +107,41 @@ async def test_send_upcoming_birthday_of_followed_user_notification(db, mocker):
 
     db.refresh(followed_user)
     assert followed_user.pre_bday_push_for_followers_last_sent_at is not None
+
+
+def test_followers_push_recently_sent():
+    assert followers_push_recently_sent(None) is False
+    # aware-время приводится к naive перед сравнением
+    assert followers_push_recently_sent(datetime.now(timezone.utc)) is True
+    assert followers_push_recently_sent(datetime(2000, 1, 1)) is False
+
+
+@pytest.mark.anyio
+async def test_followed_user_push_skipped_when_recently_sent(db, mocker):
+    # Уведомление подписчикам не шлётся повторно, если уже отправляли недавно
+    # (last_sent — aware-время, проверяется ветка приведения к naive).
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    bday = date.today() + timedelta(days=10)
+    followed = User(
+        display_name='Recently Notified',
+        firebase_uid='recent_uid',
+        birth_date=bday,
+        registered_at=utc_now(),
+        pre_bday_push_for_followers_last_sent_at=utc_now(),
+    )
+    follower = User(
+        display_name='Follower',
+        firebase_uid='recent_follower_uid',
+        firebase_push_token='token_recent',
+        registered_at=utc_now(),
+    )
+    follower.follows.append(followed)
+    db.add_all([followed, follower])
+    db.commit()
+
+    send_upcoming_birthday_of_followed_user_notification()
+
+    mock_send_push.assert_not_called()
 
 
 def test_at_noon_main(mocker):
