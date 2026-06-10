@@ -46,7 +46,8 @@ def send_push(target_users: list[User], title: str, body: str, link: str | None 
     logger.info(
         f'Отправка {len(messages)} собщений пользователям: {users_with_message_ids}'
     )
-    messaging.send_each(messages, dry_run=settings.IS_DEBUG)
+    if messages:
+        messaging.send_each(messages, dry_run=settings.IS_DEBUG)
 
 
 def create_firebase_user(
