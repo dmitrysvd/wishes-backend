@@ -23,7 +23,7 @@ This document provides essential information for AI coding agents working on the
 - `uv run ruff check --fix .` - Lint code and fix simple issues
 - `uv run pyright` - Run static type checking
 - `uv run pre-commit run --all-files` - Run all pre-commit hooks
-- When creating a commit, if pre-commit fails, fix the reported issues and retry until the commit succeeds.
+- When creating a commit, if pre-commit fails, fix the reported issues and retry until the commit succeeds. Never bypass hooks with `--no-verify`.
 
 ### Testing
 - `uv run pytest` - Run all tests
