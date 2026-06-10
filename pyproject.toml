@@ -19,7 +19,6 @@ dependencies = [
     "beautifulsoup4>=4.12.2",
     "ipython>=8.20.0",
     "sentry-sdk[fastapi]>=2.2.0",
-    "websockets>=13.1",
     "psycopg2-binary>=2.9.11",
     "apscheduler>=3.11.2",
 ]

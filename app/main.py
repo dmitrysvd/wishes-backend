@@ -2,11 +2,10 @@ import enum
 from pathlib import Path
 
 import sentry_sdk
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import ValidationError
 
 from app.admin.setup import setup_admin
 from app.alerts import alert_exception
@@ -18,7 +17,6 @@ from app.dependencies import get_current_user, get_db
 from app.helpers import get_user_deep_link
 from app.logging import logger
 from app.routers import auth, recommendations, users, wishes
-from app.schemas import ChatMessageSchema
 
 __all__ = ['app', 'get_db', 'get_current_user', 'get_user_deep_link']
 
@@ -83,47 +81,6 @@ class HolidayEvent(enum.Enum):
 
 PUSH_MESSAGES = {HolidayEvent.NEW_YEAR: ('🎄🎄🎄Скоро Новый год!🎄🎄🎄')}
 BODY_MESSAGE = 'Заполните свой список желаний, чтобы друзья знали, что вам подарить'
-
-
-# WebSocket для чата
-class WsConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def send_personal_message(self, message: str, websocket: WebSocket):
-        await websocket.send_text(message)
-
-    async def broadcast(self, message: str, exclude_self=True):
-        for connection in self.active_connections:
-            await connection.send_text(message)
-
-
-ws_manager = WsConnectionManager()
-
-
-@app.websocket('/chat')
-async def ws_chat(websocket: WebSocket):
-    await ws_manager.connect(websocket)
-    try:
-        while True:
-            message_raw = await websocket.receive_text()
-            try:
-                message = ChatMessageSchema.model_validate_json(message_raw)
-            except ValidationError as ex:
-                await websocket.send_json(
-                    {'type': 'ERROR', 'code': 'INVALID_FORMAT', 'detail': ex.errors()}
-                )
-                continue
-            await ws_manager.broadcast(message.model_dump_json())
-    except WebSocketDisconnect:
-        ws_manager.disconnect(websocket)
 
 
 @app.get('/sentry-debug')
