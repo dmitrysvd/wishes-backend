@@ -29,6 +29,19 @@ services:
       retries: 3
       start_period: 15s
 
+  scheduler:
+    image: dmitrysvd1/wishes-app:latest
+    command: uv run python -m app.scheduler
+    volumes:
+      - ./static:/app/static:ro
+      - /data/media:/media
+      - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    restart: always
+
   db:
     image: postgres:18
     container_name: wishes-db
