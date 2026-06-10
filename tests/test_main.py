@@ -10,6 +10,12 @@ def test_health(api_client: TestClient):
     assert response.json() == {'status': 'ok'}
 
 
+def test_head_supported_by_default(api_client: TestClient):
+    # Все GET-роуты должны отвечать на HEAD
+    response = api_client.head('/health')
+    assert response.status_code == 200
+
+
 def test_sentry_debug(api_client: TestClient):
     response = api_client.get('/sentry-debug')
     assert response.status_code == 200

@@ -75,6 +75,14 @@ app.include_router(users.router)
 setup_admin(app, engine)
 
 
+# По умолчанию все GET-роуты должны поддерживать HEAD
+def enable_head_for_get_routes(application: FastAPI) -> None:
+    for route in application.routes:
+        methods = getattr(route, 'methods', None)
+        if methods and 'GET' in methods:
+            route.methods = set(methods) | {'HEAD'}  # ty: ignore[unresolved-attribute]
+
+
 class HolidayEvent(enum.Enum):
     NEW_YEAR = 'new_year'
 
@@ -114,3 +122,6 @@ def custom_openapi():
 
 default_openapi = app.openapi
 app.openapi = custom_openapi  # ty: ignore[invalid-assignment]
+
+# Включаем HEAD для всех GET-роутов после регистрации всех эндпоинтов
+enable_head_for_get_routes(app)
