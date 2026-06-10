@@ -1,11 +1,15 @@
 services:
   app:
     image: dmitrysvd1/wishes-app:latest
+    # --no-control-socket: убирает фоновый поток control-socket gunicorn 25.x.
+    # Иначе fork воркера может произойти, пока этот поток держит лок stdout, и
+    # воркер навсегда виснет в logging при старте (дедлок fork + lock).
     command: >
       uv run gunicorn
         --bind 0.0.0.0:8000
         --worker-class uvicorn.workers.UvicornWorker
         --workers 1
+        --no-control-socket
         --forwarded-allow-ips='*'
         --chdir /app
         --access-logfile -
