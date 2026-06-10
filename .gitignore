@@ -2,6 +2,7 @@ copy_dump.sh
 .vscode
 *.sqlite*
 .env
+.env.*
 *firebase-adminsdk*
 media/
 logs/

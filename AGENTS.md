@@ -94,6 +94,7 @@ Follow `ruff` grouping (controlled by `I` rules):
 - Verify ownership before modifying resources (e.g., `get_current_user_wish`).
 
 ## 🧪 Testing Guidelines
+- **Maintain 100% test coverage** for all code in the `app/` directory.
 - Use `pytest` fixtures for database and user setup.
 - Override dependencies in tests using `app.dependency_overrides`.
 - Mock external API calls (Firebase, VK, Telegram) using `pytest-mock`.

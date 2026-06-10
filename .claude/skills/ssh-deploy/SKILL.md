@@ -25,16 +25,17 @@ namespace, not on Bash permissions.
 `nc` (OpenBSD netcat) is usually **not** installed; use `ncat` (from nmap) for the
 SOCKS5 `ProxyCommand`.
 
-### One-off command
+### One-off command (avoid — prefer tmux below)
 
 ```bash
 ssh -o ProxyCommand='ncat --proxy 127.0.0.1:1080 --proxy-type socks5 %h %p' <host> 'docker ps'
 ```
 
-## Interactive / visible work: use tmux
+## Always run SSH through a tmux session
 
-For multi-step work where the user wants to watch, run SSH inside a tmux session so
-the user can `tmux attach -t <session>` and see every command and its output.
+**The user wants to watch every SSH command.** Always run remote work inside a tmux
+session (never one-off `ssh ... 'cmd'` calls) so the user can
+`tmux attach -t <session>` and see every command and its output in real time.
 
 Create the session (note the proxy `ProxyCommand` is still required):
 
@@ -64,6 +65,27 @@ Tell the user how to follow along: `tmux attach -t <session>` (detach with
   outputs are easily eaten by filters, making it look like a command produced
   nothing.
 - Send `clear` between steps to keep the captured pane readable.
+- **The user may be typing in the same session.** `send-keys` appends to whatever
+  is already at the prompt, so send `C-u` (clear line) *before* each command. If you
+  see unexpected text at the prompt (e.g. a half-typed `rm ...`), it's the user —
+  don't run it; clear the line with `C-u` and don't press Enter on their behalf.
+- **Avoid `sudo`** — it blocks on an interactive password prompt and hangs the
+  session. Prefer non-sudo reads (e.g. read nginx config straight from
+  `/etc/nginx/sites-enabled/` instead of `sudo nginx -T`). `C-c` to bail if a
+  password prompt appears.
+
+### Copying files to the server (scp through the proxy)
+
+To deploy a script/config, write it locally and `scp` it — far more reliable than
+heredoc-ing a multi-line file through `send-keys`. The same `ProxyCommand` is
+required:
+
+```bash
+scp -o ProxyCommand='ncat --proxy 127.0.0.1:1080 --proxy-type socks5 %h %p' \
+  ./local_file.sh <host>:/home/<user>/remote_file.sh
+```
+
+Then `chmod +x` and test it via the tmux session.
 
 ## Operating the stack
 
