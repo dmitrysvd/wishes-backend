@@ -26,7 +26,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pre-commit>=3.5.0",
-    "pyright>=1.1.337",
+    "ty>=0.0.47",
     "pytest>=7.4.3",
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",

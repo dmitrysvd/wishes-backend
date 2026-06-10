@@ -62,7 +62,7 @@ def create_firebase_user(
         display_name=display_name,
         photo_url=photo_url,
     )
-    return user.uid  # type: ignore
+    return user.uid
 
 
 def delete_firebase_user(uid: str) -> None:

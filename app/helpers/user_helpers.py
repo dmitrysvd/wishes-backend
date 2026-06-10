@@ -29,8 +29,8 @@ def get_annotated_users(
         query = query.where(User.id.in_(user_ids))
     values = db.execute(query).all()
     for user, followed_by_me, follows_me in values:
-        user.followed_by_me = followed_by_me  # type: ignore
-        user.follows_me = follows_me  # type: ignore
+        user.followed_by_me = followed_by_me
+        user.follows_me = follows_me
     return [AnnotatedOtherUserSchema.model_validate(val[0]) for val in values]
 
 

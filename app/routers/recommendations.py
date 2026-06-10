@@ -29,7 +29,7 @@ def get_recommendation(rec_id: UUID, db: Session = Depends(get_db)):
     ).one_or_none()
     if not rec:
         raise HTTPException(HTTP_404_NOT_FOUND, 'Recommendation not found')
-    rec.wishes_count = db.scalar(  # type: ignore[attr-defined]  # type: ignore[attr-defined]
+    rec.wishes_count = db.scalar(  # ty: ignore[invalid-assignment]
         select(func.count(Wish.id)).where(Wish.recommendation_id == rec_id)
     )
     return rec

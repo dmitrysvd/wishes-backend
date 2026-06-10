@@ -113,4 +113,4 @@ def custom_openapi():
 
 
 default_openapi = app.openapi
-app.openapi = custom_openapi
+app.openapi = custom_openapi  # ty: ignore[invalid-assignment]
