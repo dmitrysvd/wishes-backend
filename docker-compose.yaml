@@ -19,8 +19,9 @@ services:
       - ./static:/app/static:ro
       - /data/media:/media
       - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
+    # Только localhost: наружу отдаёт nginx (TLS), он же ходит на localhost:8000.
     ports:
-      - 8000:8000
+      - 127.0.0.1:8000:8000
     depends_on:
       db:
         condition: service_healthy
@@ -56,8 +57,9 @@ services:
       - shared_preload_libraries=pg_stat_statements
       - -c
       - pg_stat_statements.track=all
+    # Только localhost: для psql/бэкапов с хоста. Наружу Postgres не публикуем.
     ports:
-      - 5432:5432
+      - 127.0.0.1:5432:5432
     env_file: .env
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
