@@ -9,6 +9,8 @@ services:
         --bind 0.0.0.0:8000
         --worker-class uvicorn.workers.UvicornWorker
         --workers 1
+        --max-requests 500
+        --max-requests-jitter 50
         --no-control-socket
         --forwarded-allow-ips='*'
         --chdir /app
