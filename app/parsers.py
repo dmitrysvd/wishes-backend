@@ -92,10 +92,15 @@ async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
     except json.JSONDecodeError as exc:
         raise ItemInfoParseError('Ошибка парсинга json') from exc
     attrs = _extract_og_attrs(meta_data)
-    if 'og:image' not in attrs:
-        raise ItemInfoParseError('Не найдена картинка')
     if 'og:title' not in attrs:
         raise ItemInfoParseError('Не найден заголовок')
+    # На анти-бот/деградированной странице og:image — протокол-относительная
+    # заглушка (`//yastatic.net/.../big-box.png`): netloc есть, а scheme нет, поэтому
+    # is_absolute_url её пропускает, но HttpUrl падает. Требуем абсолютный http(s) URL,
+    # иначе это не настоящая карточка — отдаём понятную ошибку вместо 500.
+    image_parsed = urllib.parse.urlparse(attrs.get('og:image', ''))
+    if image_parsed.scheme not in ('http', 'https') or not image_parsed.netloc:
+        raise ItemInfoParseError('Не найдена картинка')
     return ItemInfoResponseSchema(
         title=attrs['og:title'],
         image_url=attrs['og:image'],  # type: ignore
@@ -109,7 +114,9 @@ async def _request_ya_market_html(link: str, client: httpx.AsyncClient) -> str:
         # Запрос итоговой страницы повторно возвращает успешный ответ.
         response = await client.get(link, headers=YA_MARKET_HEADERS)
         link = str(response.history[2].url)
-    response = await client.get(link)
+    # Браузерные заголовки обязательны: без них Яндекс отдаёт серверу деградированную
+    # анти-бот страницу с картинкой-заглушкой вместо реальной карточки.
+    response = await client.get(link, headers=YA_MARKET_HEADERS)
     logger.debug(
         'ya market link {link}, status {status}, headers {headers}',
         link=link,

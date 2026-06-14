@@ -292,6 +292,19 @@ async def test_yandex_market_missing_title():
 
 
 @pytest.mark.anyio
+async def test_yandex_market_placeholder_image():
+    # Деградированная анти-бот страница: og:image — протокол-относительная заглушка.
+    # Должна стать понятной ошибкой, а не падать pydantic-валидацией (500).
+    placeholder = (
+        '{"tagName":"meta","attrs":{"property":"og:image",'
+        '"content":"//yastatic.net/market-export/_/i/desktop/big-box.png"}}'
+    )
+    html = _ya_html(_YA_TITLE, placeholder)
+    with pytest.raises(ItemInfoParseError, match='Не найдена картинка'):
+        await try_parse_item_by_link('https://market.yandex.ru/product/1', html=html)
+
+
+@pytest.mark.anyio
 async def test_yandex_market_fetch_without_html():
     html = _ya_html(_YA_TITLE, _YA_IMAGE)
 
