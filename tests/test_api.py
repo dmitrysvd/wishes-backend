@@ -784,7 +784,12 @@ class TestRecommendations:
     def test_list_recommendations_empty(self, auth_client: TestClient):
         response = auth_client.get('/wish_recommendations')
         assert response.status_code == 200
-        assert response.json() == []
+        assert response.json() == {
+            'items': [],
+            'total': 0,
+            'has_next': False,
+            'has_previous': False,
+        }
 
     def test_list_recommendations(
         self, auth_client: TestClient, recommendation: WishRecommendation
@@ -792,9 +797,45 @@ class TestRecommendations:
         response = auth_client.get('/wish_recommendations')
         assert response.status_code == 200
         data = response.json()
-        assert len(data) == 1
-        assert data[0]['title'] == 'Recommended item'
-        assert data[0]['link'] == 'https://partner-shop.com/item'
+        assert data['total'] == 1
+        assert data['has_next'] is False
+        assert data['has_previous'] is False
+        assert len(data['items']) == 1
+        assert data['items'][0]['title'] == 'Recommended item'
+        assert data['items'][0]['link'] == 'https://partner-shop.com/item'
+
+    def test_list_recommendations_pagination(
+        self, auth_client: TestClient, db: Session
+    ):
+        for i in range(5):
+            db.add(
+                WishRecommendation(
+                    title=f'Item {i}',
+                    link=f'https://partner-shop.com/item/{i}',
+                )
+            )
+        db.commit()
+
+        # Первая страница: есть следующая, нет предыдущей.
+        response = auth_client.get('/wish_recommendations?limit=2&offset=0')
+        assert response.status_code == 200
+        data = response.json()
+        assert data['total'] == 5
+        assert len(data['items']) == 2
+        assert data['has_next'] is True
+        assert data['has_previous'] is False
+
+        # Последняя страница: нет следующей, есть предыдущая.
+        response = auth_client.get('/wish_recommendations?limit=2&offset=4')
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data['items']) == 1
+        assert data['has_next'] is False
+        assert data['has_previous'] is True
+
+    def test_list_recommendations_invalid_pagination(self, auth_client: TestClient):
+        response = auth_client.get('/wish_recommendations?limit=0')
+        assert response.status_code == 422
 
     def test_get_recommendation(
         self, auth_client: TestClient, recommendation: WishRecommendation

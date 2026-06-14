@@ -1,3 +1,4 @@
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,16 +7,27 @@ from sqlalchemy.orm import Session
 from starlette.status import HTTP_404_NOT_FOUND
 
 from app.db import WishRecommendation
-from app.dependencies import WISHES_TAG, get_db
-from app.schemas import RecommendationFullReadSchema, RecommendationSchema
+from app.dependencies import WISHES_TAG, PaginationParams, get_db
+from app.helpers.pagination import paginate
+from app.schemas import (
+    PageSchema,
+    RecommendationFullReadSchema,
+    RecommendationSchema,
+)
 
 router = APIRouter(tags=[WISHES_TAG])
 
 
-@router.get('/wish_recommendations', response_model=list[RecommendationSchema])
-def list_recommendations(db: Session = Depends(get_db)):
-    query = select(WishRecommendation)
-    return db.scalars(query)
+@router.get('/wish_recommendations', response_model=PageSchema[RecommendationSchema])
+def list_recommendations(
+    pagination: Annotated[PaginationParams, Depends()],
+    db: Session = Depends(get_db),
+):
+    # Стабильный порядок обязателен для корректной offset/limit-пагинации.
+    query = select(WishRecommendation).order_by(
+        WishRecommendation.created_at.desc(), WishRecommendation.id.desc()
+    )
+    return paginate(db, query, pagination, RecommendationSchema)
 
 
 @router.get(

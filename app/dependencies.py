@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Query, Request
 from firebase_admin.auth import (
     ExpiredIdTokenError,
     InvalidIdTokenError,
@@ -16,12 +16,25 @@ from starlette.status import (
 )
 
 from app.config import settings
+from app.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
 from app.db import SessionLocal, User, Wish
 
 # Теги для OpenAPI документации
 AUTH_TAG = 'auth'
 WISHES_TAG = 'wishes'
 USERS_TAG = 'users'
+
+
+class PaginationParams:
+    """Общие query-параметры пагинации для списочных эндпоинтов."""
+
+    def __init__(
+        self,
+        limit: Annotated[int, Query(ge=1, le=MAX_PAGE_LIMIT)] = DEFAULT_PAGE_LIMIT,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ):
+        self.limit = limit
+        self.offset = offset
 
 
 def get_db():

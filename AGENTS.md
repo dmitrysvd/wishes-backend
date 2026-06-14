@@ -11,18 +11,9 @@
 - **Тесты:** `pytest`
 - **CI/CD**: Github CI
 
-## Команды
-```
-uv sync                                    # зависимости
-uv run uvicorn app.main:app --reload       # дев-сервер
-uv run ruff format .                        # форматирование
-uv run ruff check --fix .                   # линт + автофиксы
-uv run ty check                             # проверка типов
-uv run pytest                               # тесты
-uv run pre-commit run --all-files           # все хуки
-uv run alembic revision --autogenerate -m "msg"   # новая миграция
-uv run alembic upgrade head                       # применить миграции
-```
+## pre-commit
+
+В pre-commit вызываются: ruff format, ruff lint, ty, pytest (check cov=100%).
 Если pre-commit падает на коммите — чини ошибки и повторяй, пока не пройдёт.
 
 ## Структура

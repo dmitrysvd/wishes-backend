@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Generic, TypeVar
 from uuid import UUID
 
 from pydantic import (
@@ -10,6 +11,17 @@ from pydantic import (
 )
 
 from app.constants import Gender
+
+ItemT = TypeVar('ItemT', bound=BaseModel)
+
+
+class PageSchema(BaseModel, Generic[ItemT]):
+    """Универсальная схема-страница для offset/limit-пагинации."""
+
+    items: list[ItemT]
+    total: int
+    has_next: bool
+    has_previous: bool
 
 
 class BaseWishSchema(BaseModel):
