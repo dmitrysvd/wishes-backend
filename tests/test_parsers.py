@@ -1,31 +1,19 @@
+import httpx
 import pytest
 
 from app.parsers import (
     ItemInfoParseError,
-    _get_wb_basket,
     is_absolute_url,
     try_parse_item_by_link,
 )
 from app.schemas import ItemInfoResponseSchema
 
 
-def test_get_wb_basket():
-    assert _get_wb_basket(0) == '01'
-    assert _get_wb_basket(143 * 100000) == '01'
-    assert _get_wb_basket(144 * 100000) == '02'
-    assert _get_wb_basket(288 * 100000) == '03'
-    assert _get_wb_basket(432 * 100000) == '04'
-    assert _get_wb_basket(720 * 100000) == '05'
-    assert _get_wb_basket(1008 * 100000) == '06'
-    assert _get_wb_basket(1062 * 100000) == '07'
-    assert _get_wb_basket(1116 * 100000) == '08'
-    assert _get_wb_basket(1170 * 100000) == '09'
-    assert _get_wb_basket(1314 * 100000) == '10'
-    assert _get_wb_basket(1602 * 100000) == '11'
-    assert _get_wb_basket(1656 * 100000) == '12'
-    assert _get_wb_basket(1920 * 100000) == '13'
-    assert _get_wb_basket(2046 * 100000) == '14'
-    assert _get_wb_basket(2190 * 100000) == '15'
+def _client(handler) -> httpx.AsyncClient:
+    # Клиент на MockTransport: тестируем реальную логику httpx без моков.
+    return httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), follow_redirects=True
+    )
 
 
 def test_is_absolute_url():
@@ -35,216 +23,308 @@ def test_is_absolute_url():
     assert is_absolute_url('image.png') is False
 
 
+# --- Generic Open Graph -------------------------------------------------------
+
+
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_generic_og_tags():
+async def test_generic_og_tags():
     html = """
-    <html>
-        <head>
-            <meta property="og:title" content="Test Title">
-            <meta property="og:description" content="Test Description">
-            <meta property="og:image" content="https://example.com/image.png">
-        </head>
-    </html>
+    <html><head>
+        <meta property="og:title" content="Test Title">
+        <meta property="og:description" content="Test Description">
+        <meta property="og:image" content="https://example.com/image.png">
+    </head></html>
     """
     result = await try_parse_item_by_link('https://example.com/item', html=html)
     assert isinstance(result, ItemInfoResponseSchema)
-    assert str(result.title) == 'Test Title'
-    assert str(result.description) == 'Test Description'
+    assert result.title == 'Test Title'
+    assert result.description == 'Test Description'
     assert str(result.image_url) == 'https://example.com/image.png'
 
 
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_relative_image():
+async def test_generic_relative_image():
     html = """
-    <html>
-        <head>
-            <meta property="og:title" content="Test Title">
-            <meta property="og:description" content="Test Description">
-            <meta property="og:image" content="/images/item.png">
-        </head>
-    </html>
+    <html><head>
+        <meta property="og:title" content="Test Title">
+        <meta property="og:image" content="/images/item.png">
+    </head></html>
     """
     result = await try_parse_item_by_link('https://example.com/item', html=html)
     assert str(result.image_url) == 'https://example.com/images/item.png'
 
 
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_missing_tags():
+async def test_generic_description_optional():
+    # Страницы без og:description парсятся, описание становится пустым.
+    html = """
+    <html><head>
+        <meta property="og:title" content="Only Title">
+        <meta property="og:image" content="https://example.com/i.png">
+    </head></html>
+    """
+    result = await try_parse_item_by_link('https://example.com/item', html=html)
+    assert result.description == ''
+
+
+@pytest.mark.anyio
+async def test_generic_description_without_content():
+    # og:description есть, но без атрибута content — описание остаётся пустым.
+    html = """
+    <html><head>
+        <meta property="og:title" content="T">
+        <meta property="og:image" content="https://example.com/i.png">
+        <meta property="og:description">
+    </head></html>
+    """
+    result = await try_parse_item_by_link('https://example.com/item', html=html)
+    assert result.description == ''
+
+
+@pytest.mark.anyio
+async def test_generic_missing_tags():
     html = '<html><body>No meta tags here</body></html>'
     with pytest.raises(ItemInfoParseError, match='Не найден тег метаданных'):
         await try_parse_item_by_link('https://example.com/item', html=html)
 
 
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_wildberries(mocker):
-    # https://www.wildberries.ru/catalog/12345678/detail.aspx
-    link = 'https://www.wildberries.ru/catalog/12345678/detail.aspx'
-    item_id = 12345678
-    vol = item_id // 100000
-    part = item_id // 1000
-    basket = '01'  # 123 // 100000 = 0 (approx)
-
-    mock_response = mocker.Mock()
-    mock_response.status_code = 200
-    mock_response.json.return_value = {
-        'imt_name': 'WB Title',
-        'description': 'WB Description',
-    }
-    mock_response.raise_for_status = mocker.Mock()
-
-    # Mock httpx.AsyncClient.get
-    mock_get = mocker.patch(
-        'httpx.AsyncClient.get', mocker.AsyncMock(return_value=mock_response)
-    )
-
-    result = await try_parse_item_by_link(link)
-    assert result.title == 'WB Title'
-    assert result.description == 'WB Description'
-    assert '1.webp' in str(result.image_url)
-
-    api_url = f'https://basket-{basket}.wbbasket.ru/vol{vol}/part{part}/{item_id}/info/ru/card.json'
-    mock_get.assert_called_once_with(api_url)
+async def test_generic_tag_without_content():
+    # Тег og:image присутствует, но без content — это тоже считаем отсутствием данных.
+    html = """
+    <html><head>
+        <meta property="og:title" content="T">
+        <meta property="og:image">
+    </head></html>
+    """
+    with pytest.raises(ItemInfoParseError, match='Не найден тег метаданных'):
+        await try_parse_item_by_link('https://example.com/item', html=html)
 
 
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_yandex_market():
-    html = (
-        '<script>window.__apiary.deferredMetaGenerator(['
-        '{"tagName":"meta","attrs":{"property":"og:title","content":"Ya Title"}},'
-        '{"tagName":"meta","attrs":{"property":"og:description",'
-        '"content":"Ya Description"}},'
-        '{"tagName":"meta","attrs":{"property":"og:image","content":"https://ya.com/img.png"}}'
-        ']);</script>'
+async def test_generic_fetch_success():
+    html = """
+    <html><head>
+        <meta property="og:title" content="Generic Title">
+        <meta property="og:description" content="Generic Description">
+        <meta property="og:image" content="https://generic.com/image.png">
+    </head></html>
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    async with _client(handler) as client:
+        result = await try_parse_item_by_link('https://generic.com/item', client=client)
+    assert result.title == 'Generic Title'
+    assert str(result.image_url) == 'https://generic.com/image.png'
+
+
+@pytest.mark.anyio
+async def test_generic_fetch_status_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    async with _client(handler) as client:
+        with pytest.raises(ItemInfoParseError, match='Ошибка статуса ответа: 404'):
+            await try_parse_item_by_link('https://generic.com/item', client=client)
+
+
+# --- Wildberries --------------------------------------------------------------
+
+
+WB_LINK = 'https://www.wildberries.ru/catalog/12345678/detail.aspx'
+
+
+def _wb_basket_number(request: httpx.Request) -> int:
+    # basket-04.wbbasket.ru -> 4
+    return int(request.url.host.removeprefix('basket-').split('.')[0])
+
+
+def _wb_handler(ok_basket: int | None = None, max_existing: int = 40):
+    # Существующие basket-ы отвечают 404 (кроме нужного — 200), несуществующие хосты
+    # не резолвятся (как в реальности), что имитируется ConnectError.
+    def handler(request: httpx.Request) -> httpx.Response:
+        n = _wb_basket_number(request)
+        if n > max_existing:
+            raise httpx.ConnectError('nxdomain')
+        if n == ok_basket:
+            return httpx.Response(
+                200, json={'imt_name': 'WB Title', 'description': 'WB Description'}
+            )
+        return httpx.Response(404)
+
+    return handler
+
+
+@pytest.mark.anyio
+async def test_wildberries_success():
+    # Целевой basket — 04, что заставляет перебор пропустить 01..03.
+    async with _client(_wb_handler(ok_basket=4)) as client:
+        result = await try_parse_item_by_link(WB_LINK, client=client)
+    assert result.title == 'WB Title'
+    assert result.description == 'WB Description'
+    assert str(result.image_url) == (
+        'https://basket-04.wbbasket.ru/vol123/part12345/12345678/images/big/1.webp'
+    )
+
+
+@pytest.mark.anyio
+async def test_wildberries_found_in_later_batch():
+    # basket-40 за пределами первой пачки (1..32) — перебор должен расшириться.
+    async with _client(_wb_handler(ok_basket=40, max_existing=45)) as client:
+        result = await try_parse_item_by_link(WB_LINK, client=client)
+    assert 'basket-40' in str(result.image_url)
+
+
+@pytest.mark.anyio
+async def test_wildberries_skips_connection_errors():
+    def handler(request: httpx.Request) -> httpx.Response:
+        n = _wb_basket_number(request)
+        if n == 1:
+            raise httpx.ConnectError('no route')
+        if n == 5:
+            return httpx.Response(200, json={'imt_name': 'WB', 'description': 'D'})
+        return httpx.Response(404)
+
+    async with _client(handler) as client:
+        result = await try_parse_item_by_link(WB_LINK, client=client)
+    assert 'basket-05' in str(result.image_url)
+
+
+@pytest.mark.anyio
+async def test_wildberries_not_found():
+    # Карточки нет ни на одном существующем basket-е: перебор останавливается,
+    # когда упирается в несуществующие хосты.
+    async with _client(_wb_handler(ok_basket=None, max_existing=40)) as client:
+        with pytest.raises(
+            ItemInfoParseError, match='Карточка товара Wildberries не найдена'
+        ):
+            await try_parse_item_by_link(WB_LINK, client=client)
+
+
+@pytest.mark.anyio
+async def test_wildberries_hard_limit():
+    # Аномалия: любой хост отвечает 404 и «существует» — срабатывает предохранитель.
+    async with _client(_wb_handler(ok_basket=None, max_existing=10**9)) as client:
+        with pytest.raises(
+            ItemInfoParseError, match='Карточка товара Wildberries не найдена'
+        ):
+            await try_parse_item_by_link(WB_LINK, client=client)
+
+
+@pytest.mark.anyio
+async def test_wildberries_no_id():
+    with pytest.raises(ItemInfoParseError, match='В URL не найден паттерн catalog/'):
+        await try_parse_item_by_link('https://wildberries.ru/not-a-product')
+
+
+# --- Yandex Market ------------------------------------------------------------
+
+
+def _ya_html(*items: str) -> str:
+    payload = ','.join(items)
+    return (
+        '<script>window.__apiary.deferredMetaGenerator=function(){};</script>'
+        f'<script>window.__apiary.deferredMetaGenerator([{payload}]);</script>'
+    )
+
+
+_YA_TITLE = '{"tagName":"meta","attrs":{"property":"og:title","content":"Ya Title"}}'
+_YA_DESC = (
+    '{"tagName":"meta","attrs":{"property":"og:description","content":"Ya Desc"}}'
+)
+_YA_IMAGE = (
+    '{"tagName":"meta","attrs":{"property":"og:image",'
+    '"content":"https://ya.com/img.png"}}'
+)
+
+
+@pytest.mark.anyio
+async def test_yandex_market_success():
+    # Помимо og-тегов в payload есть не-meta тег, meta без attrs и не-og meta —
+    # все они должны игнорироваться.
+    html = _ya_html(
+        '{"tagName":"link","attrs":{"rel":"canonical"}}',
+        '{"tagName":"meta"}',
+        '{"tagName":"meta","attrs":{"name":"description","content":"x"}}',
+        _YA_TITLE,
+        _YA_DESC,
+        _YA_IMAGE,
     )
     result = await try_parse_item_by_link(
         'https://market.yandex.ru/product/1', html=html
     )
     assert result.title == 'Ya Title'
-    assert result.description == 'Ya Description'
+    assert result.description == 'Ya Desc'
     assert str(result.image_url) == 'https://ya.com/img.png'
 
 
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_yandex_market_request_html(mocker):
-    # Mocking _request_ya_market_html to avoid real requests
-    html = """
-    <script>window.__apiary.deferredMetaGenerator([
-        {"tagName":"meta","attrs":{"property":"og:title","content":"Ya Title"}}
-    ]);</script>
-    """
-    mocker.patch(
-        'app.parsers._request_ya_market_html', mocker.AsyncMock(return_value=html)
-    )
-
-    with pytest.raises(ItemInfoParseError, match='Не найдена картинка'):
-        await try_parse_item_by_link('https://market.yandex.ru/product/1')
-
-
-@pytest.mark.anyio
-async def test_try_parse_item_by_link_yandex_market_parse_error(mocker):
-    html = 'invalid html'
+async def test_yandex_market_no_anchor():
     with pytest.raises(
         ItemInfoParseError, match='Не найдена переменная с данными в ответе'
     ):
-        await try_parse_item_by_link('https://market.yandex.ru/product/1', html=html)
+        await try_parse_item_by_link(
+            'https://market.yandex.ru/product/1', html='invalid html'
+        )
 
 
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_yandex_market_json_error(mocker):
+async def test_yandex_market_json_error():
     html = 'window.__apiary.deferredMetaGenerator({invalid json});'
     with pytest.raises(ItemInfoParseError, match='Ошибка парсинга json'):
         await try_parse_item_by_link('https://market.yandex.ru/product/1', html=html)
 
 
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_wildberries_no_id():
-    with pytest.raises(Exception, match='В URL не найден паттерн catalog/'):
-        await try_parse_item_by_link('https://wildberries.ru/not-a-product')
+async def test_yandex_market_missing_image():
+    html = _ya_html(_YA_TITLE)
+    with pytest.raises(ItemInfoParseError, match='Не найдена картинка'):
+        await try_parse_item_by_link('https://market.yandex.ru/product/1', html=html)
 
 
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_generic_request_error(mocker):
-    mock_response = mocker.Mock()
-    mock_response.is_success = False
-    mock_response.status_code = 404
-    mocker.patch('httpx.AsyncClient.get', mocker.AsyncMock(return_value=mock_response))
-
-    with pytest.raises(ItemInfoParseError, match='Ошибка статуса ответа: 404'):
-        await try_parse_item_by_link('https://generic.com/item')
+async def test_yandex_market_missing_title():
+    html = _ya_html(_YA_IMAGE)
+    with pytest.raises(ItemInfoParseError, match='Не найден заголовок'):
+        await try_parse_item_by_link('https://market.yandex.ru/product/1', html=html)
 
 
 @pytest.mark.anyio
-async def test_request_ya_market_html_cc_redirect(mocker):
-    from app.parsers import _request_ya_market_html
+async def test_yandex_market_fetch_without_html():
+    html = _ya_html(_YA_TITLE, _YA_IMAGE)
 
-    mock_response_1 = mocker.Mock()
-    mock_response_1.history = [
-        mocker.Mock(),
-        mocker.Mock(),
-        mocker.Mock(url='https://market.yandex.ru/real-link'),
-    ]
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
 
-    mock_response_2 = mocker.Mock()
-    mock_response_2.status_code = 200
-    mock_response_2.text = 'success'
-    mock_response_2.headers = {}
-
-    mock_get = mocker.patch(
-        'httpx.AsyncClient.get',
-        mocker.AsyncMock(side_effect=[mock_response_1, mock_response_2]),
-    )
-
-    result = await _request_ya_market_html('https://market.yandex.ru/cc/short')
-    assert result == 'success'
-    assert mock_get.call_count == 2
+    async with _client(handler) as client:
+        result = await try_parse_item_by_link(
+            'https://market.yandex.ru/product/1', client=client
+        )
+    assert result.title == 'Ya Title'
 
 
 @pytest.mark.anyio
-async def test_try_parse_item_by_link_generic_relative_url(mocker):
-    # Coverage for line 172
-    html = """
-    <html>
-        <head>
-            <meta property="og:title" content="T">
-            <meta property="og:description" content="D">
-            <meta property="og:image" content="rel.png">
-        </head>
-    </html>
-    """
-    result = await try_parse_item_by_link('https://example.com/page/', html=html)
-    assert str(result.image_url) == 'https://example.com/rel.png'
+async def test_yandex_market_cc_redirect():
+    final_html = _ya_html(_YA_TITLE, _YA_IMAGE)
 
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        # Цепочка из трёх редиректов, как на коротких /cc/ ссылках.
+        redirects = {
+            '/cc/short': '/r1',
+            '/r1': '/r2',
+            '/r2': '/r3',
+        }
+        if path in redirects:
+            return httpx.Response(
+                302, headers={'location': f'https://market.yandex.ru{redirects[path]}'}
+            )
+        return httpx.Response(200, text=final_html)
 
-@pytest.mark.anyio
-async def test_try_parse_item_by_link_generic_success_request(mocker):
-    html = """
-    <html>
-        <head>
-            <meta property="og:title" content="Generic Title">
-            <meta property="og:description" content="Generic Description">
-            <meta property="og:image" content="https://generic.com/image.png">
-        </head>
-    </html>
-    """
-    mock_response = mocker.Mock()
-    mock_response.is_success = True
-    mock_response.status_code = 200
-    mock_response.text = html
-    mocker.patch('httpx.AsyncClient.get', mocker.AsyncMock(return_value=mock_response))
-
-    result = await try_parse_item_by_link('https://generic.com/item')
-    assert result.title == 'Generic Title'
-    assert str(result.image_url) == 'https://generic.com/image.png'
-
-
-def test_parsers_script_execution(mocker):
-    import os
-    import runpy
-
-    from app import parsers
-
-    # We need to mock something inside to avoid actual work
-    mocker.patch('app.parsers.try_parse_item_by_link')
-    # This covers if __name__ == '__main__': ...
-    script_path = os.path.abspath(parsers.__file__)
-    runpy.run_path(script_path, run_name='__main__')
+    async with _client(handler) as client:
+        result = await try_parse_item_by_link(
+            'https://market.yandex.ru/cc/short', client=client
+        )
+    assert result.title == 'Ya Title'

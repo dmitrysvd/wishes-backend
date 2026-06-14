@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import urllib.parse
@@ -8,123 +9,53 @@ from loguru import logger
 
 from app.schemas import ItemInfoResponseSchema
 
+# Таймаут по умолчанию для исходящих запросов парсера.
+DEFAULT_TIMEOUT = 10
+
+# Wildberries хранит карточки на basket-хостах (basket-01..basket-NN.wbbasket.ru).
+# Номер basket-а раньше вычислялся статической таблицей из их JS, но WB регулярно
+# добавляет новые хосты, поэтому таблица быстро устаревает. Вместо неё перебираем
+# basket-ы параллельно пачками и берём тот, что реально отдал карточку.
+#
+# Чтобы не хардкодить «потолок» по числу хостов, перебор расширяется сам: существующий,
+# но «чужой» basket отвечает 404, а несуществующий хост не резолвится (ошибка
+# соединения). Если в очередной пачке даже самый старший хост не существует — значит
+# выше basket-ов нет и искать дальше бессмысленно. Новые basket-ы подхватятся сами.
+WB_BASKET_BATCH = 32
+# Предохранитель от бесконечного цикла, если WB вдруг начнёт отвечать на любой хост.
+WB_BASKET_HARD_LIMIT = 257
+
+# Заголовки браузера для обхода защиты Яндекс.Маркета на коротких ссылках.
+YA_MARKET_HEADERS = {
+    'authority': 'market.yandex.ru',
+    'accept': (
+        'text/html,application/xhtml+xml,application/xml;q=0.9,'
+        'image/avif,image/webp,image/apng,*/*;q=0.8,'
+        'application/signed-exchange;v=b3;q=0.7'
+    ),
+    'accept-language': 'en-US,en;q=0.9',
+    'cache-control': 'no-cache',
+    'pragma': 'no-cache',
+    'sec-ch-ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Linux"',
+    'sec-fetch-dest': 'document',
+    'sec-fetch-mode': 'navigate',
+    'sec-fetch-site': 'none',
+    'sec-fetch-user': '?1',
+    'upgrade-insecure-requests': '1',
+    'user-agent': (
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    ),
+}
+
+# Якорь, после которого в html Яндекс.Маркета идёт JSON с meta-тегами страницы.
+YA_MARKET_META_ANCHOR = 'window.__apiary.deferredMetaGenerator('
+
 
 class ItemInfoParseError(Exception):
     pass
-
-
-def _get_wb_basket(nm_id: int):
-    # Взято из исходников js-файла на сайте.
-    nm_id = nm_id // 100000
-    if nm_id >= 0 and nm_id <= 143:
-        return '01'
-    if nm_id >= 144 and nm_id <= 287:
-        return '02'
-    if nm_id >= 288 and nm_id <= 431:
-        return '03'
-    if nm_id >= 432 and nm_id <= 719:
-        return '04'
-    if nm_id >= 720 and nm_id <= 1007:
-        return '05'
-    if nm_id >= 1008 and nm_id <= 1061:
-        return '06'
-    if nm_id >= 1062 and nm_id <= 1115:
-        return '07'
-    if nm_id >= 1116 and nm_id <= 1169:
-        return '08'
-    if nm_id >= 1170 and nm_id <= 1313:
-        return '09'
-    if nm_id >= 1314 and nm_id <= 1601:
-        return '10'
-    if nm_id >= 1602 and nm_id <= 1655:
-        return '11'
-    if nm_id >= 1656 and nm_id <= 1919:
-        return '12'
-    if nm_id >= 1920 and nm_id <= 2045:
-        return '13'
-    if nm_id >= 2046 and nm_id <= 2189:
-        return '14'
-    return '15'
-
-
-async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
-    # Исправленный регуляр: убираем лишнюю точку в группе захвата и экранируем точку
-    match = re.search(
-        r'window\.__apiary\.deferredMetaGenerator\((.*?)\);', html, re.DOTALL
-    )
-    if not match:
-        logger.debug(
-            'html content:\n{html}\n\n{html_repr}', html=html, html_repr=repr(html)
-        )
-        raise ItemInfoParseError('Не найдена переменная с данными в ответе')
-    meta_data_str = match.group(1)
-    try:
-        meta_data = json.loads(meta_data_str)
-    except json.JSONDecodeError as exc:
-        raise ItemInfoParseError('Ошибка парсинга json') from exc
-    attrs = {}
-    for item in meta_data:
-        if item['tagName'] == 'meta' and item['attrs'].get('property', '').startswith(
-            'og:'
-        ):
-            key = item['attrs']['property']
-            value = item['attrs']['content']
-            attrs[key] = value
-    if 'og:image' not in attrs:
-        raise ItemInfoParseError('Не найдена картинка')
-    return ItemInfoResponseSchema(
-        title=attrs['og:title'],
-        image_url=attrs['og:image'],
-        description=attrs.get('og:description', ''),
-    )
-
-
-async def _request_ya_market_html(link: str) -> str:
-    if '/cc/' in link:
-        # Короткие ссылки вызывают несколько редиректов, заканчивающихся каптчей (400).
-        # Запрос той же страницы повторно возвращает успешный ответ.
-        async with httpx.AsyncClient() as client:
-            client.headers = {
-                'authority': 'market.yandex.ru',
-                'accept': (
-                    'text/html,application/xhtml+xml,application/xml;q=0.9,'
-                    'image/avif,image/webp,image/apng,*/*;q=0.8,'
-                    'application/signed-exchange;v=b3;q=0.7'
-                ),
-                'accept-language': 'en-US,en;q=0.9',
-                'cache-control': 'no-cache',
-                'pragma': 'no-cache',
-                'sec-ch-ua': (
-                    '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"'
-                ),
-                'sec-ch-ua-mobile': '?0',
-                'sec-ch-ua-platform': '"Linux"',
-                'sec-fetch-dest': 'document',
-                'sec-fetch-mode': 'navigate',
-                'sec-fetch-site': 'none',
-                'sec-fetch-user': '?1',
-                'upgrade-insecure-requests': '1',
-                'user-agent': (
-                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-                    '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-                ),
-            }
-            response = await client.get(
-                link,
-                follow_redirects=True,
-            )
-            next_url = response.history[2].url
-            link = str(next_url)
-    async with httpx.AsyncClient() as client:
-        response_2 = await client.get(link)
-        logger.debug(
-            'response_2 link {link}, status {status}, text {text}, headers {headers}',
-            link=link,
-            status=response_2.status_code,
-            text=response_2.text,
-            headers=str(response_2.headers),
-        )
-        return response_2.text
 
 
 def is_absolute_url(url: str) -> bool:
@@ -132,55 +63,109 @@ def is_absolute_url(url: str) -> bool:
     return bool(parsed_url.netloc)
 
 
-async def try_parse_item_by_link(
-    link: str,
-    html: str | None = None,
-) -> ItemInfoResponseSchema:
-    logger.info(
-        'Парсинг превью {link}, есть html: {has_html}', link=link, has_html=bool(html)
+def _extract_og_attrs(meta_items: list[dict]) -> dict[str, str]:
+    # Собираем og:-теги из списка дескрипторов meta-тегов Яндекс.Маркета.
+    attrs: dict[str, str] = {}
+    for item in meta_items:
+        if item.get('tagName') != 'meta':
+            continue
+        item_attrs = item.get('attrs', {})
+        prop = item_attrs.get('property', '')
+        if prop.startswith('og:'):
+            attrs[prop] = item_attrs.get('content', '')
+    return attrs
+
+
+async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
+    idx = html.find(YA_MARKET_META_ANCHOR)
+    if idx == -1:
+        logger.debug(
+            'html content:\n{html}\n\n{html_repr}', html=html, html_repr=repr(html)
+        )
+        raise ItemInfoParseError('Не найдена переменная с данными в ответе')
+    # raw_decode разбирает ровно один JSON-объект и игнорирует хвост скрипта,
+    # поэтому устойчив к скобкам и кавычкам внутри значений (в отличие от регулярки).
+    try:
+        meta_data, _ = json.JSONDecoder().raw_decode(
+            html, idx + len(YA_MARKET_META_ANCHOR)
+        )
+    except json.JSONDecodeError as exc:
+        raise ItemInfoParseError('Ошибка парсинга json') from exc
+    attrs = _extract_og_attrs(meta_data)
+    if 'og:image' not in attrs:
+        raise ItemInfoParseError('Не найдена картинка')
+    if 'og:title' not in attrs:
+        raise ItemInfoParseError('Не найден заголовок')
+    return ItemInfoResponseSchema(
+        title=attrs['og:title'],
+        image_url=attrs['og:image'],  # type: ignore
+        description=attrs.get('og:description', ''),
     )
 
-    if 'market.yandex.ru' in link:
-        if not html:
-            html = await _request_ya_market_html(link)
-        return await _parse_ya_market_page(html)
 
-    if 'wildberries.ru' in link:
-        match = re.search(r'catalog\/(\d+)', link)
-        if not match:
-            raise Exception('В URL не найден паттерн catalog/')
-        item_id = int(match.group(1))
-        vol = item_id // 100000
-        part = item_id // 1000
-        basket = _get_wb_basket(item_id)
-        base_url = f'https://basket-{basket}.wbbasket.ru/vol{vol}/part{part}/{item_id}'
-        async with httpx.AsyncClient() as client:
-            api_response = await client.get(f'{base_url}/info/ru/card.json')
-        api_response.raise_for_status()
-        api_data = api_response.json()
-        return ItemInfoResponseSchema(
-            title=api_data['imt_name'],
-            description=api_data['description'],
-            image_url=f'{base_url}/images/big/1.webp',  # type: ignore
+async def _request_ya_market_html(link: str, client: httpx.AsyncClient) -> str:
+    if '/cc/' in link:
+        # Короткие ссылки вызывают несколько редиректов, заканчивающихся каптчей (400).
+        # Запрос итоговой страницы повторно возвращает успешный ответ.
+        response = await client.get(link, headers=YA_MARKET_HEADERS)
+        link = str(response.history[2].url)
+    response = await client.get(link)
+    logger.debug(
+        'ya market link {link}, status {status}, headers {headers}',
+        link=link,
+        status=response.status_code,
+        headers=str(response.headers),
+    )
+    return response.text
+
+
+async def _parse_wildberries(
+    item_id: int, client: httpx.AsyncClient
+) -> ItemInfoResponseSchema:
+    vol = item_id // 100000
+    part = item_id // 1000
+    start = 1
+    while start < WB_BASKET_HARD_LIMIT:
+        base_urls = [
+            f'https://basket-{n:02d}.wbbasket.ru/vol{vol}/part{part}/{item_id}'
+            for n in range(start, start + WB_BASKET_BATCH)
+        ]
+        # Перебираем пачку basket-хостов параллельно: карточку отдаёт ровно один из них.
+        responses = await asyncio.gather(
+            *(client.get(f'{base_url}/info/ru/card.json') for base_url in base_urls),
+            return_exceptions=True,
         )
+        for base_url, response in zip(base_urls, responses, strict=True):
+            if isinstance(response, BaseException) or not response.is_success:
+                continue
+            api_data = response.json()
+            return ItemInfoResponseSchema(
+                title=api_data['imt_name'],
+                description=api_data.get('description', ''),
+                image_url=f'{base_url}/images/big/1.webp',  # type: ignore
+            )
+        # Самый старший хост пачки не существует → basket-ов выше нет, дальше не ищем.
+        if isinstance(responses[-1], BaseException):
+            break
+        start += WB_BASKET_BATCH
+    raise ItemInfoParseError('Карточка товара Wildberries не найдена')
 
-    if not html:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(link, follow_redirects=True, timeout=5)
-        if not response.is_success:
-            raise ItemInfoParseError(f'Ошибка статуса ответа: {response.status_code}')
-        html = response.text
 
+def _parse_og_tags(link: str, html: str) -> ItemInfoResponseSchema:
     soup = BeautifulSoup(html, features='html.parser')
-    try:
-        title = soup.select('meta[property="og:title"]')[0]['content']
-        description = soup.select('meta[property="og:description"]')[0]['content']
-        image_url = soup.select('meta[property="og:image"]')[0]['content']
-        assert isinstance(title, str)
-        assert isinstance(description, str)
-        assert isinstance(image_url, str)
-    except IndexError:
-        raise ItemInfoParseError('Не найден тег метаданных') from None
+    title_tag = soup.select_one('meta[property="og:title"]')
+    image_tag = soup.select_one('meta[property="og:image"]')
+    if title_tag is None or image_tag is None:
+        raise ItemInfoParseError('Не найден тег метаданных')
+    title = title_tag.get('content')
+    image_url = image_tag.get('content')
+    if not isinstance(title, str) or not isinstance(image_url, str):
+        raise ItemInfoParseError('Не найден тег метаданных')
+    # og:description есть не на всех страницах — он необязателен.
+    description_tag = soup.select_one('meta[property="og:description"]')
+    description = description_tag.get('content') if description_tag else None
+    if not isinstance(description, str):
+        description = ''
     if not is_absolute_url(image_url):
         # если был указан относительный путь, конструируем абсолютный путь,
         # используя link, чтобы фронт смог подтянуть картинку.
@@ -200,3 +185,41 @@ async def try_parse_item_by_link(
         description=description,
         image_url=image_url,  # type: ignore
     )
+
+
+async def _fetch_html(link: str, client: httpx.AsyncClient) -> str:
+    response = await client.get(link)
+    if not response.is_success:
+        raise ItemInfoParseError(f'Ошибка статуса ответа: {response.status_code}')
+    return response.text
+
+
+async def try_parse_item_by_link(
+    link: str,
+    html: str | None = None,
+    client: httpx.AsyncClient | None = None,
+) -> ItemInfoResponseSchema:
+    logger.info(
+        'Парсинг превью {link}, есть html: {has_html}', link=link, has_html=bool(html)
+    )
+    own_client = client is None
+    if client is None:
+        client = httpx.AsyncClient(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
+    try:
+        if 'market.yandex.ru' in link:
+            if not html:
+                html = await _request_ya_market_html(link, client)
+            return await _parse_ya_market_page(html)
+
+        if 'wildberries.ru' in link:
+            match = re.search(r'catalog/(\d+)', link)
+            if not match:
+                raise ItemInfoParseError('В URL не найден паттерн catalog/')
+            return await _parse_wildberries(int(match.group(1)), client)
+
+        if not html:
+            html = await _fetch_html(link, client)
+        return _parse_og_tags(link, html)
+    finally:
+        if own_client:
+            await client.aclose()
