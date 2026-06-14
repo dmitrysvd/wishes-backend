@@ -9,6 +9,7 @@
 - **Auth:** Firebase + VK
 - **Линт/типы:** `ruff` + `ty`
 - **Тесты:** `pytest`
+- **CI/CD**: Github CI
 
 ## Команды
 ```

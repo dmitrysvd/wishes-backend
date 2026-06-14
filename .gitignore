@@ -6,6 +6,8 @@ CLAUDE.local.md
 .env.*
 *firebase-adminsdk*
 media/
+/wishes-product
+/plans
 logs/
 
 # Created by https://www.toptal.com/developers/gitignore/api/python
