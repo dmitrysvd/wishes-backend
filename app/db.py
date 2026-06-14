@@ -18,6 +18,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Table,
+    Text,
     Uuid,
     create_engine,
     event,
@@ -56,12 +57,12 @@ class User(Base):
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid4
     )
-    display_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(250), nullable=False)
     email: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
     phone: Mapped[str | None] = mapped_column(String(15))
     birth_date: Mapped[date | None] = mapped_column(Date())
     gender: Mapped[Gender | None] = mapped_column(Enum(Gender))
-    photo_url: Mapped[str | None] = mapped_column(String(200))
+    photo_url: Mapped[str | None] = mapped_column(String(1024))
     photo_path: Mapped[str | None] = mapped_column(String(200))
 
     vk_id: Mapped[str | None] = mapped_column(String(15), unique=True)
@@ -70,8 +71,8 @@ class User(Base):
         unique=True,
     )
     vk_friends_data: Mapped[list[Any] | None] = mapped_column(JSON)
-    firebase_uid: Mapped[str] = mapped_column(String(100), unique=True)
-    firebase_push_token: Mapped[str | None] = mapped_column(String(100))
+    firebase_uid: Mapped[str] = mapped_column(String(1000), unique=True)
+    firebase_push_token: Mapped[str | None] = mapped_column(String(1000))
     firebase_push_token_saved_at: Mapped[datetime | None] = mapped_column()
 
     registered_at: Mapped[datetime] = mapped_column(nullable=False)
@@ -140,8 +141,8 @@ class Wish(Base):
     reserved_by_id: Mapped[UUID | None] = mapped_column(
         ForeignKey('user.id'), nullable=True
     )
-    name: Mapped[str] = mapped_column(String(50))
-    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    name: Mapped[str] = mapped_column(String(250))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     link: Mapped[str | None] = mapped_column(String(500), nullable=True)
     price: Mapped[Decimal | None] = mapped_column(
         Numeric(precision=10, scale=2), nullable=True
