@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -9,9 +10,15 @@ from app.logging import logger
 # Set APScheduler logging to WARNING to keep the output clean
 logging.getLogger('apscheduler').setLevel(logging.WARNING)
 
+# Heartbeat-файл: обновляется при каждом запуске задачи (every_minute — раз в
+# минуту). По его свежести docker-healthcheck понимает, что планировщик реально
+# тикает, а не просто что процесс жив.
+HEARTBEAT_FILE = Path('/tmp/scheduler_heartbeat')
+
 
 def run_job(job_func, job_name):
     logger.info(f'Running job: {job_name}')
+    HEARTBEAT_FILE.touch()
     try:
         job_func()
     except Exception:

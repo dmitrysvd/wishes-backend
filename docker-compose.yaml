@@ -48,6 +48,13 @@ services:
         condition: service_healthy
     env_file: .env
     restart: always
+    # Здоров, если heartbeat обновлялся в последние 120с (every_minute бьёт раз в минуту).
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import os,time,sys; f='/tmp/scheduler_heartbeat'; sys.exit(0 if os.path.exists(f) and time.time()-os.path.getmtime(f) < 120 else 1)" ]
+      interval: 60s
+      timeout: 5s
+      retries: 2
+      start_period: 90s
 
   db:
     image: postgres:18
