@@ -17,8 +17,9 @@ def test_head_supported_by_default(api_client: TestClient):
 
 
 def test_debug_error(api_client: TestClient):
-    response = api_client.get('/debug-error')
-    assert response.status_code == 200
+    # Эндпоинт намеренно кидает ошибку; middleware её ре-райзит.
+    with pytest.raises(RuntimeError, match='Hawk debug error'):
+        api_client.get('/debug-error')
 
 
 def test_custom_openapi():
