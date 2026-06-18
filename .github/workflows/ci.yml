@@ -6,8 +6,92 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Обязательные настройки app/config.py. Значения фиктивные — нужны лишь
+      # чтобы импорт приложения и тесты прошли в CI без прод-секретов.
+      SECRET_KEY: ci-secret
+      IS_DEBUG: 'true'
+      VK_SERVICE_KEY: ci
+      VK_APP_ID: '0'
+      FIREBASE_KEY_PATH: /tmp/firebase-ci.json
+      TEST_TOKEN: test_token
+      MEDIA_ROOT: /tmp/media
+      LOGS_DIR: /tmp/logs
+      TG_ALERTS_BOT_TOKEN: ci
+      TG_ALERTS_CHANNEL_ID: ci
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
+      TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: '0.10.4'
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Prepare runtime dirs
+        run: mkdir -p /tmp/media /tmp/logs
+
+      - name: Generate dummy Firebase credentials
+        # firebase_admin читает ключ на импорте app.firebase. Реальный секрет в
+        # CI не нужен (сеть не дёргается), достаточно структурно валидного JSON.
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+
+          key = subprocess.check_output(['openssl', 'genrsa', '2048'], stderr=subprocess.DEVNULL).decode()
+          json.dump({
+              'type': 'service_account',
+              'project_id': 'ci-dummy',
+              'private_key_id': 'dummy',
+              'private_key': key,
+              'client_email': 'ci@ci-dummy.iam.gserviceaccount.com',
+              'client_id': '0',
+              'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+              'token_uri': 'https://oauth2.googleapis.com/token',
+              'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
+              'client_x509_cert_url': 'https://example.com/x',
+          }, open('/tmp/firebase-ci.json', 'w'))
+          PY
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Type check (ty)
+        run: uv run ty check
+
+      - name: Tests + coverage (100%)
+        run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=100
+
   build-and-deploy:
     runs-on: ubuntu-latest
+    needs: test
 
     steps:
       - name: Checkout repository
@@ -28,7 +112,10 @@ jobs:
           context: .
           target: prod
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/wishes-app:latest
+          # latest — фолбэк/ручной up; тег по SHA — иммутабельный деплой и откат.
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/wishes-app:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/wishes-app:${{ github.sha }}
 
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v1.2.0
@@ -36,6 +123,11 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          # Разворачиваем именно собранный образ по SHA, а не плавающий latest.
+          # deploy.sh версионируется в репозитории; подтягиваем свежую копию
+          # перед запуском.
           script: |
-            cd /home/wishes
-            bash deploy.sh
+            cd /home/wishes/wishes
+            git switch master
+            git pull --ff-only
+            bash deploy.sh ${{ github.sha }}
