@@ -6,7 +6,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.10.4 /uv /uvx /bin/
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked
+# --no-dev: в базовый (и значит прод) образ не тянем pytest/ruff/ty.
+RUN uv sync --locked --no-dev
 
 COPY app/ ./app
 
@@ -21,6 +22,9 @@ FROM base AS dev
 RUN apt-get update \
     && apt-get install -y git vim \
     && rm -rf /var/lib/apt/lists/*
+
+# Доустанавливаем dev-зависимости (pytest, ruff, ty) поверх базовых.
+RUN uv sync --locked
 
 RUN groupadd vscode \
     && useradd -m vscode -g vscode -p "" \

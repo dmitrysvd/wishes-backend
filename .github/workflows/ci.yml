@@ -120,6 +120,43 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/wishes-app:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/wishes-app:${{ github.sha }}
 
+      - name: Smoke test prod image
+        # Поднимаем собранный prod-образ боевой командой gunicorn и проверяем,
+        # что приложение стартует и отдаёт /health. Ловит поломки уровня образа
+        # (нет системной либы, --no-dev убрал нужный пакет), которых не видит
+        # джоба test, гоняющая код из исходников.
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          key = subprocess.check_output(['openssl', 'genrsa', '2048'], stderr=subprocess.DEVNULL).decode()
+          json.dump({
+              'type': 'service_account', 'project_id': 'ci', 'private_key_id': 'd',
+              'private_key': key, 'client_email': 'ci@ci.iam.gserviceaccount.com',
+              'client_id': '0', 'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+              'token_uri': 'https://oauth2.googleapis.com/token',
+              'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
+              'client_x509_cert_url': 'https://example.com/x',
+          }, open('/tmp/fb-smoke.json', 'w'))
+          PY
+          IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/wishes-app:${{ github.sha }}
+          docker run -d --name smoke \
+            -e SECRET_KEY=ci -e IS_DEBUG=false -e VK_SERVICE_KEY=ci -e VK_APP_ID=0 \
+            -e FIREBASE_KEY_PATH=/firebase.json -e TEST_TOKEN=t \
+            -e MEDIA_ROOT=/tmp/media -e LOGS_DIR=/tmp/logs \
+            -e TG_ALERTS_BOT_TOKEN=ci -e TG_ALERTS_CHANNEL_ID=ci \
+            -e DATABASE_URL=postgresql://x:x@127.0.0.1:5432/x \
+            -v /tmp/fb-smoke.json:/firebase.json:ro \
+            "$IMAGE" \
+            uv run --no-sync gunicorn --bind 0.0.0.0:8000 \
+              --worker-class uvicorn.workers.UvicornWorker --workers 1 --chdir /app app.main:app
+          for i in $(seq 1 30); do
+            if docker exec smoke python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status == 200 else 1)" 2>/dev/null; then
+              echo "smoke OK (попытка $i)"; docker rm -f smoke >/dev/null; exit 0
+            fi
+            sleep 2
+          done
+          echo "smoke FAILED"; docker logs smoke; docker rm -f smoke >/dev/null; exit 1
+
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
