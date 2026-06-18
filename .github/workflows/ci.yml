@@ -39,6 +39,9 @@ jobs:
       TG_ALERTS_CHANNEL_ID: ci
       DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
       TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
+      # Фиктивный, но валидный по форме DSN: ветка sentry_sdk.init в app/main.py
+      # покрывается импортом (отдельного теста на неё нет). Сеть не дёргается.
+      SENTRY_DSN: https://examplePublicKey@o0.ingest.sentry.io/0
 
     steps:
       - name: Checkout repository
