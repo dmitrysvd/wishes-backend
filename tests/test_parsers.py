@@ -3,6 +3,8 @@ import pytest
 
 from app.parsers import (
     ItemInfoParseError,
+    _assert_public_url,
+    _is_public_ip,
     is_absolute_url,
     try_parse_item_by_link,
 )
@@ -14,6 +16,50 @@ def _client(handler) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.MockTransport(handler), follow_redirects=True
     )
+
+
+# --- SSRF protection ----------------------------------------------------------
+
+
+def test_is_public_ip():
+    assert _is_public_ip('8.8.8.8') is True
+    assert _is_public_ip('10.0.0.1') is False
+    assert _is_public_ip('127.0.0.1') is False
+    assert _is_public_ip('169.254.169.254') is False  # метаданные облака
+    assert _is_public_ip('192.168.1.1') is False
+
+
+def test_assert_public_url_allows_public_ip():
+    # IP-литерал не требует DNS — getaddrinfo возвращает его как есть.
+    _assert_public_url('https://8.8.8.8/item')
+
+
+def test_assert_public_url_bad_scheme():
+    with pytest.raises(ItemInfoParseError, match='Недопустимая схема URL'):
+        _assert_public_url('ftp://example.com/item')
+
+
+def test_assert_public_url_no_host():
+    with pytest.raises(ItemInfoParseError, match='В URL не найден хост'):
+        _assert_public_url('http:///item')
+
+
+def test_assert_public_url_private_ip():
+    with pytest.raises(ItemInfoParseError, match='внутреннему адресу'):
+        _assert_public_url('http://127.0.0.1:5432/')
+
+
+def test_assert_public_url_unresolvable():
+    # .invalid гарантированно не резолвится (RFC 6761).
+    with pytest.raises(ItemInfoParseError, match='Не удалось разрешить хост'):
+        _assert_public_url('https://nonexistent.invalid/item')
+
+
+@pytest.mark.anyio
+async def test_fetch_blocks_internal_address():
+    # Собственный клиент парсера с SSRF-хуком: запрос к loopback не уходит в сеть.
+    with pytest.raises(ItemInfoParseError, match='внутреннему адресу'):
+        await try_parse_item_by_link('http://127.0.0.1/item')
 
 
 def test_is_absolute_url():
