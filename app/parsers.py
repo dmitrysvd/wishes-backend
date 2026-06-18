@@ -1,6 +1,8 @@
 import asyncio
+import ipaddress
 import json
 import re
+import socket
 import urllib.parse
 
 import httpx
@@ -11,6 +13,11 @@ from app.schemas import ItemInfoResponseSchema
 
 # Таймаут по умолчанию для исходящих запросов парсера.
 DEFAULT_TIMEOUT = 10
+
+# Парсер ходит по ссылке, которую прислал пользователь, поэтому защищаемся от SSRF:
+# разрешаем только http(s) и запрещаем обращения во внутреннюю сеть (loopback,
+# приватные/link-local диапазоны, метаданные облака 169.254.169.254 и т.п.).
+ALLOWED_URL_SCHEMES = ('http', 'https')
 
 # Wildberries хранит карточки на basket-хостах (basket-01..basket-NN.wbbasket.ru).
 # Номер basket-а раньше вычислялся статической таблицей из их JS, но WB регулярно
@@ -56,6 +63,45 @@ YA_MARKET_META_ANCHOR = 'window.__apiary.deferredMetaGenerator('
 
 class ItemInfoParseError(Exception):
     pass
+
+
+def _is_public_ip(ip: str) -> bool:
+    addr = ipaddress.ip_address(ip)
+    # Отсекаем всё, что ведёт во внутреннюю инфраструктуру или к спец-адресам.
+    return not (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    )
+
+
+def _assert_public_url(url: str) -> None:
+    """Проверить, что URL безопасен для исходящего запроса (защита от SSRF)."""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in ALLOWED_URL_SCHEMES:
+        raise ItemInfoParseError(f'Недопустимая схема URL: {parsed.scheme}')
+    host = parsed.hostname
+    if not host:
+        raise ItemInfoParseError('В URL не найден хост')
+    try:
+        addr_infos = socket.getaddrinfo(host, parsed.port or None)
+    except socket.gaierror as exc:
+        raise ItemInfoParseError(f'Не удалось разрешить хост: {host}') from exc
+    # Все IP, в которые резолвится хост, должны быть публичными — иначе это попытка
+    # достучаться до внутренней сети (в т.ч. через DNS, указывающий на 127.0.0.1).
+    for addr_info in addr_infos:
+        ip = str(addr_info[4][0])
+        if not _is_public_ip(ip):
+            raise ItemInfoParseError(f'Обращение к внутреннему адресу запрещено: {ip}')
+
+
+async def _block_internal_requests(request: httpx.Request) -> None:
+    # Хук вызывается httpx на каждый запрос, включая каждый redirect-хоп, поэтому
+    # внутренний адрес нельзя протащить ни через исходную ссылку, ни через редирект.
+    _assert_public_url(str(request.url))
 
 
 def is_absolute_url(url: str) -> bool:
@@ -211,7 +257,11 @@ async def try_parse_item_by_link(
     )
     own_client = client is None
     if client is None:
-        client = httpx.AsyncClient(follow_redirects=True, timeout=DEFAULT_TIMEOUT)
+        client = httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=DEFAULT_TIMEOUT,
+            event_hooks={'request': [_block_internal_requests]},
+        )
     try:
         if 'market.yandex.ru' in link:
             if not html:

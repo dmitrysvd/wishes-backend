@@ -43,10 +43,11 @@ if settings.IS_DEBUG:
     app.mount('/static', StaticFiles(directory=BASE_DIR / 'static'), name='static')
     app.mount('/media', StaticFiles(directory=settings.MEDIA_ROOT), name='media')
 
-# TODO: ограничить CORS-origin
+# CORS ограничен явным списком origin-ов из настроек: при allow_credentials=True
+# использовать allow_origins=['*'] небезопасно (любой сайт получает доступ с куками).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],
+    allow_origins=settings.CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=['*'],
     allow_headers=['*'],

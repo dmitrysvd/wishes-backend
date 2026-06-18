@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     SENTRY_DSN: str | None = None
     ADMIN_PASSWORD: str | None = None
     FRONTEND_URL: str = 'https://hotelki.pro'
+    # Разрешённые CORS-origin. Задаётся в .env JSON-списком, напр.
+    # CORS_ALLOW_ORIGINS=["https://hotelki.pro","https://app.hotelki.pro"]
+    CORS_ALLOW_ORIGINS: list[str] = ['https://hotelki.pro']
     # DATABASE_URL: str = 'sqlite:///db.sqlite'
     DATABASE_URL: str
     TEST_DATABASE_URL: str = 'sqlite://'
