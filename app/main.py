@@ -8,7 +8,6 @@ from fastapi.templating import Jinja2Templates
 from hawk_python_sdk import Hawk
 
 from app.admin.setup import setup_admin
-from app.alerts import alert_exception
 from app.config import settings
 from app.db import engine
 
@@ -60,9 +59,12 @@ async def internal_exception_handler(request: Request, call_next):
     except Exception as exc:
         if not settings.IS_DEBUG:
             logger.exception('Exception')
-            alert_exception(request, exc)
             # Трейсбек берётся из sys.exc_info() — мы внутри except-блока.
-            hawk.send(exc)
+            # Сбой трекера не должен ломать обработку запроса.
+            try:
+                hawk.send(exc)
+            except Exception:
+                logger.exception('Не удалось отправить ошибку в Hawk')
         raise exc
     return response
 

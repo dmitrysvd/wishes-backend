@@ -35,8 +35,6 @@ jobs:
       TEST_TOKEN: test_token
       MEDIA_ROOT: /tmp/media
       LOGS_DIR: /tmp/logs
-      TG_ALERTS_BOT_TOKEN: ci
-      TG_ALERTS_CHANNEL_ID: ci
       DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
       TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
 
@@ -140,7 +138,6 @@ jobs:
             -e SECRET_KEY=ci -e IS_DEBUG=false -e VK_SERVICE_KEY=ci -e VK_APP_ID=0 \
             -e FIREBASE_KEY_PATH=/firebase.json -e TEST_TOKEN=t \
             -e MEDIA_ROOT=/tmp/media -e LOGS_DIR=/tmp/logs \
-            -e TG_ALERTS_BOT_TOKEN=ci -e TG_ALERTS_CHANNEL_ID=ci \
             -e DATABASE_URL=postgresql://x:x@127.0.0.1:5432/x \
             -v /tmp/fb-smoke.json:/firebase.json:ro \
             "$IMAGE" \

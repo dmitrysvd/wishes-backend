@@ -116,11 +116,6 @@ def auth_client(user: User) -> TestClient:
     return client
 
 
-@pytest.fixture(autouse=True)
-def mock_external_requests(mocker):
-    mocker.patch('app.utils.send_tg_channel_message')
-
-
 class TestMyWishes:
     def test_empty_wishes(self, auth_client):
         response = auth_client.get('/wishes')

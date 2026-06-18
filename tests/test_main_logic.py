@@ -34,7 +34,7 @@ async def test_internal_exception_handler_debug_true(mocker):
 @pytest.mark.anyio
 async def test_internal_exception_handler_debug_false(mocker):
     mocker.patch('app.main.settings.IS_DEBUG', False)
-    mock_alert = mocker.patch('app.main.alert_exception')
+    mock_hawk = mocker.patch('app.main.hawk')
     mock_request = mocker.MagicMock(spec=Request)
 
     async def call_next(request):
@@ -43,5 +43,5 @@ async def test_internal_exception_handler_debug_false(mocker):
     with pytest.raises(ValueError, match='Test Exception'):
         await internal_exception_handler(mock_request, call_next)
 
-    mock_alert.assert_called_once()
-    assert mock_alert.call_args.args[0] is mock_request
+    mock_hawk.send.assert_called_once()
+    assert isinstance(mock_hawk.send.call_args.args[0], ValueError)

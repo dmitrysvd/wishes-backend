@@ -51,7 +51,6 @@
 - **Firebase** — auth и пуши (`app/firebase.py`, `app/notifications.py`).
 - **VK** — соц-авторизация и списки друзей (`app/vk.py`).
 - **Hawk** (hawk.so) — трекер ошибок (`HAWK_TOKEN`, отправка из `internal_exception_handler` в `app/main.py`).
-- **Telegram** — алерты/логи через `app.utils.send_tg_channel_message`.
 
 ## Тесты
 - Обязательно 100% покрытие для `app/` (проверяется в pre-commit).
