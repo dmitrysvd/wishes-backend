@@ -18,7 +18,7 @@ dependencies = [
     "loguru>=0.7.2",
     "beautifulsoup4>=4.12.2",
     "ipython>=8.20.0",
-    "sentry-sdk[fastapi]>=2.2.0",
+    "hawk-python-sdk>=3.5.2",
     "psycopg2-binary>=2.9.11",
     "apscheduler>=3.11.2",
 ]

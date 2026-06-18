@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     TG_ALERTS_BOT_TOKEN: str
     TG_ALERTS_CHANNEL_ID: str
     URL_ROOT_PATH: str = '/'
-    SENTRY_DSN: str | None = None
+    # Hawk (hawk.so) — трекер ошибок. Интеграционный токен проекта.
+    HAWK_TOKEN: str | None = None
     ADMIN_PASSWORD: str | None = None
     FRONTEND_URL: str = 'https://hotelki.pro'
     # Разрешённые CORS-origin. Задаётся в .env JSON-списком, напр.

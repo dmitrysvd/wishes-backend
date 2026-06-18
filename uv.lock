@@ -927,6 +927,18 @@ wheels = [
 ]
 
 [[package]]
+name = "hawk-python-sdk"
+version = "3.5.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/64/72/56ccabe737913cdd274cafe3d9b15975b3e3c7e728dc6a88b43711fd5133/hawk_python_sdk-3.5.2.tar.gz", hash = "sha256:9a1d3a071afef31ae0ac4383cd0cee9849fff97b49eb9902207fd92643bb9469", size = 12502, upload-time = "2025-01-10T14:09:00.593Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/7c/605460fef255a6df8e9f6523ae49cfaf4272285ec2acdb6c52e472b7fd4c/hawk_python_sdk-3.5.2-py3-none-any.whl", hash = "sha256:b7e9c2b3ddc764aaf76254f6d0038b855bf3f5f3fcb7e136f0d544168c9a5b9d", size = 10881, upload-time = "2025-01-10T14:08:58.319Z" },
+]
+
+[[package]]
 name = "hpack"
 version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1954,24 +1966,6 @@ wheels = [
 ]
 
 [[package]]
-name = "sentry-sdk"
-version = "2.62.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "certifi" },
-    { name = "urllib3" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f6/5d/a343201726150e05f2036eeb6e493e2e2f8bf8a66f5aa70f2f4ac96f9ca3/sentry_sdk-2.62.0.tar.gz", hash = "sha256:3c870b9f50d9fd15b58c817dbde1c7cfaa9fe3f05df0a4c6edd5571cb82f5491", size = 463986, upload-time = "2026-06-08T13:23:49.223Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3d/07/05440381627877aae223fd68f330df9b9fc6641d08bf65328b55235617a2/sentry_sdk-2.62.0-py3-none-any.whl", hash = "sha256:27f61d13a86c3c1648dec666dd5a64f79772dd6a84b446f11866601ecab24f6f", size = 490586, upload-time = "2026-06-08T13:23:47.486Z" },
-]
-
-[package.optional-dependencies]
-fastapi = [
-    { name = "fastapi" },
-]
-
-[[package]]
 name = "soupsieve"
 version = "2.8.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2521,6 +2515,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "firebase-admin" },
     { name = "gunicorn" },
+    { name = "hawk-python-sdk" },
     { name = "httpx" },
     { name = "ipython", version = "8.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "ipython", version = "9.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
@@ -2529,7 +2524,6 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
-    { name = "sentry-sdk", extra = ["fastapi"] },
     { name = "sqladmin", extra = ["full"] },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
@@ -2553,6 +2547,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.104.1" },
     { name = "firebase-admin", specifier = ">=6.2.0" },
     { name = "gunicorn", specifier = ">=21.2.0" },
+    { name = "hawk-python-sdk", specifier = ">=3.5.2" },
     { name = "httpx", specifier = ">=0.25.1" },
     { name = "ipython", specifier = ">=8.20.0" },
     { name = "jinja2", specifier = ">=3.1.2" },
@@ -2560,7 +2555,6 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9.11" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.5.1" },
     { name = "pydantic-settings", specifier = ">=2.1.0" },
-    { name = "sentry-sdk", extras = ["fastapi"], specifier = ">=2.2.0" },
     { name = "sqladmin", extras = ["full"], specifier = ">=0.16.0" },
     { name = "sqlalchemy", specifier = ">=2.0.23" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0.post1" },

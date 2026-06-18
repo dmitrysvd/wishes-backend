@@ -16,8 +16,8 @@ def test_head_supported_by_default(api_client: TestClient):
     assert response.status_code == 200
 
 
-def test_sentry_debug(api_client: TestClient):
-    response = api_client.get('/sentry-debug')
+def test_debug_error(api_client: TestClient):
+    response = api_client.get('/debug-error')
     assert response.status_code == 200
 
 

@@ -1,11 +1,11 @@
 import enum
 from pathlib import Path
 
-import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from hawk_python_sdk import Hawk
 
 from app.admin.setup import setup_admin
 from app.alerts import alert_exception
@@ -26,12 +26,11 @@ TEMPLATES_DIR = APP_DIR / 'templates'
 
 settings.LOGS_DIR.mkdir(exist_ok=True, parents=True)
 
-if settings.SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=settings.SENTRY_DSN,
-        traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
-    )
+# Hawk (hawk.so) — трекер ошибок. Без токена send() — безопасный no-op,
+# поэтому объект создаём всегда. Их FastAPI-мидлварь не используем (она глотает
+# исключение вместо ре-райза) — шлём ошибки вручную из internal_exception_handler.
+# SDK допускает None в рантайме (no-op), но в их сигнатуре тип занижен.
+hawk = Hawk(settings.HAWK_TOKEN)  # ty: ignore[invalid-argument-type]
 
 app = FastAPI(
     title='Хотелки',
@@ -62,6 +61,8 @@ async def internal_exception_handler(request: Request, call_next):
         if not settings.IS_DEBUG:
             logger.exception('Exception')
             alert_exception(request, exc)
+            # Трейсбек берётся из sys.exc_info() — мы внутри except-блока.
+            hawk.send(exc)
         raise exc
     return response
 
@@ -92,7 +93,7 @@ PUSH_MESSAGES = {HolidayEvent.NEW_YEAR: ('🎄🎄🎄Скоро Новый го
 BODY_MESSAGE = 'Заполните свой список желаний, чтобы друзья знали, что вам подарить'
 
 
-@app.get('/sentry-debug')
+@app.get('/debug-error')
 async def trigger_error():
     pass
 
