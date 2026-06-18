@@ -1,0 +1,26 @@
+# VCS
+.git
+.gitignore
+
+# Виртуальное окружение и кэши
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.ty_cache
+
+# Секреты и локальная конфигурация
+.env
+.env.*
+*adminsdk*.json
+
+# Загруженные пользователями файлы
+media
+
+# Инструментальное
+.claude
+.devcontainer
+.github
+*.md

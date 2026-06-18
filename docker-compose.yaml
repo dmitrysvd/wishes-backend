@@ -20,7 +20,6 @@ services:
         --error-logfile -
         app.main:app
     volumes:
-      - ./static:/app/static:ro
       - /data/media:/media
       - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
     # Только localhost: наружу отдаёт nginx (TLS), он же ходит на localhost:8000.
@@ -42,7 +41,6 @@ services:
     image: dmitrysvd1/wishes-app:${WISHES_TAG:-latest}
     command: uv run python -m app.scheduler
     volumes:
-      - ./static:/app/static:ro
       - /data/media:/media
       - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
     depends_on:

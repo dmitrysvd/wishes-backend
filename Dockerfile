@@ -11,8 +11,16 @@ RUN uv sync --locked --no-dev
 
 COPY app/ ./app
 
+# Статика — часть релиза, поэтому пакуется в образ и привязана к его тегу,
+# а не подтягивается bind-mount'ом из checkout'а на сервере.
+COPY static/ ./static
+
 COPY alembic.ini ./
 COPY alembic/ ./alembic
+
+# Скрипты разовых миграций/наполнения данных: гоняются через
+# `docker compose exec app uv run python scripts/...`.
+COPY scripts/ ./scripts
 
 # Dev-образ для devcontainer: инструменты разработки и пользователь vscode
 # с passwordless-sudo. В прод НЕ идёт — прод собирается из стадии prod ниже
