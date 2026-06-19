@@ -77,15 +77,18 @@
   `description` / `x-*`.
 - **Гейт `agreed`** = чек-лист полноты контракта закрыт **в спеке** (PROTOCOL.md §7) и слепой
   аудит вернул ноль дыр. До этого логику эндпоинтов не пишешь (контракт-фёрст).
-- **Заморозка:** дамп `app.openapi()` → `wishes-product/openapi.snapshot.json`; в `intent.md`
-  ставишь `status: agreed`, обновляешь `endpoints` и `updated`; коммит. Перенос снапшота в
-  шину = ритуал заморозки. (Push в шину делает человек — нет credential в namespace.)
+- **Заморозка:** сними снапшот скиллом `snapshot-contract`
+  (`.claude/skills/snapshot-contract/snapshot.sh` — детерминированный дамп `app.openapi()` в
+  `wishes-product/openapi.snapshot.json`, не угадывай команду); в `intent.md` ставишь
+  `status: agreed`, обновляешь `endpoints` и `updated`; коммит отдельным шагом. Перенос
+  снапшота в шину = ритуал заморозки. (Push в шину делает человек — нет credential в namespace.)
 - **Severity вопросов:** `🔴 BLOCKING` — стоп по ветке, спроси человека живьём, на остальном
   работай; до человека неси только продуктовое, форму/семантику закрывай сам. `🟡 ASSUMED` —
   по дефолту, залогируй, не блокируйся.
 - **Амендмент:** дыра, найденная после заморозки, — поправка спека (правишь → ре-`agreed` →
   вторая сторона перечитывает), а не задача «на потом».
-- **Verify:** после деплоя сверь `openapi.snapshot.json` с прод-swagger.
+- **Verify:** после деплоя сверь снапшот с прод-swagger скиллом `verify-contract`
+  (`wishes-product/.claude/skills/verify-contract/verify.sh`).
 
 ## Git
 - Никогда не делай сама `git push`. Делает только пользователь вручную.
