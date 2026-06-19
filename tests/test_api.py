@@ -147,6 +147,7 @@ class TestPublicWishlist:
         db: Session,
         other_user: User,
     ):
+        other_user.birth_date = date(1990, 3, 15)
         with_image = Wish(user_id=other_user.id, name='with image', image='abc')
         without_image = Wish(user_id=other_user.id, name='no image')
         reserved = Wish(user_id=other_user.id, name='reserved', reserved_by_id=None)
@@ -158,22 +159,38 @@ class TestPublicWishlist:
         assert response.is_success
         data = response.json()
 
-        # Владелец отдаётся без email/телефона.
-        assert data['user']['id'] == str(other_user.id)
-        assert data['user']['display_name'] == other_user.display_name
-        assert 'email' not in data['user']
-        assert 'phone' not in data['user']
+        # Владелец отдаётся без PII: email/телефон/год рождения.
+        assert data['owner']['id'] == str(other_user.id)
+        assert data['owner']['display_name'] == other_user.display_name
+        assert 'email' not in data['owner']
+        assert 'phone' not in data['owner']
+        # ДР — только день и месяц, без года.
+        assert data['owner']['birthday'] == {'day': 15, 'month': 3}
 
         # Архивные хотелки в публичный список не попадают.
         names = {w['name'] for w in data['wishes']}
         assert names == {'with image', 'no image', 'reserved'}
 
         by_name = {w['name']: w for w in data['wishes']}
-        assert by_name['with image']['image'] == '/media/wish_images/abc'
-        assert by_name['no image']['image'] is None
+        assert by_name['with image']['image_url'] == '/media/wish_images/abc'
+        assert by_name['no image']['image_url'] is None
         # Личность зарезервировавшего не раскрывается — только флаг.
         assert all('reserved_by_id' not in w for w in data['wishes'])
         assert by_name['no image']['is_reserved'] is False
+
+    def test_owner_without_birth_date_has_null_birthday(
+        self,
+        api_client: TestClient,
+        db: Session,
+        other_user: User,
+    ):
+        other_user.birth_date = None
+        db.commit()
+
+        response = api_client.get(f'/public/users/{other_user.id}/wishlist')
+        assert response.is_success
+        assert response.json()['owner']['birthday'] is None
+        assert response.json()['wishes'] == []
 
     def test_reserved_flag_true(
         self,
