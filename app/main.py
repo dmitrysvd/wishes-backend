@@ -111,7 +111,21 @@ def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
 
-    openapi_schema = default_openapi()
+    # HEAD добавлен ко всем GET-роутам для рантайма (enable_head_for_get_routes),
+    # но в OpenAPI он лишь дублирует GET (тот же operationId → "Duplicate Operation ID")
+    # и засоряет контракт. Снимаем HEAD на время генерации схемы и возвращаем обратно.
+    routes_with_head = [
+        route
+        for route in app.routes
+        if (getattr(route, 'methods', None) or set()) >= {'GET', 'HEAD'}
+    ]
+    for route in routes_with_head:
+        route.methods = set(route.methods) - {'HEAD'}  # ty: ignore[unresolved-attribute]
+    try:
+        openapi_schema = default_openapi()
+    finally:
+        for route in routes_with_head:
+            route.methods = set(route.methods) | {'HEAD'}  # ty: ignore[unresolved-attribute]
     openapi_schema['components']['securitySchemes'] = {
         'ApiKey': {
             'type': 'apiKey',

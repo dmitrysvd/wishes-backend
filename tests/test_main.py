@@ -29,6 +29,17 @@ def test_custom_openapi():
     assert 'ApiKey' in openapi['components']['securitySchemes']
     assert openapi['security'] == [{'ApiKey': []}]
 
+    # HEAD не должен попадать в схему (дублирует GET, плодит Duplicate Operation ID)
+    assert all('head' not in path_item for path_item in openapi['paths'].values())
+
+    # operationId уникальны (нет коллизий)
+    operation_ids = [
+        op['operationId']
+        for path_item in openapi['paths'].values()
+        for op in path_item.values()
+    ]
+    assert len(operation_ids) == len(set(operation_ids))
+
     # Test caching
     assert app.openapi() is openapi
 
