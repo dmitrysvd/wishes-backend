@@ -15,7 +15,7 @@ from app.db import engine
 from app.dependencies import get_current_user, get_db
 from app.helpers import get_user_deep_link
 from app.logging import logger
-from app.routers import auth, recommendations, users, wishes
+from app.routers import auth, public, recommendations, users, wishes
 
 __all__ = ['app', 'get_db', 'get_current_user', 'get_user_deep_link']
 
@@ -74,6 +74,7 @@ app.include_router(auth.router)
 app.include_router(recommendations.router)
 app.include_router(wishes.router)
 app.include_router(users.router)
+app.include_router(public.router)
 
 # Админка
 setup_admin(app, engine)

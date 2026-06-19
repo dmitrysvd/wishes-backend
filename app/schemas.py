@@ -90,6 +90,41 @@ class WishReadSchema(BaseWishSchema):
         return f'/media/wish_images/{image_name}'
 
 
+class PublicUserSchema(BaseModel):
+    """Публичные данные владельца вишлиста — без email/телефона и прочего PII."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    display_name: str
+    photo_url: HttpUrl | None
+    birth_date: date | None
+
+
+class PublicWishSchema(BaseWishSchema):
+    """Хотелка для публичной веб-страницы: без личности зарезервировавшего."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    image: str | None
+    is_reserved: bool
+
+    @field_validator('image', mode='before')
+    @staticmethod
+    def make_image_url(image_name: str) -> str | None:
+        if not image_name:
+            return None
+        return f'/media/wish_images/{image_name}'
+
+
+class PublicWishlistSchema(BaseModel):
+    """Публичный вишлист: владелец + его активные хотелки."""
+
+    user: PublicUserSchema
+    wishes: list[PublicWishSchema]
+
+
 class AnnotatedOtherUserSchema(BaseUserSchema):
     model_config = ConfigDict(from_attributes=True)
 

@@ -138,6 +138,64 @@ class TestMyWishes:
         assert [w['id'] for w in response.json()] == [str(wish.id)]
 
 
+class TestPublicWishlist:
+    """Публичный веб-вишлист: открывается без авторизации, без PII владельца."""
+
+    def test_returns_owner_and_active_wishes(
+        self,
+        api_client: TestClient,
+        db: Session,
+        other_user: User,
+    ):
+        with_image = Wish(user_id=other_user.id, name='with image', image='abc')
+        without_image = Wish(user_id=other_user.id, name='no image')
+        reserved = Wish(user_id=other_user.id, name='reserved', reserved_by_id=None)
+        archived = Wish(user_id=other_user.id, name='archived', is_archived=True)
+        db.add_all([with_image, without_image, reserved, archived])
+        db.commit()
+
+        response = api_client.get(f'/public/users/{other_user.id}/wishlist')
+        assert response.is_success
+        data = response.json()
+
+        # Владелец отдаётся без email/телефона.
+        assert data['user']['id'] == str(other_user.id)
+        assert data['user']['display_name'] == other_user.display_name
+        assert 'email' not in data['user']
+        assert 'phone' not in data['user']
+
+        # Архивные хотелки в публичный список не попадают.
+        names = {w['name'] for w in data['wishes']}
+        assert names == {'with image', 'no image', 'reserved'}
+
+        by_name = {w['name']: w for w in data['wishes']}
+        assert by_name['with image']['image'] == '/media/wish_images/abc'
+        assert by_name['no image']['image'] is None
+        # Личность зарезервировавшего не раскрывается — только флаг.
+        assert all('reserved_by_id' not in w for w in data['wishes'])
+        assert by_name['no image']['is_reserved'] is False
+
+    def test_reserved_flag_true(
+        self,
+        api_client: TestClient,
+        db: Session,
+        user: User,
+        other_user: User,
+    ):
+        wish = Wish(user_id=other_user.id, name='taken', reserved_by_id=user.id)
+        db.add(wish)
+        db.commit()
+
+        response = api_client.get(f'/public/users/{other_user.id}/wishlist')
+        assert response.is_success
+        taken = response.json()['wishes'][0]
+        assert taken['is_reserved'] is True
+
+    def test_unknown_user_returns_404(self, api_client: TestClient):
+        response = api_client.get(f'/public/users/{uuid4()}/wishlist')
+        assert response.status_code == 404
+
+
 class TestReservedWishes:
     @pytest.fixture
     def reserved_wish(self, db: Session, wish: Wish, user: User, other_user: User):

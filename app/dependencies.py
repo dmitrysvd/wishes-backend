@@ -23,6 +23,7 @@ from app.db import SessionLocal, User, Wish
 AUTH_TAG = 'auth'
 WISHES_TAG = 'wishes'
 USERS_TAG = 'users'
+PUBLIC_TAG = 'public'
 
 
 class PaginationParams:
