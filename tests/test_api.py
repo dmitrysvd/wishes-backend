@@ -213,6 +213,104 @@ class TestPublicWishlist:
         assert response.status_code == 404
 
 
+class TestOgHelpers:
+    """Чистые функции сборки Open Graph-превью."""
+
+    @pytest.mark.parametrize(
+        ('count', 'expected'),
+        [
+            (1, '1 желание'),
+            (2, '2 желания'),
+            (4, '4 желания'),
+            (5, '5 желаний'),
+            (0, '0 желаний'),
+            (11, '11 желаний'),
+            (12, '12 желаний'),
+            (14, '14 желаний'),
+            (21, '21 желание'),
+            (22, '22 желания'),
+            (25, '25 желаний'),
+            (111, '111 желаний'),
+        ],
+    )
+    def test_pluralize_wishes(self, count: int, expected: str):
+        from app.helpers.og_helpers import pluralize_wishes
+
+        assert pluralize_wishes(count) == expected
+
+    def test_absolutize_url_passthrough_and_prefix(self):
+        from app.helpers.og_helpers import absolutize_url
+
+        assert absolutize_url('https://cdn/x.png') == 'https://cdn/x.png'
+        assert absolutize_url('http://cdn/x.png') == 'http://cdn/x.png'
+        assert absolutize_url('/static/og_banner.png') == (
+            'https://hotelki.pro/static/og_banner.png'
+        )
+
+    def test_format_birthday(self):
+        from app.helpers.og_helpers import format_birthday
+
+        assert format_birthday(date(1990, 7, 5)) == '5 июля'
+
+
+class TestOgPreview:
+    """Серверный HTML с OG-тегами для краулеров соцсетей по deep link /user."""
+
+    def test_user_with_photo_birthday_and_wishes(
+        self, api_client: TestClient, db: Session, other_user: User
+    ):
+        other_user.photo_url = 'https://cdn/photo.png'
+        other_user.birth_date = date(1990, 7, 5)
+        db.add_all(
+            [
+                Wish(user_id=other_user.id, name='one'),
+                Wish(user_id=other_user.id, name='two'),
+                Wish(user_id=other_user.id, name='archived', is_archived=True),
+            ]
+        )
+        db.commit()
+
+        response = api_client.get(f'/og/user?userId={other_user.id}')
+        assert response.is_success
+        html = response.text
+        # Заголовок — имя владельца; картинка — фото профиля (лицо = CTR).
+        assert 'Хотелки · Other test user' in html
+        assert 'content="https://cdn/photo.png"' in html
+        # Архивная не считается → «2 желания», + дата ДР без года.
+        assert '2 желания · ДР 5 июля' in html
+        assert f'content="https://hotelki.pro/user?userId={other_user.id}"' in html
+
+    def test_user_without_photo_falls_back_to_brand_banner(
+        self, api_client: TestClient, db: Session, other_user: User
+    ):
+        other_user.photo_url = None
+        other_user.birth_date = None
+        db.commit()
+
+        response = api_client.get(f'/og/user?userId={other_user.id}')
+        assert response.is_success
+        # Нет фото → бренд-баннер; нет ДР и хотелок → «Список желаний».
+        assert 'content="https://hotelki.pro/static/og_banner.png"' in response.text
+        assert 'content="Список желаний"' in response.text
+
+    def test_unknown_user_id_renders_brand_fallback(self, api_client: TestClient):
+        response = api_client.get(f'/og/user?userId={uuid4()}')
+        assert response.is_success
+        html = response.text
+        assert 'content="Список желаний по ссылке — узнай, что подарить"' in html
+        assert 'content="https://hotelki.pro/static/og_banner.png"' in html
+
+    def test_invalid_user_id_renders_brand_fallback(self, api_client: TestClient):
+        response = api_client.get('/og/user?userId=not-a-uuid')
+        assert response.is_success
+        assert 'content="https://hotelki.pro/static/og_banner.png"' in response.text
+
+    def test_missing_user_id_renders_brand_fallback(self, api_client: TestClient):
+        response = api_client.get('/og/user')
+        assert response.is_success
+        assert 'content="https://hotelki.pro/static/og_banner.png"' in response.text
+
+
 class TestReservedWishes:
     @pytest.fixture
     def reserved_wish(self, db: Session, wish: Wish, user: User, other_user: User):

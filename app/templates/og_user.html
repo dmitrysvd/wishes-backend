@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru" prefix="og: https://ogp.me/ns#">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }}</title>
+
+  {# Open Graph — превью для краулеров Telegram/VK/WhatsApp/Facebook и т.п. #}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Хотелки">
+  <meta property="og:title" content="{{ title }}">
+  <meta property="og:description" content="{{ description }}">
+  <meta property="og:image" content="{{ image }}">
+  <meta property="og:url" content="{{ url }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ title }}">
+  <meta name="twitter:description" content="{{ description }}">
+  <meta name="twitter:image" content="{{ image }}">
+
+  {# Живой человек попадает сюда редко (nginx ведёт людей в SPA), но если попал —
+     уводим его в приложение, а не показываем голую превью-страницу. #}
+  <meta http-equiv="refresh" content="0; url={{ url }}">
+</head>
+<body>
+  <p><a href="{{ url }}">Открыть «{{ title }}» в приложении Хотелки</a></p>
+</body>
+</html>
