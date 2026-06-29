@@ -14,7 +14,6 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
-    Integer,
     Numeric,
     String,
     Table,
@@ -193,7 +192,7 @@ class PushReason(enum.Enum):
 class PushSendingLog(Base):
     __tablename__ = 'push_sending_log'
 
-    id: Mapped[int] = mapped_column(Integer(), primary_key=True)
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
     sent_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
     reason_user_id: Mapped[UUID] = mapped_column(
         ForeignKey('user.id', ondelete='CASCADE'), nullable=False
