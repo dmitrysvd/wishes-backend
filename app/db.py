@@ -109,6 +109,42 @@ class User(Base):
         return repr(self)
 
 
+class UserAttribution(Base):
+    """First-touch атрибуция регистрации: кто привёл нового юзера и через какой
+    канал он установил приложение (фича 0003).
+
+    Ставится один раз при создании юзера и далее неизменна. Вынесена в отдельную
+    таблицу (1:1 к `user`), чтобы поверх неё можно было наращивать будущие фичи
+    (пуш пригласившему, авто-подписка, «вас пригласил X») без раздувания `user`.
+    Строка пишется, только если есть что зафиксировать: валидный реферер и/или
+    канал; чистый органик (обе метки пусты) строки не создаёт.
+    """
+
+    __tablename__ = 'user_attribution'
+    __table_args__ = (
+        CheckConstraint('user_id <> referrer_id', name='attribution_not_self_referral'),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    # Кого атрибутируем — новый юзер. 1:1, поэтому unique.
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), unique=True, nullable=False
+    )
+    # Кто привёл (владелец инвайт-ссылки). NULL = органик/канальный вход без реферера.
+    # При удалении реферера метку не теряем — обнуляем ссылку.
+    referrer_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey('user.id', ondelete='SET NULL'), nullable=True
+    )
+    # Канал установки (свободная строка от клиента), усечён до UTM_SOURCE_MAX_LENGTH.
+    utm_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped['User'] = relationship(foreign_keys=[user_id])
+    referrer: Mapped['User | None'] = relationship(foreign_keys=[referrer_id])
+
+
 class WishRecommendation(Base):
     __tablename__ = 'wish_recommendation'
 

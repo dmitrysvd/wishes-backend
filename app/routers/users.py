@@ -249,6 +249,35 @@ async def get_item_info_from_page(
     return result
 
 
-@router.get('/invite_link/')
-def get_invite_link(user: User = Depends(get_current_user)):
-    return get_user_deep_link(user)
+@router.get(
+    '/invite_link/',
+    responses={
+        200: {
+            'description': (
+                'Персональная инвайт-ссылка на список текущего юзера. Тело — голая '
+                'строка-URL (deep link). Несёт `userId` (владелец списка) и метку '
+                'атрибуции `ref` (id пригласившего = текущий юзер). Открывается '
+                'гостем как публичная веб-страница вишлиста (S5a), залогиненным — '
+                'как user_page (S5). Клиент-получатель обязан донести `ref` (и любые '
+                'utm-параметры из URL) до момента регистрации и вернуть его в '
+                '`attribution` auth-вызова.'
+            ),
+            'content': {
+                'application/json': {
+                    'example': (
+                        'https://hotelki.pro/user'
+                        '?userId=7c9e6679-7425-40de-944b-e07fc1f90ae7'
+                        '&ref=7c9e6679-7425-40de-944b-e07fc1f90ae7#'
+                    )
+                }
+            },
+        }
+    },
+)
+def get_invite_link(user: User = Depends(get_current_user)) -> str:
+    """Вернуть персональную инвайт-ссылку текущего юзера для шеринга своего списка.
+
+    Ссылка содержит реф-метку `ref={my_id}` — основу реферальной атрибуции
+    (см. фичу 0003). Форма ссылки и контракт получателя — в описании ответа 200.
+    """
+    return get_user_deep_link(user, ref=user)

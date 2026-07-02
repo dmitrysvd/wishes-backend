@@ -14,6 +14,7 @@ from app.firebase import (
 )
 from app.logging import logger
 from app.schemas import (
+    RegistrationAttributionSchema,
     RequestFirebaseAuthSchema,
     RequestVkAuthMobileSchema,
     RequestVkAuthWebSchema,
@@ -21,7 +22,7 @@ from app.schemas import (
     ResponseVkAuthWebSchema,
     SavePushTokenSchema,
 )
-from app.utils import new_user_handler, utc_now
+from app.utils import new_user_handler, save_registration_attribution, utc_now
 from app.vk import (
     VkUserExtraData,
     exchange_tokens,
@@ -36,6 +37,7 @@ def auth_vk(
     access_token: str,
     vk_extra_data: VkUserExtraData,
     db: Session,
+    attribution: RegistrationAttributionSchema | None = None,
 ) -> tuple[str, str, bool]:
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
@@ -90,6 +92,8 @@ def auth_vk(
 
     if is_new_user:
         new_user_handler(user)
+        # first-touch атрибуция — только для нового юзера, best-effort
+        save_registration_attribution(db, user, attribution)
 
     firebase_token = create_custom_firebase_token(firebase_uid)
     return firebase_uid, firebase_token, is_new_user
@@ -105,11 +109,19 @@ def auth_vk_web(
 
     Возвращает данные для аутентификации в firebase.
     Создаст пользователя в firebase, если не существовал.
+
+    Сайд-эффект (атрибуция): если передан `attribution` и юзер создаётся впервые
+    (`user_created=true`), бэк фиксирует реферера и канал установки (см.
+    `RegistrationAttributionSchema`). Best-effort: невалидная атрибуция тихо
+    игнорируется, регистрацию не валит. Для существующего юзера атрибуция
+    игнорируется (first-touch).
     """
     silent_token = request_data.silent_token
     uuid = request_data.uuid
     access_token, vk_extra_data = exchange_tokens(silent_token, uuid)
-    firebase_uid, firebase_token, is_new_user = auth_vk(access_token, vk_extra_data, db)
+    firebase_uid, firebase_token, is_new_user = auth_vk(
+        access_token, vk_extra_data, db, request_data.attribution
+    )
     return ResponseVkAuthWebSchema(
         vk_access_token=access_token,
         firebase_uid=firebase_uid,
@@ -127,10 +139,18 @@ def auth_vk_mobile(
 
     Создаст пользователя в firebase и на сервере, если не существовал.
     Возвращает данные для аутентификации в firebase.
+
+    Сайд-эффект (атрибуция): если передан `attribution` и юзер создаётся впервые
+    (`user_created=true`), бэк фиксирует реферера и канал установки (см.
+    `RegistrationAttributionSchema`). Best-effort: невалидная атрибуция тихо
+    игнорируется, регистрацию не валит. Для существующего юзера атрибуция
+    игнорируется (first-touch).
     """
     access_token = auth_data.access_token
     vk_extra_data = VkUserExtraData(email=auth_data.email, phone=auth_data.phone)
-    firebase_uid, firebase_token, is_new_user = auth_vk(access_token, vk_extra_data, db)
+    firebase_uid, firebase_token, is_new_user = auth_vk(
+        access_token, vk_extra_data, db, auth_data.attribution
+    )
     return ResponseVkAuthMobileSchema(
         firebase_uid=firebase_uid,
         firebase_token=firebase_token,
@@ -149,6 +169,11 @@ def auth_firebase(
     Клиент уже должен быть залогинен в firebase.
     Если пользователя с email из firebase нет в БД, создаст его.
     Если пользователь уже есть, ничего не делает.
+
+    Сайд-эффект (атрибуция): если передан `attribution` и юзер создаётся впервые,
+    бэк фиксирует реферера и канал установки (см. `RegistrationAttributionSchema`).
+    Best-effort: невалидная атрибуция тихо игнорируется, регистрацию не валит. Для
+    существующего юзера атрибуция игнорируется (first-touch).
     """
     id_token = firebase_auth_schema.id_token
     try:
@@ -183,6 +208,8 @@ def auth_firebase(
 
     if is_new_user:
         new_user_handler(user)
+        # first-touch атрибуция — только для нового юзера, best-effort
+        save_registration_attribution(db, user, firebase_auth_schema.attribution)
 
 
 @router.post('/save_push_token', response_class=Response)

@@ -34,8 +34,17 @@ def get_annotated_users(
     return [AnnotatedOtherUserSchema.model_validate(val[0]) for val in values]
 
 
-def get_user_deep_link(user: User) -> str:
-    return f'{settings.FRONTEND_URL}/user?userId={user.id}#'
+def get_user_deep_link(user: User, ref: User | None = None) -> str:
+    """Deep link на страницу списка пользователя.
+
+    Если передан `ref` (пригласивший) — ссылка несёт реф-метку `ref={ref.id}`,
+    основу реферальной атрибуции (фича 0003). Без `ref` — обычный deep link
+    (пуши, шеринг чужого списка), метку не добавляем.
+    """
+    link = f'{settings.FRONTEND_URL}/user?userId={user.id}'
+    if ref is not None:
+        link += f'&ref={ref.id}'
+    return f'{link}#'
 
 
 def send_push_about_new_follower(target: User, follower: User):

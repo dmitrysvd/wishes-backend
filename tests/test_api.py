@@ -9,7 +9,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.constants import Gender
-from app.db import User, Wish, WishRecommendation
+from app.db import User, UserAttribution, Wish, WishRecommendation
 from app.main import app, get_current_user, get_db
 from app.utils import utc_now
 from app.vk import VkUserBasicData, VkUserExtraData
@@ -483,6 +483,117 @@ class TestAuth:
         assert response.content == b''
         user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
         assert user.display_name == 'Иванов Иван'
+
+    def test_auth_vk_mobile_saves_attribution(
+        self,
+        api_client: TestClient,
+        third_user: User,
+        db: Session,
+    ):
+        """Новый юзер + attribution → фиксируем реферера и канал (фича 0003)."""
+        response = api_client.post(
+            '/auth/vk/mobile',
+            json={
+                'access_token': 'attr_token',
+                'email': 'attr_vk@test.com',
+                'phone': None,
+                'attribution': {
+                    'referrer_id': str(third_user.id),
+                    'utm_source': 'telegram',
+                },
+            },
+        )
+        assert response.is_success
+        user = db.scalars(
+            select(User).where(User.vk_access_token == 'attr_token')
+        ).one()
+        row = db.scalars(
+            select(UserAttribution).where(UserAttribution.user_id == user.id)
+        ).one()
+        assert row.referrer_id == third_user.id
+        assert row.utm_source == 'telegram'
+
+    def test_auth_vk_web_passes_attribution(
+        self,
+        api_client: TestClient,
+        db: Session,
+        mocker,
+    ):
+        """Веб-эндпоинт прокидывает attribution в auth_vk."""
+        mocker.patch(
+            'app.routers.auth.exchange_tokens',
+            return_value=(
+                'web_attr_token',
+                VkUserExtraData(email='web_attr@mail.com', phone=None),
+            ),
+        )
+        response = api_client.post(
+            '/auth/vk/web',
+            json={
+                'silent_token': 's',
+                'uuid': 'u',
+                'attribution': {'utm_source': 'vk'},
+            },
+        )
+        assert response.is_success
+        user = db.scalars(
+            select(User).where(User.vk_access_token == 'web_attr_token')
+        ).one()
+        row = db.scalars(
+            select(UserAttribution).where(UserAttribution.user_id == user.id)
+        ).one()
+        assert row.utm_source == 'vk'
+        assert row.referrer_id is None
+
+    def test_auth_firebase_saves_attribution(
+        self,
+        api_client: TestClient,
+        other_user: User,
+        db: Session,
+    ):
+        """Firebase-регистрация нового юзера фиксирует attribution."""
+        response = api_client.post(
+            '/auth/firebase',
+            json={
+                'id_token': 'id_token',
+                'attribution': {
+                    'referrer_id': str(other_user.id),
+                    'utm_source': 'whatsapp',
+                },
+            },
+        )
+        assert response.is_success
+        user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
+        row = db.scalars(
+            select(UserAttribution).where(UserAttribution.user_id == user.id)
+        ).one()
+        assert row.referrer_id == other_user.id
+        assert row.utm_source == 'whatsapp'
+
+    def test_auth_firebase_existing_user_ignores_attribution(
+        self,
+        api_client: TestClient,
+        other_user: User,
+        db: Session,
+    ):
+        """Повторный логин с attribution ничего не пишет (first-touch неизменен)."""
+        first = api_client.post('/auth/firebase', json={'id_token': 'id_token'})
+        assert first.is_success
+        second = api_client.post(
+            '/auth/firebase',
+            json={
+                'id_token': 'id_token',
+                'attribution': {'referrer_id': str(other_user.id)},
+            },
+        )
+        assert second.is_success
+        user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
+        count = db.scalars(
+            select(func.count(UserAttribution.id)).where(
+                UserAttribution.user_id == user.id
+            )
+        ).one()
+        assert count == 0
 
     def test_auth_vk_after_firebase_with_same_email(
         self,

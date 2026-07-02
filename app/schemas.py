@@ -252,8 +252,67 @@ class CurrentUserUpdateSchema(BaseModel):
     birth_date: date | None
 
 
+class RegistrationAttributionSchema(BaseModel):
+    """Метка атрибуции, донесённая клиентом от инвайт-ссылки/точки входа до момента
+    регистрации.
+
+    Передаётся опционально в любом из auth-вызовов. **Best-effort:** невалидные
+    значения молча игнорируются и НИКОГДА не валят регистрацию. Применяется только
+    при создании **нового** юзера (first-touch); при повторном логине игнорируется
+    целиком — ранее сохранённая атрибуция не перезаписывается.
+    """
+
+    referrer_id: str | None = Field(
+        default=None,
+        description=(
+            'Кто пригласил — id юзера-владельца инвайт-ссылки (параметр `ref` из '
+            'deep link), передаётся как строка «как есть» из URL. Тип НЕ `uuid` '
+            'намеренно: клиент шлёт значение без пред-валидации, а бэк сам валидирует '
+            'его как UUID и **тихо отбрасывает** синтаксически-битое, несуществующее '
+            'или self-значение — без `422`, регистрация всегда проходит (best-effort). '
+            'Сохраняется, только если строка — валидный UUID существующего юзера, не '
+            'равного регистрирующемуся. `null`/опущено = органик '
+            '(не по чьей-то ссылке).'
+        ),
+        examples=['7c9e6679-7425-40de-944b-e07fc1f90ae7'],
+    )
+    utm_source: str | None = Field(
+        default=None,
+        description=(
+            'Канал входа, проставленный клиентом (мессенджер шеринга, лендинг, '
+            'рекламная кампания и т.п.). Свободная строка без ограничения длины на '
+            'проводе: переразмерное значение НЕ даёт `422` — бэк молча усекает его до '
+            'внутреннего лимита (64 символа), best-effort. Нормализация/группировка — '
+            'на стороне аналитики. `null`/опущено = канал неизвестен.'
+        ),
+        examples=['telegram', 'vk', 'whatsapp', 'organic'],
+    )
+
+
 class RequestFirebaseAuthSchema(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'id_token': 'eyJhbGciOi...firebase-id-token',
+                    'attribution': {
+                        'referrer_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                        'utm_source': 'telegram',
+                    },
+                },
+                {'id_token': 'eyJhbGciOi...firebase-id-token'},
+            ]
+        }
+    )
+
     id_token: str
+    attribution: RegistrationAttributionSchema | None = Field(
+        default=None,
+        description=(
+            'Атрибуция установки/реферала, учитывается только при создании нового '
+            'юзера. Опущено/`null` = без атрибуции.'
+        ),
+    )
 
 
 class SavePushTokenSchema(BaseModel):
@@ -261,14 +320,65 @@ class SavePushTokenSchema(BaseModel):
 
 
 class RequestVkAuthWebSchema(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'silent_token': 'vk-silent-token',
+                    'uuid': 'vk-uuid',
+                    'attribution': {
+                        'referrer_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                        'utm_source': 'vk',
+                    },
+                },
+                {'silent_token': 'vk-silent-token', 'uuid': 'vk-uuid'},
+            ]
+        }
+    )
+
     silent_token: str
     uuid: str
+    attribution: RegistrationAttributionSchema | None = Field(
+        default=None,
+        description=(
+            'Атрибуция установки/реферала, учитывается только при создании нового '
+            'юзера. Опущено/`null` = без атрибуции.'
+        ),
+    )
 
 
 class RequestVkAuthMobileSchema(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'access_token': 'vk-access-token',
+                    'email': 'user@example.com',
+                    'phone': '+70000000000',
+                    'attribution': {
+                        'referrer_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                        'utm_source': 'whatsapp',
+                    },
+                },
+                {
+                    'access_token': 'vk-access-token',
+                    'email': None,
+                    'phone': None,
+                },
+            ]
+        }
+    )
+
     access_token: str
     email: str | None
     phone: str | None
+    attribution: RegistrationAttributionSchema | None = Field(
+        default=None,
+        description=(
+            'Атрибуция установки/реферала, учитывается только при создании нового '
+            'юзера. Опущено/`null` = без атрибуции.'
+        ),
+    )
 
 
 class ResponseVkAuthWebSchema(BaseModel):
