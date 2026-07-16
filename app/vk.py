@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import NoReturn
 
 import httpx
 from fastapi import HTTPException
@@ -10,6 +11,32 @@ from app.constants import Gender
 from app.logging import logger
 
 VK_API_VERSION = '5.191'
+
+
+class VkResponseError(Exception):
+    """VK вернул неразбираемый/неожиданный ответ.
+
+    Это сбой интеграции (VK сменил формат, лёг или отдал мусор), а не ошибка
+    аутентификации клиента. Намеренно НЕ `HTTPException`: должно долететь до
+    `internal_exception_handler` и уйти в Hawk как 5xx с трейсом, а не быть
+    проглоченным как чистый ответ.
+    """
+
+
+def _fail_unexpected_vk_response(
+    method: str, body: object, cause: Exception | None = None
+) -> NoReturn:
+    """Залогировать неразбираемый ответ VK (с телом) и пробросить как 5xx → Hawk.
+
+    ВНИМАНИЕ: тело может содержать перс.данные (email/phone). Пока это приемлемо —
+    ответы редки и нужны для дебага; при ужесточении требований к PII тело нужно
+    будет маскировать или логировать только структуру.
+    """
+    logger.error(
+        'Неожиданный ответ VK {method}. Тело: {body}', method=method, body=body
+    )
+    raise VkResponseError(method) from cause
+
 
 # VK кодирует пол числом: 1 — женский, 2 — мужской, 0 — не указан.
 _VK_GENDER_MAP = {
@@ -100,10 +127,14 @@ def get_extra_user_data_by_silent_token(
     response_json = response.json()
     try:
         parsed = _VkSilentAuthResponseSchema.model_validate(response_json)
-    except ValidationError:
-        raise HTTPException(status_code=401, detail='Not authenticated') from None
-    if parsed.response.errors or not parsed.response.success:
+    except ValidationError as exc:
+        _fail_unexpected_vk_response('getProfileInfoBySilentToken', response_json, exc)
+    # VK явно сообщил об ошибке — токен невалиден/протух, это ожидаемо.
+    if parsed.response.errors:
         raise HTTPException(status_code=401, detail='Not authenticated')
+    # Структура валидна, но профиля нет — так быть не должно, это сбой интеграции.
+    if not parsed.response.success:
+        _fail_unexpected_vk_response('getProfileInfoBySilentToken', response_json)
     profile = parsed.response.success[0]
     return VkUserExtraData(email=profile.email, phone=profile.phone)
 
@@ -138,10 +169,11 @@ def get_vk_user_data_by_access_token(access_token: str) -> VkUserBasicData:
         raise HTTPException(status_code=401, detail='Not authenticated')
     try:
         parsed = _VkUsersGetResponseSchema.model_validate(response_json)
-    except ValidationError:
-        raise HTTPException(status_code=401, detail='Not authenticated') from None
+    except ValidationError as exc:
+        _fail_unexpected_vk_response('users.get', response_json, exc)
+    # Пустой список профилей при отсутствии `error` — неожиданно, сбой интеграции.
     if not parsed.response:
-        raise HTTPException(status_code=401, detail='Not authenticated')
+        _fail_unexpected_vk_response('users.get', response_json)
     user_data = parsed.response[0]
     return VkUserBasicData(
         id=user_data.id,
@@ -180,10 +212,13 @@ def get_vk_user_friends(access_token: str):
     )
     response.raise_for_status()
     response_json = response.json()
+    if 'error' in response_json:
+        logger.debug('Ошибка авторизации vk: {text}', text=response_json['error'])
+        raise HTTPException(status_code=401, detail='Not authenticated')
     try:
         parsed = _VkFriendsGetResponseSchema.model_validate(response_json)
-    except ValidationError:
-        raise HTTPException(status_code=401, detail='Not authenticated') from None
+    except ValidationError as exc:
+        _fail_unexpected_vk_response('friends.get', response_json, exc)
     return [friend.model_dump() for friend in parsed.response.items]
 
 
@@ -214,8 +249,8 @@ def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]
         raise HTTPException(status_code=401, detail='Not authenticated')
     try:
         parsed = _VkExchangeTokenResponseSchema.model_validate(response_json)
-    except ValidationError:
-        raise HTTPException(status_code=401, detail='Not authenticated') from None
+    except ValidationError as exc:
+        _fail_unexpected_vk_response('exchangeSilentAuthToken', response_json, exc)
     vk_user_extra = VkUserExtraData(
         phone=parsed.response.phone,
         email=parsed.response.email,

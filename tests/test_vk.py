@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from app.constants import Gender
 from app.vk import (
+    VkResponseError,
     exchange_tokens,
     get_gender,
     get_vk_user_data_by_access_token,
@@ -95,13 +96,13 @@ def test_get_vk_user_data_by_access_token_error(mocker):
 
 
 def test_get_vk_user_data_by_access_token_malformed(mocker):
+    # Битая структура без явной ошибки VK → сбой интеграции (5xx → Hawk), не 401.
     mock_response = mocker.Mock()
     mock_response.json.return_value = {'response': [{'id': 123}]}
     mocker.patch('httpx.get', return_value=mock_response)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(VkResponseError):
         get_vk_user_data_by_access_token('token')
-    assert exc.value.status_code == 401
 
 
 def test_get_vk_user_data_by_access_token_empty(mocker):
@@ -109,9 +110,8 @@ def test_get_vk_user_data_by_access_token_empty(mocker):
     mock_response.json.return_value = {'response': []}
     mocker.patch('httpx.get', return_value=mock_response)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(VkResponseError):
         get_vk_user_data_by_access_token('token')
-    assert exc.value.status_code == 401
 
 
 def test_get_vk_user_friends(mocker):
@@ -124,14 +124,24 @@ def test_get_vk_user_friends(mocker):
     assert friends[0]['id'] == 1
 
 
-def test_get_vk_user_friends_malformed(mocker):
+def test_get_vk_user_friends_error(mocker):
+    # VK явно вернул ошибку (протухший токен) → 401.
     mock_response = mocker.Mock()
-    mock_response.json.return_value = {'response': {'items': [{'no_id': 1}]}}
+    mock_response.json.return_value = {'error': 'token expired'}
     mocker.patch('httpx.get', return_value=mock_response)
 
     with pytest.raises(HTTPException) as exc:
         get_vk_user_friends('token')
     assert exc.value.status_code == 401
+
+
+def test_get_vk_user_friends_malformed(mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'response': {'items': [{'no_id': 1}]}}
+    mocker.patch('httpx.get', return_value=mock_response)
+
+    with pytest.raises(VkResponseError):
+        get_vk_user_friends('token')
 
 
 def test_exchange_tokens_success(mocker):
@@ -161,9 +171,8 @@ def test_exchange_tokens_malformed(mocker):
     mock_response.json.return_value = {'response': {'no_access_token': True}}
     mocker.patch('httpx.post', return_value=mock_response)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(VkResponseError):
         exchange_tokens('silent', 'uuid')
-    assert exc.value.status_code == 401
 
 
 def test_get_extra_user_data_by_silent_token_success(mocker):
@@ -181,10 +190,13 @@ def test_get_extra_user_data_by_silent_token_success(mocker):
 
 
 def test_get_extra_user_data_by_silent_token_error(mocker):
+    # VK явно вернул ошибку авторизации (протухший silent-токен) → 401.
     from app.vk import get_extra_user_data_by_silent_token
 
     mock_response = mocker.Mock()
-    mock_response.json.return_value = {'response': {'errors': ['some error']}}
+    mock_response.json.return_value = {
+        'response': {'errors': [{'code': 1, 'description': 'invalid token'}]}
+    }
     mocker.patch('httpx.post', return_value=mock_response)
 
     with pytest.raises(HTTPException) as exc:
@@ -193,15 +205,15 @@ def test_get_extra_user_data_by_silent_token_error(mocker):
 
 
 def test_get_extra_user_data_by_silent_token_no_success(mocker):
+    # Структура валидна, но профиля нет → сбой интеграции (5xx → Hawk), не 401.
     from app.vk import get_extra_user_data_by_silent_token
 
     mock_response = mocker.Mock()
     mock_response.json.return_value = {'response': {}}
     mocker.patch('httpx.post', return_value=mock_response)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(VkResponseError):
         get_extra_user_data_by_silent_token('silent', 'uuid')
-    assert exc.value.status_code == 401
 
 
 def test_get_extra_user_data_by_silent_token_malformed(mocker):
@@ -211,6 +223,5 @@ def test_get_extra_user_data_by_silent_token_malformed(mocker):
     mock_response.json.return_value = {'no_response': True}
     mocker.patch('httpx.post', return_value=mock_response)
 
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(VkResponseError):
         get_extra_user_data_by_silent_token('silent', 'uuid')
-    assert exc.value.status_code == 401
