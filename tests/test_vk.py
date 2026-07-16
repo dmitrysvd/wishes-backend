@@ -7,6 +7,7 @@ from app.constants import Gender
 from app.vk import (
     VkResponseError,
     exchange_tokens,
+    exchange_vk_code,
     get_gender,
     get_vk_user_data_by_access_token,
     get_vk_user_friends,
@@ -173,6 +174,48 @@ def test_exchange_tokens_malformed(mocker):
 
     with pytest.raises(VkResponseError):
         exchange_tokens('silent', 'uuid')
+
+
+def test_exchange_vk_code_success(mocker):
+    # VK ID (OAuth 2.1) отдаёт плоский ответ; email/phone — подтверждённые VK.
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {
+        'access_token': 'vk2.a.new_token',
+        'refresh_token': 'vk2.r.refresh',
+        'email': 'confirmed@test.com',
+        'phone': '+70000000000',
+        'user_id': 123,
+    }
+    mocker.patch('httpx.post', return_value=mock_response)
+
+    token, extra = exchange_vk_code('code', 'verifier', 'device')
+    assert token == 'vk2.a.new_token'
+    assert extra.email == 'confirmed@test.com'
+    assert extra.phone == '+70000000000'
+
+
+def test_exchange_vk_code_error(mocker):
+    # VK ID отклонил обмен (код истёк/использован/невалиден) → 401, не 5xx.
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {
+        'error': 'invalid_grant',
+        'error_description': 'code is expired',
+    }
+    mocker.patch('httpx.post', return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc:
+        exchange_vk_code('code', 'verifier', 'device')
+    assert exc.value.status_code == 401
+
+
+def test_exchange_vk_code_malformed(mocker):
+    # Нет ни error, ни access_token — неожиданный ответ → сбой интеграции (5xx → Hawk).
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'unexpected': True}
+    mocker.patch('httpx.post', return_value=mock_response)
+
+    with pytest.raises(VkResponseError):
+        exchange_vk_code('code', 'verifier', 'device')
 
 
 def test_get_extra_user_data_by_silent_token_success(mocker):

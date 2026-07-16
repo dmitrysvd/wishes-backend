@@ -381,6 +381,76 @@ class RequestVkAuthMobileSchema(BaseModel):
     )
 
 
+class RequestVkAuthAndroidSchema(BaseModel):
+    """Вход через VK ID SDK на Android (Confidential Flow, OAuth 2.1).
+
+    SDK на устройстве проводит авторизацию (per-request PKCE и `state` — внутри
+    SDK) и отдаёт клиенту **authorization code**, а не готовый токен. Клиент
+    пересылает `code` бэку, и обмен `code → access_token` идёт **на сервере**.
+    Почему не токен напрямую (как в легаси `/auth/vk/mobile`): в Public Flow VK
+    привязывает `access_token` к IP телефона, и серверная валидация с IP
+    датацентра невозможна; Confidential Flow привязывает токен к IP бэка, который
+    его и использует. `client_secret` при этом не покидает сервер.
+
+    Email/phone в теле НЕ передаются намеренно: подтверждённый email бэк берёт из
+    `id_token` VK ID (доверенный источник), а не из тела клиента — иначе возможен
+    захват чужого аккаунта подстановкой чужого email при связывании по email.
+
+    Сайд-эффект (атрибуция): при первичном создании юзера (`user_created=true`)
+    учитывается `attribution` (first-touch, best-effort). Для существующего юзера
+    игнорируется. См. `RegistrationAttributionSchema`.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'code': 'vk1.a.authorization-code-from-sdk',
+                    'code_verifier': 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
+                    'device_id': 'vk-device-id-from-sdk',
+                    'attribution': {
+                        'referrer_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                        'utm_source': 'whatsapp',
+                    },
+                },
+                {
+                    'code': 'vk1.a.authorization-code-from-sdk',
+                    'code_verifier': 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
+                    'device_id': 'vk-device-id-from-sdk',
+                },
+            ]
+        }
+    )
+
+    code: str = Field(
+        description=(
+            'Одноразовый authorization code из VK ID SDK '
+            '(`ConfidentialFlowData.code`). Бэк обменивает его на токены у VK ID '
+            'Backend. Повторный обмен уже использованного/истёкшего `code` → `401`.'
+        )
+    )
+    code_verifier: str = Field(
+        description=(
+            'PKCE `code_verifier`, сгенерированный SDK на устройстве под этот '
+            '`code`. Бэк передаёт его в обмене; VK сверяет с `code_challenge` из '
+            'шага авторизации. Несовпадение → `401`.'
+        )
+    )
+    device_id: str = Field(
+        description=(
+            'Идентификатор устройства из VK ID SDK '
+            '(`ConfidentialFlowData.deviceId`). Требуется VK ID при обмене кода.'
+        )
+    )
+    attribution: RegistrationAttributionSchema | None = Field(
+        default=None,
+        description=(
+            'Атрибуция установки/реферала, учитывается только при создании нового '
+            'юзера. Опущено/`null` = без атрибуции.'
+        ),
+    )
+
+
 class ResponseVkAuthWebSchema(BaseModel):
     vk_access_token: str
     firebase_uid: str
@@ -389,9 +459,35 @@ class ResponseVkAuthWebSchema(BaseModel):
 
 
 class ResponseVkAuthMobileSchema(BaseModel):
-    firebase_uid: str
-    firebase_token: str
-    user_created: bool
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'firebase_uid': 'firebase-uid-abc123',
+                    'firebase_token': 'eyJhbGciOi...firebase-custom-token',
+                    'user_created': True,
+                }
+            ]
+        }
+    )
+
+    firebase_uid: str = Field(
+        description='UID пользователя в Firebase. Стабильный идентификатор аккаунта.'
+    )
+    firebase_token: str = Field(
+        description=(
+            'Кастомный Firebase-токен. Клиент передаёт его в '
+            '`signInWithCustomToken`, чтобы залогиниться в Firebase; дальнейшие '
+            'запросы к API идут с полученным Firebase ID-токеном.'
+        )
+    )
+    user_created: bool = Field(
+        description=(
+            '`true` — аккаунт создан этим запросом впервые (первый вход); '
+            '`false` — вход в существующий аккаунт. Влияет на учёт `attribution` '
+            '(учитывается только при `true`).'
+        )
+    )
 
 
 class ItemInfoRequestSchema(BaseModel):

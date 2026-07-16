@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from firebase_admin.exceptions import AlreadyExistsError
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -595,27 +596,102 @@ class TestAuth:
         ).one()
         assert count == 0
 
-    def test_auth_vk_after_firebase_with_same_email(
+    def test_auth_vk_mobile_unverified_email_no_takeover(
         self,
         api_client: TestClient,
         db: Session,
+        mocker,
     ):
-        response = api_client.post(
-            '/auth/firebase',
-            json={'id_token': 'id_token'},
-        )
+        """Легаси-mobile НЕ связывает VK-вход с чужим аккаунтом по email из тела
+        (email не подтверждён) — иначе захват аккаунта подстановкой чужого email.
+        По неподтверждённому email не матчим; firebase отвергает дубль email при
+        создании → 409, а НЕ тихий вход в чужой аккаунт."""
+        response = api_client.post('/auth/firebase', json={'id_token': 'id_token'})
         assert response.is_success
+        firebase_user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
+        assert firebase_user.vk_id is None
 
+        # Реальный firebase отверг бы создание юзера с уже занятым email.
+        mocker.patch(
+            'app.routers.auth.create_firebase_user',
+            side_effect=AlreadyExistsError('email exists'),
+        )
         response = api_client.post(
             '/auth/vk/mobile',
             json={
                 'access_token': 'some_vk_token',
-                'email': self.FIREBASE_USER_EMAIL,
+                'email': self.FIREBASE_USER_EMAIL,  # чужой email в теле клиента
                 'phone': None,
             },
         )
-        assert response.status_code == 200
+        assert response.status_code == 409
 
+        # Firebase-аккаунт НЕ захвачен: vk_id не подставлен.
+        db.refresh(firebase_user)
+        assert firebase_user.vk_id is None
+
+    def test_auth_vk_android_success(
+        self,
+        api_client: TestClient,
+        db: Session,
+        mocker,
+    ):
+        """Confidential Flow: обмен code на сервере, новый юзер заводится."""
+        mocker.patch(
+            'app.routers.auth.exchange_vk_code',
+            return_value=(
+                'vk2.a.android_token',
+                VkUserExtraData(email='android_vk@test.com', phone=None),
+            ),
+        )
+        response = api_client.post(
+            '/auth/vk/android',
+            json={
+                'code': 'auth_code',
+                'code_verifier': 'pkce_verifier',
+                'device_id': 'device_1',
+            },
+        )
+        assert response.is_success, response.json()
+        body = response.json()
+        assert body['user_created'] is True
+        assert body['firebase_token']
+        user = db.scalars(select(User).where(User.vk_id == '12345678')).one()
+        assert user.email == 'android_vk@test.com'
+
+    def test_auth_vk_android_links_verified_email(
+        self,
+        api_client: TestClient,
+        db: Session,
+        mocker,
+    ):
+        """Android-вход с ПОДТВЕРЖДЁННЫМ (из VK ID) email существующего аккаунта
+        связывается с ним — второй аккаунт не плодится. Это безопасно: email от VK,
+        не из тела клиента."""
+        assert api_client.post(
+            '/auth/firebase', json={'id_token': 'id_token'}
+        ).is_success
+        firebase_user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
+
+        mocker.patch(
+            'app.routers.auth.exchange_vk_code',
+            return_value=(
+                'vk2.a.android_token',
+                VkUserExtraData(email=self.FIREBASE_USER_EMAIL, phone=None),
+            ),
+        )
+        response = api_client.post(
+            '/auth/vk/android',
+            json={
+                'code': 'auth_code',
+                'code_verifier': 'pkce_verifier',
+                'device_id': 'device_1',
+            },
+        )
+        assert response.status_code == 200
+        # Связался с существующим аккаунтом: vk_id подставлен, второго нет.
+        db.refresh(firebase_user)
+        assert firebase_user.vk_id == '12345678'
         assert (
             db.scalars(
                 select(func.count(User.id)).where(

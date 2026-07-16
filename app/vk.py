@@ -11,6 +11,11 @@ from app.constants import Gender
 from app.logging import logger
 
 VK_API_VERSION = '5.191'
+# VK ID (OAuth 2.1) — эндпоинт обмена authorization code на токены. Отличается от
+# легаси api.vk.com/method/*: это OAuth-протокол, ответ плоский, ошибки в формате
+# {'error', 'error_description'}. Токен, полученный тут серверным обменом,
+# привязан к IP бэка (в отличие от Public Flow, где он привязан к IP телефона).
+VK_ID_OAUTH_URL = 'https://id.vk.ru/oauth2/auth'
 
 
 class VkResponseError(Exception):
@@ -220,6 +225,56 @@ def get_vk_user_friends(access_token: str):
     except ValidationError as exc:
         _fail_unexpected_vk_response('friends.get', response_json, exc)
     return [friend.model_dump() for friend in parsed.response.items]
+
+
+class _VkIdTokenResponseSchema(BaseModel):
+    """Ответ VK ID /oauth2/auth. OAuth 2.1 — поля на верхнем уровне (не под
+    `response`). Лишние поля (refresh_token/id_token/expires_in/user_id/scope)
+    не нужны для нашего флоу — отбрасываем."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    access_token: str
+    email: str | None = None
+    phone: str | None = None
+
+
+def exchange_vk_code(
+    code: str, code_verifier: str, device_id: str
+) -> tuple[str, VkUserExtraData]:
+    """Обменять authorization code (VK ID Confidential Flow) на access_token.
+
+    Обмен идёт на сервере с PKCE `code_verifier` от клиента — так VK ID привязывает
+    выданный access_token к IP бэка, и последующие вызовы VK API проходят серверную
+    валидацию (Public-Flow-токен, привязанный к IP телефона, серверу невалиден).
+
+    Email/phone возвращает сам VK (подтверждённый источник) — их НЕ берём из тела
+    запроса клиента (иначе возможен захват чужого аккаунта подстановкой email).
+    """
+    response = httpx.post(
+        VK_ID_OAUTH_URL,
+        data={
+            'grant_type': 'authorization_code',
+            'code': code,
+            'code_verifier': code_verifier,
+            'device_id': device_id,
+            'client_id': settings.VK_APP_ID,
+            'redirect_uri': settings.VK_REDIRECT_URI,
+        },
+    )
+    response.raise_for_status()
+    response_json = response.json()
+    # VK ID сообщает об ошибке плоско: {'error': ..., 'error_description': ...}.
+    # Это ожидаемо (код истёк/использован/невалиден) — отвечаем 401, не 5xx.
+    if 'error' in response_json:
+        logger.debug('Ошибка обмена VK ID code: {text}', text=response_json)
+        raise HTTPException(status_code=401, detail='Not authenticated')
+    try:
+        parsed = _VkIdTokenResponseSchema.model_validate(response_json)
+    except ValidationError as exc:
+        _fail_unexpected_vk_response('oauth2/auth', response_json, exc)
+    vk_user_extra = VkUserExtraData(email=parsed.email, phone=parsed.phone)
+    return parsed.access_token, vk_user_extra
 
 
 class _VkExchangeTokenResultSchema(BaseModel):

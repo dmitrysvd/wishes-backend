@@ -16,6 +16,7 @@ from app.logging import logger
 from app.schemas import (
     RegistrationAttributionSchema,
     RequestFirebaseAuthSchema,
+    RequestVkAuthAndroidSchema,
     RequestVkAuthMobileSchema,
     RequestVkAuthWebSchema,
     ResponseVkAuthMobileSchema,
@@ -26,6 +27,7 @@ from app.utils import new_user_handler, save_registration_attribution, utc_now
 from app.vk import (
     VkUserExtraData,
     exchange_tokens,
+    exchange_vk_code,
     get_vk_user_data_by_access_token,
     get_vk_user_friends,
 )
@@ -38,13 +40,17 @@ def auth_vk(
     vk_extra_data: VkUserExtraData,
     db: Session,
     attribution: RegistrationAttributionSchema | None = None,
+    email_verified: bool = False,
 ) -> tuple[str, str, bool]:
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
     user = db.scalars(
         select(User).where(User.vk_id == str(vk_basic_data.id))
     ).one_or_none()
-    if not user and vk_extra_data.email:
+    # Связывать VK-вход с существующим аккаунтом по email можно ТОЛЬКО если email
+    # подтверждён VK (серверный обмен). Иначе (легаси-mobile: email из тела клиента)
+    # подстановка чужого email дала бы вход в чужой аккаунт — по email не матчим.
+    if not user and email_verified and vk_extra_data.email:
         user = db.scalars(
             select(User).where(User.email == vk_extra_data.email)
         ).one_or_none()
@@ -119,8 +125,9 @@ def auth_vk_web(
     silent_token = request_data.silent_token
     uuid = request_data.uuid
     access_token, vk_extra_data = exchange_tokens(silent_token, uuid)
+    # email из серверного обмена (exchange_tokens) — подтверждён VK.
     firebase_uid, firebase_token, is_new_user = auth_vk(
-        access_token, vk_extra_data, db, request_data.attribution
+        access_token, vk_extra_data, db, request_data.attribution, email_verified=True
     )
     return ResponseVkAuthWebSchema(
         vk_access_token=access_token,
@@ -150,6 +157,76 @@ def auth_vk_mobile(
     vk_extra_data = VkUserExtraData(email=auth_data.email, phone=auth_data.phone)
     firebase_uid, firebase_token, is_new_user = auth_vk(
         access_token, vk_extra_data, db, auth_data.attribution
+    )
+    return ResponseVkAuthMobileSchema(
+        firebase_uid=firebase_uid,
+        firebase_token=firebase_token,
+        user_created=is_new_user,
+    )
+
+
+@router.post(
+    '/auth/vk/android',
+    # Публичный вход: токена у клиента ещё нет — снимаем глобальное требование ApiKey.
+    openapi_extra={'security': []},
+    responses={
+        401: {
+            'description': (
+                'VK ID отклонил обмен `code`: код невалиден, истёк, уже '
+                'использован, либо `code_verifier`/`device_id` не совпали. '
+                'Повторять с тем же `code` бессмысленно — нужен новый вход.'
+            ),
+            'content': {
+                'application/json': {'example': {'detail': 'Not authenticated'}}
+            },
+        },
+        409: {
+            'description': (
+                'Email из подтверждённого профиля VK уже занят другим аккаунтом '
+                '(например, регистрация была через Google). Нужно войти через '
+                'соответствующий аккаунт.'
+            ),
+            'content': {
+                'application/json': {
+                    'example': {
+                        'detail': (
+                            'Пользователь с таким email уже существует. '
+                            'Зайдите через соответствующий аккаунт.'
+                        )
+                    }
+                }
+            },
+        },
+    },
+)
+def auth_vk_android(
+    request_data: RequestVkAuthAndroidSchema,
+    db: Session = Depends(get_db),
+) -> ResponseVkAuthMobileSchema:
+    """
+    Аутентификация через VK ID SDK на Android (Confidential Flow, OAuth 2.1).
+
+    Клиент присылает authorization `code` (+ `code_verifier`, `device_id`) от VK ID
+    SDK; бэк меняет его на токены у VK ID Backend (обмен на стороне сервера, токен
+    привязан к IP бэка), берёт подтверждённый профиль (в т.ч. email) из `id_token`
+    и заводит/находит юзера. Создаст пользователя в firebase и на сервере, если не
+    существовал. Возвращает данные для аутентификации в firebase.
+
+    Недоступность VK ID / таймаут обмена — это `5xx` (вне контракта): фронт
+    фолбэчит генерик-ошибкой «попробуйте позже», отдельной семантики у тела нет.
+
+    Сайд-эффект (атрибуция): если передан `attribution` и юзер создаётся впервые
+    (`user_created=true`), бэк фиксирует реферера и канал установки (см.
+    `RegistrationAttributionSchema`). Best-effort: невалидная атрибуция тихо
+    игнорируется, регистрацию не валит. Для существующего юзера атрибуция
+    игнорируется (first-touch).
+    """
+    access_token, vk_extra_data = exchange_vk_code(
+        request_data.code, request_data.code_verifier, request_data.device_id
+    )
+    # email из серверного обмена VK ID — подтверждён VK (не из тела клиента).
+    firebase_uid, firebase_token, is_new_user = auth_vk(
+        access_token, vk_extra_data, db, request_data.attribution, email_verified=True
     )
     return ResponseVkAuthMobileSchema(
         firebase_uid=firebase_uid,
