@@ -266,8 +266,16 @@ def exchange_vk_code(
     response_json = response.json()
     # VK ID сообщает об ошибке плоско: {'error': ..., 'error_description': ...}.
     # Это ожидаемо (код истёк/использован/невалиден) — отвечаем 401, не 5xx.
+    # Логируем именно error/error_description (не тело — там может быть PII):
+    # `error` однозначно указывает причину и нужен для диагностики прод-401
+    # (invalid_client — не тот app id/secret; invalid_request+redirect_uri —
+    # redirect не совпал; invalid_grant — код истёк/использован/не тот verifier).
     if 'error' in response_json:
-        logger.debug('Ошибка обмена VK ID code: {text}', text=response_json)
+        logger.warning(
+            'VK ID отклонил обмен code: error={error} description={desc}',
+            error=response_json.get('error'),
+            desc=response_json.get('error_description'),
+        )
         raise HTTPException(status_code=401, detail='Not authenticated')
     try:
         parsed = _VkIdTokenResponseSchema.model_validate(response_json)
