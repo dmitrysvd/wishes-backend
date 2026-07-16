@@ -15,8 +15,9 @@ from app.vk import (
 def test_get_gender():
     assert get_gender(1) == Gender.female
     assert get_gender(2) == Gender.male
-    with pytest.raises(KeyError):
-        get_gender(3)
+    # 0 (не указан) и неизвестные коды → None, а не исключение.
+    assert get_gender(0) is None
+    assert get_gender(3) is None
 
 
 def test_get_vk_user_data_by_access_token(mocker):
@@ -39,6 +40,48 @@ def test_get_vk_user_data_by_access_token(mocker):
     assert data.id == 123
     assert data.gender == Gender.male
     assert data.birthdate == date(1990, 1, 1)
+
+
+def test_get_vk_user_data_by_access_token_hidden_fields(mocker):
+    # Юзер скрыл пол и год рождения: sex отсутствует, bdate без года.
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {
+        'response': [
+            {
+                'id': 123,
+                'first_name': 'Ivan',
+                'last_name': 'Ivanov',
+                'photo_200': 'http://photo',
+                'bdate': '1.5',
+            }
+        ]
+    }
+    mocker.patch('httpx.get', return_value=mock_response)
+
+    data = get_vk_user_data_by_access_token('token')
+    assert data.gender is None
+    assert data.birthdate is None
+
+
+def test_get_vk_user_data_by_access_token_unspecified_sex(mocker):
+    # sex=0 (не указан) → gender None, регистрация не падает.
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {
+        'response': [
+            {
+                'id': 123,
+                'first_name': 'Ivan',
+                'last_name': 'Ivanov',
+                'photo_200': 'http://photo',
+                'sex': 0,
+            }
+        ]
+    }
+    mocker.patch('httpx.get', return_value=mock_response)
+
+    data = get_vk_user_data_by_access_token('token')
+    assert data.gender is None
+    assert data.birthdate is None
 
 
 def test_get_vk_user_data_by_access_token_error(mocker):
@@ -128,12 +171,13 @@ def test_get_extra_user_data_by_silent_token_success(mocker):
 
     mock_response = mocker.Mock()
     mock_response.json.return_value = {
-        'response': {'success': [{'email': 'test@test.com'}]}
+        'response': {'success': [{'email': 'test@test.com', 'phone': '+70000000000'}]}
     }
     mocker.patch('httpx.post', return_value=mock_response)
 
     data = get_extra_user_data_by_silent_token('silent', 'uuid')
-    assert data == {'email': 'test@test.com'}
+    assert data.email == 'test@test.com'
+    assert data.phone == '+70000000000'
 
 
 def test_get_extra_user_data_by_silent_token_error(mocker):

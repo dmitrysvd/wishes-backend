@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 import httpx
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.config import settings
 from app.constants import Gender
@@ -11,12 +11,28 @@ from app.logging import logger
 
 VK_API_VERSION = '5.191'
 
+# VK кодирует пол числом: 1 — женский, 2 — мужской, 0 — не указан.
+_VK_GENDER_MAP = {
+    1: Gender.female,
+    2: Gender.male,
+}
 
-def get_gender(vk_gender: int) -> Gender:
-    return {
-        1: Gender.female,
-        2: Gender.male,
-    }[vk_gender]
+
+def get_gender(vk_gender: int) -> Gender | None:
+    """Преобразовать пол из кода VK. `0`/неизвестное значение → `None` (не указан)."""
+    return _VK_GENDER_MAP.get(vk_gender)
+
+
+def _parse_vk_birthdate(bdate: str | None) -> date | None:
+    """Разобрать `bdate` из VK. Полная дата (`DD.MM.YYYY`) → `date`; скрытый год
+    (`DD.MM`), пустое или неразбираемое значение → `None`."""
+    if not bdate:
+        return None
+    try:
+        return datetime.strptime(bdate, '%d.%m.%Y').date()
+    except ValueError:
+        # Юзер скрыл год (формат `DD.MM`) — год обязателен, иначе даты нет.
+        return None
 
 
 @dataclass(frozen=True)
@@ -27,8 +43,8 @@ class VkUserBasicData:
     first_name: str
     last_name: str
     photo_url: str
-    gender: Gender
-    birthdate: date
+    gender: Gender | None
+    birthdate: date | None
 
 
 @dataclass(frozen=True)
@@ -44,15 +60,18 @@ class VkUserExtraData:
 
 
 class _VkSilentAuthProfileSchema(BaseModel):
-    """Поля профиля из auth.getProfileInfoBySilentToken. Форма VK не документирована
-    строго, поэтому лишние поля не отбрасываем."""
+    """Профиль из auth.getProfileInfoBySilentToken. Форма VK строго не
+    документирована, лишние поля не отбрасываем."""
 
     model_config = ConfigDict(extra='allow')
 
+    email: str | None = None
+    phone: str | None = None
+
 
 class _VkSilentAuthResultSchema(BaseModel):
-    errors: list[dict] = Field(default_factory=list)
-    success: list[_VkSilentAuthProfileSchema] = Field(default_factory=list)
+    errors: list[dict] = []
+    success: list[_VkSilentAuthProfileSchema] = []
 
 
 class _VkSilentAuthResponseSchema(BaseModel):
@@ -62,6 +81,11 @@ class _VkSilentAuthResponseSchema(BaseModel):
 def get_extra_user_data_by_silent_token(
     silent_token: str, uuid: str
 ) -> VkUserExtraData:
+    """Получить email/phone по silent-токену VK (верифицированный источник).
+
+    Пока не используется: заготовка под мобильный VK ID SDK флоу, где email
+    приходит подтверждённым от VK, а не из тела запроса клиента.
+    """
     response = httpx.post(
         'https://api.vk.com/method/auth.getProfileInfoBySilentToken',
         params={
@@ -74,15 +98,14 @@ def get_extra_user_data_by_silent_token(
     )
     response.raise_for_status()
     response_json = response.json()
-    if response_json.get('response', {}).get('errors'):
-        raise HTTPException(status_code=401, detail='Not authenticated')
     try:
         parsed = _VkSilentAuthResponseSchema.model_validate(response_json)
     except ValidationError:
         raise HTTPException(status_code=401, detail='Not authenticated') from None
-    if not parsed.response.success:
+    if parsed.response.errors or not parsed.response.success:
         raise HTTPException(status_code=401, detail='Not authenticated')
-    return parsed.response.success[0].model_dump()
+    profile = parsed.response.success[0]
+    return VkUserExtraData(email=profile.email, phone=profile.phone)
 
 
 class _VkUsersGetItemSchema(BaseModel):
@@ -90,8 +113,9 @@ class _VkUsersGetItemSchema(BaseModel):
     first_name: str
     last_name: str
     photo_200: str
-    sex: int
-    bdate: str
+    # sex и bdate юзер может скрыть — считаем их опциональными.
+    sex: int = 0
+    bdate: str | None = None
 
 
 class _VkUsersGetResponseSchema(BaseModel):
@@ -119,14 +143,13 @@ def get_vk_user_data_by_access_token(access_token: str) -> VkUserBasicData:
     if not parsed.response:
         raise HTTPException(status_code=401, detail='Not authenticated')
     user_data = parsed.response[0]
-    birthdate = datetime.strptime(user_data.bdate, '%d.%m.%Y').date()
     return VkUserBasicData(
         id=user_data.id,
         first_name=user_data.first_name,
         last_name=user_data.last_name,
         photo_url=user_data.photo_200,
         gender=get_gender(user_data.sex),
-        birthdate=birthdate,
+        birthdate=_parse_vk_birthdate(user_data.bdate),
     )
 
 

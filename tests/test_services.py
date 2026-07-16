@@ -1,8 +1,6 @@
 from datetime import date
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.constants import Gender
 from app.db import User
 from app.firebase import (
@@ -24,8 +22,9 @@ from app.vk import (
 def test_get_gender():
     assert get_gender(1) == Gender.female
     assert get_gender(2) == Gender.male
-    with pytest.raises(KeyError):
-        get_gender(3)
+    # 0 (не указан) и неизвестные коды → None, а не исключение.
+    assert get_gender(0) is None
+    assert get_gender(3) is None
 
 
 def test_get_vk_user_data_by_access_token(mocker):
@@ -150,5 +149,5 @@ def test_get_extra_user_data_by_silent_token(mocker):
     mocker.patch('httpx.post', return_value=mock_response)
 
     data = get_extra_user_data_by_silent_token('silent_token', 'uuid')
-    # get_extra_user_data_by_silent_token returns a dict based on code
-    assert data == {'phone': '12345', 'email': 'test@test.com'}
+    assert data.phone == '12345'
+    assert data.email == 'test@test.com'
