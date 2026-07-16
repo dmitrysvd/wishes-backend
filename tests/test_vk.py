@@ -41,6 +41,36 @@ def test_get_vk_user_data_by_access_token(mocker):
     assert data.birthdate == date(1990, 1, 1)
 
 
+def test_get_vk_user_data_by_access_token_error(mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'error': 'invalid token'}
+    mocker.patch('httpx.get', return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc:
+        get_vk_user_data_by_access_token('token')
+    assert exc.value.status_code == 401
+
+
+def test_get_vk_user_data_by_access_token_malformed(mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'response': [{'id': 123}]}
+    mocker.patch('httpx.get', return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc:
+        get_vk_user_data_by_access_token('token')
+    assert exc.value.status_code == 401
+
+
+def test_get_vk_user_data_by_access_token_empty(mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'response': []}
+    mocker.patch('httpx.get', return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc:
+        get_vk_user_data_by_access_token('token')
+    assert exc.value.status_code == 401
+
+
 def test_get_vk_user_friends(mocker):
     mock_response = mocker.Mock()
     mock_response.json.return_value = {'response': {'items': [{'id': 1}, {'id': 2}]}}
@@ -49,6 +79,16 @@ def test_get_vk_user_friends(mocker):
     friends = get_vk_user_friends('token')
     assert len(friends) == 2
     assert friends[0]['id'] == 1
+
+
+def test_get_vk_user_friends_malformed(mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'response': {'items': [{'no_id': 1}]}}
+    mocker.patch('httpx.get', return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc:
+        get_vk_user_friends('token')
+    assert exc.value.status_code == 401
 
 
 def test_exchange_tokens_success(mocker):
@@ -66,6 +106,16 @@ def test_exchange_tokens_success(mocker):
 def test_exchange_tokens_error(mocker):
     mock_response = mocker.Mock()
     mock_response.json.return_value = {'error': 'some error'}
+    mocker.patch('httpx.post', return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc:
+        exchange_tokens('silent', 'uuid')
+    assert exc.value.status_code == 401
+
+
+def test_exchange_tokens_malformed(mocker):
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'response': {'no_access_token': True}}
     mocker.patch('httpx.post', return_value=mock_response)
 
     with pytest.raises(HTTPException) as exc:
@@ -91,6 +141,30 @@ def test_get_extra_user_data_by_silent_token_error(mocker):
 
     mock_response = mocker.Mock()
     mock_response.json.return_value = {'response': {'errors': ['some error']}}
+    mocker.patch('httpx.post', return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc:
+        get_extra_user_data_by_silent_token('silent', 'uuid')
+    assert exc.value.status_code == 401
+
+
+def test_get_extra_user_data_by_silent_token_no_success(mocker):
+    from app.vk import get_extra_user_data_by_silent_token
+
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'response': {}}
+    mocker.patch('httpx.post', return_value=mock_response)
+
+    with pytest.raises(HTTPException) as exc:
+        get_extra_user_data_by_silent_token('silent', 'uuid')
+    assert exc.value.status_code == 401
+
+
+def test_get_extra_user_data_by_silent_token_malformed(mocker):
+    from app.vk import get_extra_user_data_by_silent_token
+
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'no_response': True}
     mocker.patch('httpx.post', return_value=mock_response)
 
     with pytest.raises(HTTPException) as exc:

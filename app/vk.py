@@ -3,6 +3,7 @@ from datetime import date, datetime
 
 import httpx
 from fastapi import HTTPException
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.config import settings
 from app.constants import Gender
@@ -42,6 +43,22 @@ class VkUserExtraData:
     phone: str | None
 
 
+class _VkSilentAuthProfileSchema(BaseModel):
+    """Поля профиля из auth.getProfileInfoBySilentToken. Форма VK не документирована
+    строго, поэтому лишние поля не отбрасываем."""
+
+    model_config = ConfigDict(extra='allow')
+
+
+class _VkSilentAuthResultSchema(BaseModel):
+    errors: list[dict] = Field(default_factory=list)
+    success: list[_VkSilentAuthProfileSchema] = Field(default_factory=list)
+
+
+class _VkSilentAuthResponseSchema(BaseModel):
+    response: _VkSilentAuthResultSchema
+
+
 def get_extra_user_data_by_silent_token(
     silent_token: str, uuid: str
 ) -> VkUserExtraData:
@@ -57,10 +74,28 @@ def get_extra_user_data_by_silent_token(
     )
     response.raise_for_status()
     response_json = response.json()
-    if response_json['response'].get('errors', []):
+    if response_json.get('response', {}).get('errors'):
         raise HTTPException(status_code=401, detail='Not authenticated')
-    user_data = response_json['response']['success'][0]
-    return user_data
+    try:
+        parsed = _VkSilentAuthResponseSchema.model_validate(response_json)
+    except ValidationError:
+        raise HTTPException(status_code=401, detail='Not authenticated') from None
+    if not parsed.response.success:
+        raise HTTPException(status_code=401, detail='Not authenticated')
+    return parsed.response.success[0].model_dump()
+
+
+class _VkUsersGetItemSchema(BaseModel):
+    id: int
+    first_name: str
+    last_name: str
+    photo_200: str
+    sex: int
+    bdate: str
+
+
+class _VkUsersGetResponseSchema(BaseModel):
+    response: list[_VkUsersGetItemSchema]
 
 
 def get_vk_user_data_by_access_token(access_token: str) -> VkUserBasicData:
@@ -72,16 +107,41 @@ def get_vk_user_data_by_access_token(access_token: str) -> VkUserBasicData:
             'fields': 'photo_200, sex, bdate',
         },
     )
-    user_data = response.json()['response'][0]
-    birthdate = datetime.strptime(user_data['bdate'], '%d.%m.%Y').date()
+    response.raise_for_status()
+    response_json = response.json()
+    if 'error' in response_json:
+        logger.debug('Ошибка авторизации vk: {text}', text=response_json['error'])
+        raise HTTPException(status_code=401, detail='Not authenticated')
+    try:
+        parsed = _VkUsersGetResponseSchema.model_validate(response_json)
+    except ValidationError:
+        raise HTTPException(status_code=401, detail='Not authenticated') from None
+    if not parsed.response:
+        raise HTTPException(status_code=401, detail='Not authenticated')
+    user_data = parsed.response[0]
+    birthdate = datetime.strptime(user_data.bdate, '%d.%m.%Y').date()
     return VkUserBasicData(
-        id=user_data['id'],
-        first_name=user_data['first_name'],
-        last_name=user_data['last_name'],
-        photo_url=user_data['photo_200'],
-        gender=get_gender(user_data['sex']),
+        id=user_data.id,
+        first_name=user_data.first_name,
+        last_name=user_data.last_name,
+        photo_url=user_data.photo_200,
+        gender=get_gender(user_data.sex),
         birthdate=birthdate,
     )
+
+
+class _VkFriendSchema(BaseModel):
+    model_config = ConfigDict(extra='allow')
+
+    id: int
+
+
+class _VkFriendsGetResultSchema(BaseModel):
+    items: list[_VkFriendSchema]
+
+
+class _VkFriendsGetResponseSchema(BaseModel):
+    response: _VkFriendsGetResultSchema
 
 
 def get_vk_user_friends(access_token: str):
@@ -96,8 +156,22 @@ def get_vk_user_friends(access_token: str):
         },
     )
     response.raise_for_status()
-    friends_data = response.json()['response']['items']
-    return friends_data
+    response_json = response.json()
+    try:
+        parsed = _VkFriendsGetResponseSchema.model_validate(response_json)
+    except ValidationError:
+        raise HTTPException(status_code=401, detail='Not authenticated') from None
+    return [friend.model_dump() for friend in parsed.response.items]
+
+
+class _VkExchangeTokenResultSchema(BaseModel):
+    access_token: str
+    email: str | None = None
+    phone: str | None = None
+
+
+class _VkExchangeTokenResponseSchema(BaseModel):
+    response: _VkExchangeTokenResultSchema
 
 
 def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]:
@@ -115,11 +189,12 @@ def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]
     if 'error' in response_json:
         logger.debug('Ошибка авторизации vk: {text}', text=response_json['error'])
         raise HTTPException(status_code=401, detail='Not authenticated')
-    response.raise_for_status()
-    exchange_token_response = response_json['response']
-    access_token = exchange_token_response['access_token']
+    try:
+        parsed = _VkExchangeTokenResponseSchema.model_validate(response_json)
+    except ValidationError:
+        raise HTTPException(status_code=401, detail='Not authenticated') from None
     vk_user_extra = VkUserExtraData(
-        phone=exchange_token_response.get('phone'),
-        email=exchange_token_response.get('email'),
+        phone=parsed.response.phone,
+        email=parsed.response.email,
     )
-    return access_token, vk_user_extra
+    return parsed.response.access_token, vk_user_extra
