@@ -72,7 +72,21 @@ class BaseUserSchema(BaseModel):
 class OtherUserSchema(BaseUserSchema):
     model_config = ConfigDict(from_attributes=True)
 
-    email: EmailStr | None
+    email: EmailStr | None = Field(
+        default=None,
+        deprecated=True,
+        description=(
+            'НЕ ИСПОЛЬЗУЕТСЯ. Для чужого пользователя всегда `null` — email это '
+            'PII и наружу не отдаётся. Поле оставлено в контракте ради обратной '
+            'совместимости; свой email смотри в `CurrentUserReadSchema.email`.'
+        ),
+    )
+
+    @field_validator('email', mode='before')
+    @staticmethod
+    def hide_email(_: object) -> None:
+        # Чужой email наружу не отдаём (PII): зануляем независимо от значения в БД.
+        return None
 
 
 class WishReadSchema(BaseWishSchema):
