@@ -11,7 +11,7 @@ from pydantic import (
     field_validator,
 )
 
-from app.constants import Gender
+from app.constants import FollowSource, Gender
 
 ItemT = TypeVar('ItemT', bound=BaseModel)
 
@@ -331,6 +331,29 @@ class RequestFirebaseAuthSchema(BaseModel):
 
 class SavePushTokenSchema(BaseModel):
     push_token: str
+
+
+class FollowActionSchema(BaseModel):
+    """Опциональное тело `POST /follow` и `/unfollow`.
+
+    Несёт только аналитическую метку источника — на саму подписку/отписку не
+    влияет. Тело целиком опционально: старые клиенты шлют пустой запрос, событие
+    всё равно логируется с `source = null`.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={'examples': [{'source': 'search'}, {}]}
+    )
+
+    source: FollowSource | None = Field(
+        default=None,
+        description=(
+            'Экран-источник, с которого пришли на профиль перед действием '
+            '(аналитика формирования графа). Опущено/`null` = источник неизвестен '
+            '(в т.ч. клиент ещё не шлёт метку). На результат не влияет.'
+        ),
+        examples=['search', 'possible_friends'],
+    )
 
 
 class RequestVkAuthWebSchema(BaseModel):

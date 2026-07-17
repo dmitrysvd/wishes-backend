@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 from starlette.status import HTTP_404_NOT_FOUND
 
 from app.config import settings
-from app.db import User
+from app.constants import FollowAction
+from app.db import FollowEvent, User
 from app.dependencies import USERS_TAG, get_current_user, get_db
 from app.firebase import delete_firebase_user
 from app.helpers import (
@@ -29,6 +30,7 @@ from app.schemas import (
     AnnotatedOtherUserSchema,
     CurrentUserReadSchema,
     CurrentUserUpdateSchema,
+    FollowActionSchema,
     ItemInfoRequestSchema,
     ItemInfoResponseSchema,
 )
@@ -152,17 +154,57 @@ def users_followed_by_this_user(
     return get_annotated_users(db, current_user, user.follows)
 
 
-@router.post('/follow/{follow_user_id}')
+@router.post(
+    '/follow/{follow_user_id}',
+    responses={
+        200: {
+            'description': (
+                'Подписка оформлена (ребро создано) либо уже существовала — в обоих '
+                'случаях `200`, действие идемпотентно. Тело ответа пустое: клиенту '
+                'ничего читать не нужно. Событие в лог пишется только при реальном '
+                'создании ребра (повторный follow — no-op, событие не пишется).'
+            )
+        },
+        422: {
+            'description': (
+                'Невалидная форма запроса: `source` вне enum `FollowSource` либо '
+                '`follow_user_id` не UUID. Метка источника best-effort, но битое '
+                'значение отвергается сразу (не проглатывается в `null`) — это баг '
+                'клиента. Пустое/отсутствующее тело валидно (не 422).'
+            )
+        },
+    },
+)
 def follow_user(
     follow_user_id: UUID,
     background_tasks: BackgroundTasks,
+    body: FollowActionSchema | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Подписаться на юзера + залогировать событие с источником (инструментация графа).
+
+    Идемпотентно: повторная подписка на того, на кого уже подписан, возвращает
+    `200` и события не пишет. Метка `source` (тело опционально) — чистая аналитика,
+    на результат действия не влияет; при пустом теле/старом клиенте пишется
+    `source = null`. Событие и ребро создаются в одной транзакции. Существование
+    таргета предполагается (валидный id из приложения); несуществующий — `5xx`
+    (вне контракта). Побочно ставит пуш подписанному о новом подписчике.
+    """
     follow_user = db.execute(select(User).where(User.id == follow_user_id)).scalar_one()
     if follow_user in user.follows:
         return
     user.follows.append(follow_user)
+    # Логируем факт подписки с источником (инструментация графа). Пишем только
+    # при реальном создании ребра — повторный follow сюда не доходит.
+    db.add(
+        FollowEvent(
+            actor_id=user.id,
+            target_id=follow_user.id,
+            action=FollowAction.follow,
+            source=body.source if body else None,
+        )
+    )
     db.commit()
     background_tasks.add_task(
         send_push_about_new_follower,
@@ -171,18 +213,53 @@ def follow_user(
     )
 
 
-@router.post('/unfollow/{unfollow_user_id}')
+@router.post(
+    '/unfollow/{unfollow_user_id}',
+    responses={
+        200: {
+            'description': (
+                'Отписка выполнена (ребро удалено) либо его и не было — в обоих '
+                'случаях `200`, действие идемпотентно. Тело ответа пустое. Событие '
+                'в лог пишется только при реальном удалении ребра (отписка от '
+                'неподписанного — no-op, событие не пишется).'
+            )
+        },
+        422: {
+            'description': (
+                'Невалидная форма запроса: `source` вне enum `FollowSource` либо '
+                '`unfollow_user_id` не UUID. Пустое/отсутствующее тело валидно.'
+            )
+        },
+    },
+)
 def unfollow_user(
     unfollow_user_id: UUID,
+    body: FollowActionSchema | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Отписаться от юзера + залогировать событие с источником (сигнал оттока связей).
+
+    Идемпотентно: отписка от того, на кого не подписан, возвращает `200` и события
+    не пишет. Метка `source` (тело опционально) — аналитика, на результат не влияет;
+    при пустом теле пишется `source = null`. Отписки логируются наравне с подписками —
+    таблица рёбер их теряет. Событие и удаление ребра — в одной транзакции.
+    """
     unfollow_user = db.execute(
         select(User).where(User.id == unfollow_user_id)
     ).scalar_one()
     if unfollow_user not in user.follows:
         return
     user.follows.remove(unfollow_user)
+    # Отписку тоже логируем — сигнал оттока связей, которого таблица рёбер не хранит.
+    db.add(
+        FollowEvent(
+            actor_id=user.id,
+            target_id=unfollow_user.id,
+            action=FollowAction.unfollow,
+            source=body.source if body else None,
+        )
+    )
     db.commit()
 
 

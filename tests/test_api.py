@@ -10,8 +10,9 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.constants import Gender
+from app.constants import FollowAction, FollowSource, Gender
 from app.db import (
+    FollowEvent,
     User,
     UserAttribution,
     Wish,
@@ -817,6 +818,26 @@ class TestFollowUnfollow:
             )
         ).scalar_one()
         assert created_at is not None
+        # Событие подписки залогировано; без тела source = null.
+        event = db.scalars(
+            select(FollowEvent).where(FollowEvent.actor_id == user.id)
+        ).one()
+        assert event.target_id == other_user.id
+        assert event.action == FollowAction.follow
+        assert event.source is None
+
+    def test_follow_user_with_source(
+        self, auth_client: TestClient, db: Session, user: User, other_user: User
+    ):
+        response = auth_client.post(
+            f'/follow/{other_user.id}', json={'source': 'possible_friends'}
+        )
+        assert response.status_code == 200
+        event = db.scalars(
+            select(FollowEvent).where(FollowEvent.actor_id == user.id)
+        ).one()
+        assert event.action == FollowAction.follow
+        assert event.source == FollowSource.possible_friends
 
     def test_follow_user_push(
         self, auth_client: TestClient, db: Session, user: User, other_user: User, mocker
@@ -837,10 +858,33 @@ class TestFollowUnfollow:
         user.follows.append(other_user)
         db.commit()
 
-        response = auth_client.post(f'/unfollow/{other_user.id}')
+        response = auth_client.post(
+            f'/unfollow/{other_user.id}', json={'source': 'followers_list'}
+        )
         assert response.status_code == 200
         db.refresh(user)
         assert other_user not in user.follows
+        # Отписка тоже логируется, с источником.
+        event = db.scalars(
+            select(FollowEvent).where(FollowEvent.action == FollowAction.unfollow)
+        ).one()
+        assert event.actor_id == user.id
+        assert event.target_id == other_user.id
+        assert event.source == FollowSource.followers_list
+
+    def test_unfollow_user_no_body(
+        self, auth_client: TestClient, db: Session, user: User, other_user: User
+    ):
+        # Отписка без тела: событие логируется с source = null.
+        user.follows.append(other_user)
+        db.commit()
+
+        response = auth_client.post(f'/unfollow/{other_user.id}')
+        assert response.status_code == 200
+        event = db.scalars(
+            select(FollowEvent).where(FollowEvent.action == FollowAction.unfollow)
+        ).one()
+        assert event.source is None
 
 
 class TestWishCRUD:
