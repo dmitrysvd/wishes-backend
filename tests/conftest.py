@@ -69,6 +69,7 @@ def db(test_engine, mocker):
         'app.dependencies',
         'app.notifications',
         'app.cron_scripts.at_noon',
+        'app.cron_scripts.backfill_profile_images',
     ]
     for module in modules:
         try:

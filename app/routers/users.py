@@ -1,5 +1,3 @@
-from datetime import datetime
-from pathlib import Path
 from uuid import UUID
 
 from fastapi import (
@@ -22,6 +20,7 @@ from app.helpers import (
     delete_user_image,
     get_annotated_users,
     get_user_deep_link,
+    save_profile_image_bytes,
     send_push_about_new_follower,
 )
 from app.logging import logger
@@ -35,10 +34,6 @@ from app.schemas import (
 )
 
 router = APIRouter(tags=[USERS_TAG])
-
-# Константы
-BASE_DIR = Path(__file__).parent.parent.parent
-PROFILE_IMAGES_DIR = settings.MEDIA_ROOT / 'profile_images'
 
 
 @router.get('/users/', response_model=list[AnnotatedOtherUserSchema])
@@ -74,17 +69,8 @@ def set_profile_image(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    PROFILE_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
     content = image.file.read()
-    file_name = f'profile_image_user_{user.id}_{datetime.now().isoformat()}'
-    file_path = PROFILE_IMAGES_DIR / file_name
-    file_path.write_bytes(content)
-    related_media_path = file_path.relative_to(settings.MEDIA_ROOT)
-    # URL строим из доверенного FRONTEND_URL, а не из заголовка Host запроса:
-    # Host подконтролен клиенту и попадал бы в сохранённый photo_url, который
-    # отдаётся другим пользователям (host-header injection / stored URL poisoning).
-    user.photo_url = f'{settings.FRONTEND_URL}/media/{related_media_path}'
-    user.photo_path = str(file_path)
+    save_profile_image_bytes(user, content, is_custom=True)
     db.add(user)
     db.commit()
 

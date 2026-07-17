@@ -3,6 +3,7 @@ from app.helpers.user_helpers import (
     delete_user_image,
     get_annotated_users,
     get_user_deep_link,
+    save_profile_image_bytes,
     send_push_about_new_follower,
 )
 
@@ -11,5 +12,6 @@ __all__ = [
     'get_user_deep_link',
     'send_push_about_new_follower',
     'delete_user_image',
+    'save_profile_image_bytes',
     'paginate',
 ]

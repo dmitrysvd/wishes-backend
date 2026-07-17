@@ -63,6 +63,11 @@ class User(Base):
     gender: Mapped[Gender | None] = mapped_column(Enum(Gender))
     photo_url: Mapped[str | None] = mapped_column(String(1024))
     photo_path: Mapped[str | None] = mapped_column(String(200))
+    # True — фото загружено пользователем вручную; такое не перетираем
+    # соц-аватаркой (бэкфилл на диск, будущий refresh-на-логине).
+    photo_is_custom: Mapped[bool] = mapped_column(
+        default=False, server_default='false', nullable=False
+    )
 
     vk_id: Mapped[str | None] = mapped_column(String(15), unique=True)
     vk_access_token: Mapped[str | None] = mapped_column(

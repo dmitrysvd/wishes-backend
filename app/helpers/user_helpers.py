@@ -1,5 +1,6 @@
 import os
 from collections.abc import Sequence
+from datetime import datetime
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
@@ -9,6 +10,27 @@ from app.db import User
 from app.firebase import send_push
 from app.logging import logger
 from app.schemas import AnnotatedOtherUserSchema
+
+# Каталог с загруженными аватарками на диске; отдаётся наружу через /media.
+PROFILE_IMAGES_DIR = settings.MEDIA_ROOT / 'profile_images'
+
+
+def save_profile_image_bytes(user: User, content: bytes, *, is_custom: bool) -> None:
+    """Сохранить байты аватарки на диск и проставить пользователю ссылку.
+
+    Единая точка записи фото на диск — используется и ручной загрузкой
+    (`set_profile_image`, `is_custom=True`), и бэкфиллом соц-аватарок на диск
+    (`is_custom=False`). URL строим из доверенного `FRONTEND_URL`, а не из Host
+    запроса (host-header injection / stored URL poisoning).
+    """
+    PROFILE_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
+    file_name = f'profile_image_user_{user.id}_{datetime.now().isoformat()}'
+    file_path = PROFILE_IMAGES_DIR / file_name
+    file_path.write_bytes(content)
+    related_media_path = file_path.relative_to(settings.MEDIA_ROOT)
+    user.photo_url = f'{settings.FRONTEND_URL}/media/{related_media_path}'
+    user.photo_path = str(file_path)
+    user.photo_is_custom = is_custom
 
 
 def get_annotated_users(
@@ -68,6 +90,7 @@ def delete_user_image(user: User, db: Session):
     photo_path_to_delete = user.photo_path
     user.photo_path = None
     user.photo_url = None
+    user.photo_is_custom = False
     if photo_path_to_delete and os.path.exists(photo_path_to_delete):
         os.remove(photo_path_to_delete)
     db.add(user)

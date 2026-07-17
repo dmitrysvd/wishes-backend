@@ -876,10 +876,11 @@ class TestWishCRUD:
 
 @pytest.fixture
 def mocked_profile_media(tmp_path: Path, mocker) -> Path:
-    # Ensure tmp_path is within media root for relative_to() to work
-    mocker.patch('app.routers.users.PROFILE_IMAGES_DIR', tmp_path)
+    # Запись фото на диск живёт в user_helpers.save_profile_image_bytes —
+    # туда и подменяем каталог и корень медиа.
+    mocker.patch('app.helpers.user_helpers.PROFILE_IMAGES_DIR', tmp_path)
     # Mock settings.MEDIA_ROOT to be a parent of tmp_path
-    mocker.patch('app.routers.users.settings.MEDIA_ROOT', tmp_path.parent)
+    mocker.patch('app.helpers.user_helpers.settings.MEDIA_ROOT', tmp_path.parent)
     return tmp_path
 
 
@@ -904,6 +905,8 @@ class TestUserImages:
         assert user.photo_url is not None
         assert user.photo_url.startswith(f'{settings.FRONTEND_URL}/media/')
         assert 'evil.attacker.com' not in user.photo_url
+        # Ручная загрузка помечается кастомной — бэкфилл/refresh её не перетрут.
+        assert user.photo_is_custom is True
 
     def test_delete_profile_image_real(
         self,
