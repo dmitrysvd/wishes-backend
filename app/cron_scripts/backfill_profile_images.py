@@ -19,7 +19,7 @@ import httpx
 from sqlalchemy import select
 
 from app.db import SessionLocal, User
-from app.helpers import save_profile_image_bytes
+from app.helpers import download_avatar_bytes, save_profile_image_bytes
 from app.logging import logger
 
 # Таймаут на скачивание одной аватарки, секунды.
@@ -34,28 +34,20 @@ def backfill_user_image(
     Возвращает True, если аватарка доступна (в обычном режиме — перенесена на
     диск). При ошибке скачивания в обычном режиме обнуляет `photo_url` (битую
     ссылку наружу не отдаём) и возвращает False. В `dry_run` ничего не пишет —
-    только скачивает, чтобы отличить живые ссылки от протухших, и логирует.
+    только скачивает, чтобы отличить живые ссылки от протухших.
     """
     # photo_url не None — гарантировано фильтром выборки в main().
     assert user.photo_url is not None
-    try:
-        response = client.get(user.photo_url, follow_redirects=True)
-        response.raise_for_status()
-    except httpx.HTTPError as exc:
-        logger.warning(
-            'Битая аватарка{prefix}: user={user_id} url={url} err={exc}',
-            prefix=' (dry-run)' if dry_run else ', обнуляю url',
-            user_id=user.id,
-            url=user.photo_url,
-            exc=exc,
-        )
+    content = download_avatar_bytes(user.photo_url, client)
+    if content is None:
         if not dry_run:
+            logger.warning('Обнуляю битую аватарку: user={user_id}', user_id=user.id)
             user.photo_url = None
         return False
     if dry_run:
         logger.info('[dry-run] Перенёс бы аватарку: user={user_id}', user_id=user.id)
         return True
-    save_profile_image_bytes(user, response.content, is_custom=False)
+    save_profile_image_bytes(user, content, is_custom=False)
     logger.info('Аватарка перенесена на диск: user={user_id}', user_id=user.id)
     return True
 

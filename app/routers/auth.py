@@ -12,6 +12,7 @@ from app.firebase import (
     create_firebase_user,
     get_firebase_user_data,
 )
+from app.helpers import refresh_avatar_on_login
 from app.logging import logger
 from app.schemas import (
     RegistrationAttributionSchema,
@@ -77,7 +78,6 @@ def auth_vk(
             vk_id=vk_basic_data.id,
             vk_access_token=access_token,
             display_name=f'{vk_basic_data.first_name} {vk_basic_data.last_name}',
-            photo_url=vk_basic_data.photo_url,
             phone=vk_extra_data.phone,
             email=vk_extra_data.email,
             firebase_uid=firebase_uid,
@@ -95,6 +95,10 @@ def auth_vk(
     user.last_login_at = utc_now()
     db.add(user)
     db.commit()
+
+    # Свежую соц-аватарку перекачиваем на диск (best-effort). Хотлинк на VK-CDN в
+    # photo_url не сохраняем — только своя /media. См. refresh_avatar_on_login.
+    refresh_avatar_on_login(user, vk_basic_data.photo_url, db)
 
     if is_new_user:
         new_user_handler(user)
@@ -273,7 +277,6 @@ def auth_firebase(
     if is_new_user:
         user = User(
             display_name=firebase_user.display_name,
-            photo_url=firebase_user.photo_url,
             phone=firebase_user.phone_number,
             email=firebase_user.email,
             firebase_uid=uid,
@@ -285,6 +288,9 @@ def auth_firebase(
     user.last_login_at = utc_now()
     db.add(user)
     db.commit()
+
+    # Свежую соц-аватарку (Google) перекачиваем на диск в высоком разрешении.
+    refresh_avatar_on_login(user, firebase_user.photo_url, db)
 
     if is_new_user:
         new_user_handler(user)

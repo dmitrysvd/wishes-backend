@@ -93,6 +93,17 @@ def db(test_engine, mocker):
     connection.close()
 
 
+@pytest.fixture(autouse=True)
+def _disable_avatar_refresh_on_login(mocker):
+    # refresh-на-логине ходит во внешнюю сеть за аватаркой; в auth-тестах глушим,
+    # чтобы не делать реальных запросов. Саму логику refresh проверяем напрямую в
+    # test_user_helpers (через httpx.MockTransport).
+    try:
+        mocker.patch('app.routers.auth.refresh_avatar_on_login')
+    except (ImportError, AttributeError):
+        pass
+
+
 @pytest.fixture
 def anyio_backend():
     return 'asyncio'
