@@ -408,6 +408,7 @@ class RequestVkAuthAndroidSchema(BaseModel):
                     'code': 'vk1.a.authorization-code-from-sdk',
                     'code_verifier': 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
                     'device_id': 'vk-device-id-from-sdk',
+                    'redirect_uri': 'https://hotelki.pro/vk-auth',
                     'attribution': {
                         'referrer_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
                         'utm_source': 'whatsapp',
@@ -417,6 +418,7 @@ class RequestVkAuthAndroidSchema(BaseModel):
                     'code': 'vk1.a.authorization-code-from-sdk',
                     'code_verifier': 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
                     'device_id': 'vk-device-id-from-sdk',
+                    'redirect_uri': 'https://hotelki.pro/vk-auth',
                 },
             ]
         }
@@ -440,6 +442,14 @@ class RequestVkAuthAndroidSchema(BaseModel):
         description=(
             'Идентификатор устройства из VK ID SDK '
             '(`ConfidentialFlowData.deviceId`). Требуется VK ID при обмене кода.'
+        )
+    )
+    redirect_uri: str = Field(
+        description=(
+            '`redirect_uri`, с которым SDK проводил авторизацию на устройстве. '
+            'Бэк передаёт его в обмене как есть; VK сверяет байт-в-байт с шагом '
+            'авторизации. Задаёт клиент (а не сервер), т.к. значение зашито в SDK. '
+            'Несовпадение → `401` (`invalid_request`).'
         )
     )
     attribution: RegistrationAttributionSchema | None = Field(

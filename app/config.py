@@ -8,10 +8,6 @@ class Settings(BaseSettings):
     IS_DEBUG: bool
     VK_SERVICE_KEY: str
     VK_APP_ID: int
-    # redirect_uri, зарегистрированный за VK-приложением. Нужен для серверного
-    # обмена authorization code в VK ID Confidential Flow (POST /auth/vk/android):
-    # VK сверяет его с redirect_uri из шага авторизации SDK.
-    VK_REDIRECT_URI: str = ''
     FIREBASE_KEY_PATH: Path
     TEST_TOKEN: str
     MEDIA_ROOT: Path

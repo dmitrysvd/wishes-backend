@@ -240,13 +240,17 @@ class _VkIdTokenResponseSchema(BaseModel):
 
 
 def exchange_vk_code(
-    code: str, code_verifier: str, device_id: str
+    code: str, code_verifier: str, device_id: str, redirect_uri: str
 ) -> tuple[str, VkUserExtraData]:
     """Обменять authorization code (VK ID Confidential Flow) на access_token.
 
     Обмен идёт на сервере с PKCE `code_verifier` от клиента — так VK ID привязывает
     выданный access_token к IP бэка, и последующие вызовы VK API проходят серверную
     валидацию (Public-Flow-токен, привязанный к IP телефона, серверу невалиден).
+
+    `redirect_uri` приходит от клиента: он зашит в VK ID SDK и должен байт-в-байт
+    совпадать с шагом авторизации на устройстве, поэтому сервер его не знает и не
+    хардкодит, а лишь пробрасывает. Несовпадение → VK отвечает `invalid_request`.
 
     Email/phone возвращает сам VK (подтверждённый источник) — их НЕ берём из тела
     запроса клиента (иначе возможен захват чужого аккаунта подстановкой email).
@@ -259,7 +263,7 @@ def exchange_vk_code(
             'code_verifier': code_verifier,
             'device_id': device_id,
             'client_id': settings.VK_APP_ID,
-            'redirect_uri': settings.VK_REDIRECT_URI,
+            'redirect_uri': redirect_uri,
         },
     )
     response.raise_for_status()

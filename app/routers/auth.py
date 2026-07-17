@@ -222,7 +222,10 @@ def auth_vk_android(
     игнорируется (first-touch).
     """
     access_token, vk_extra_data = exchange_vk_code(
-        request_data.code, request_data.code_verifier, request_data.device_id
+        request_data.code,
+        request_data.code_verifier,
+        request_data.device_id,
+        request_data.redirect_uri,
     )
     # email из серверного обмена VK ID — подтверждён VK (не из тела клиента).
     firebase_uid, firebase_token, is_new_user = auth_vk(

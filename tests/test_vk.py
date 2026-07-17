@@ -186,12 +186,14 @@ def test_exchange_vk_code_success(mocker):
         'phone': '+70000000000',
         'user_id': 123,
     }
-    mocker.patch('httpx.post', return_value=mock_response)
+    mock_post = mocker.patch('httpx.post', return_value=mock_response)
 
-    token, extra = exchange_vk_code('code', 'verifier', 'device')
+    token, extra = exchange_vk_code('code', 'verifier', 'device', 'https://app/redir')
     assert token == 'vk2.a.new_token'
     assert extra.email == 'confirmed@test.com'
     assert extra.phone == '+70000000000'
+    # redirect_uri от клиента пробрасывается в обмен как есть.
+    assert mock_post.call_args.kwargs['data']['redirect_uri'] == 'https://app/redir'
 
 
 def test_exchange_vk_code_error(mocker):
@@ -204,7 +206,7 @@ def test_exchange_vk_code_error(mocker):
     mocker.patch('httpx.post', return_value=mock_response)
 
     with pytest.raises(HTTPException) as exc:
-        exchange_vk_code('code', 'verifier', 'device')
+        exchange_vk_code('code', 'verifier', 'device', 'https://app/redir')
     assert exc.value.status_code == 401
 
 
@@ -215,7 +217,7 @@ def test_exchange_vk_code_malformed(mocker):
     mocker.patch('httpx.post', return_value=mock_response)
 
     with pytest.raises(VkResponseError):
-        exchange_vk_code('code', 'verifier', 'device')
+        exchange_vk_code('code', 'verifier', 'device', 'https://app/redir')
 
 
 def test_get_extra_user_data_by_silent_token_success(mocker):
