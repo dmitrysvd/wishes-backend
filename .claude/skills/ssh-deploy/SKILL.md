@@ -25,54 +25,37 @@ namespace, not on Bash permissions.
 `nc` (OpenBSD netcat) is usually **not** installed; use `ncat` (from nmap) for the
 SOCKS5 `ProxyCommand`.
 
-### One-off command (avoid — prefer tmux below)
+### Running remote commands
+
+Run commands directly over SSH through the proxy:
 
 ```bash
 ssh -o ProxyCommand='ncat --proxy 127.0.0.1:1080 --proxy-type socks5 %h %p' <host> 'docker ps'
 ```
 
-## Always run SSH through a tmux session
-
-**The user wants to watch every SSH command.** Always run remote work inside a tmux
-session (never one-off `ssh ... 'cmd'` calls) so the user can
-`tmux attach -t <session>` and see every command and its output in real time.
-
-Create the session (note the proxy `ProxyCommand` is still required):
+Optionally, drive remote work inside a tmux session so the user can
+`tmux attach -t <session>` and follow along live — useful for long or interactive
+work. Not required; use it when it helps.
 
 ```bash
 tmux kill-session -t <session> 2>/dev/null
 tmux new-session -d -s <session> -x 220 -y 50 \
   "ssh -o ProxyCommand='ncat --proxy 127.0.0.1:1080 --proxy-type socks5 %h %p' <host>"
-```
-
-Drive it and read results:
-
-```bash
 tmux send-keys -t <session> 'docker compose ls' Enter
 sleep 3
 tmux capture-pane -t <session> -p -S -40
 ```
 
-Tell the user how to follow along: `tmux attach -t <session>` (detach with
-`Ctrl-b` then `d`).
-
 ### Gotchas
 
-- After creating the session, give SSH a few seconds before the first `send-keys`;
-  the remote prompt may not be drawn yet.
-- When reading output, capture the raw pane (`capture-pane -p -S -N`). Avoid
-  aggressive `grep`/`sed` filtering — minimal shell prompts (a bare `$`) and short
-  outputs are easily eaten by filters, making it look like a command produced
-  nothing.
-- Send `clear` between steps to keep the captured pane readable.
-- **The user may be typing in the same session.** `send-keys` appends to whatever
-  is already at the prompt, so send `C-u` (clear line) *before* each command. If you
-  see unexpected text at the prompt (e.g. a half-typed `rm ...`), it's the user —
-  don't run it; clear the line with `C-u` and don't press Enter on their behalf.
-- **Avoid `sudo`** — it blocks on an interactive password prompt and hangs the
-  session. Prefer non-sudo reads (e.g. read nginx config straight from
-  `/etc/nginx/sites-enabled/` instead of `sudo nginx -T`). `C-c` to bail if a
-  password prompt appears.
+- **Avoid `sudo`** — it blocks on an interactive password prompt and hangs. Prefer
+  non-sudo reads (e.g. read nginx config straight from `/etc/nginx/sites-enabled/`
+  instead of `sudo nginx -T`).
+- When using tmux: give SSH a few seconds before the first `send-keys`; capture the
+  raw pane (`capture-pane -p -S -N`) without aggressive `grep`/`sed` filtering; send
+  `clear` between steps. If the user is typing in the same session, `send-keys`
+  appends to their line — send `C-u` first, and never press Enter on half-typed text
+  that isn't yours.
 
 ### Copying files to the server (scp through the proxy)
 
@@ -85,7 +68,7 @@ scp -o ProxyCommand='ncat --proxy 127.0.0.1:1080 --proxy-type socks5 %h %p' \
   ./local_file.sh <host>:/home/<user>/remote_file.sh
 ```
 
-Then `chmod +x` and test it via the tmux session.
+Then `chmod +x` and test it.
 
 ## Operating the stack
 
