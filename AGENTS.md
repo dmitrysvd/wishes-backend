@@ -92,4 +92,4 @@
   (`wishes-product/.claude/skills/verify-contract/verify.sh`).
 
 ## Git
-- Никогда не делай сама `git push`. Делает только пользователь вручную.
+- Не делай сам `git push`, если пользователь явно не попросил об этом.
