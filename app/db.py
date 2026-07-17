@@ -34,7 +34,7 @@ from sqlalchemy.orm import (
 from sqlalchemy.sql import func
 
 from app.config import settings
-from app.constants import Gender
+from app.constants import FollowAction, FollowSource, Gender
 
 
 class Base(DeclarativeBase):
@@ -250,6 +250,32 @@ class PushSendingLog(Base):
         ForeignKey('user.id', ondelete='CASCADE'), nullable=False
     )
     reason: Mapped[PushReason] = mapped_column(Enum(PushReason))
+
+
+class FollowEvent(Base):
+    """Append-only лог событий подписки — инструментация follow-графа.
+
+    В отличие от таблицы рёбер `user_following` (хранит только текущее состояние
+    и теряет строку при отписке), лог копит и follow, и unfollow во времени —
+    это даёт динамику графа и сигнал оттока связей. `source` проставляет клиент.
+    """
+
+    __tablename__ = 'follow_event'
+
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    actor_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), nullable=False
+    )
+    target_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), nullable=False
+    )
+    action: Mapped[FollowAction] = mapped_column(Enum(FollowAction), nullable=False)
+    source: Mapped[FollowSource | None] = mapped_column(
+        Enum(FollowSource), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 engine = create_engine(
