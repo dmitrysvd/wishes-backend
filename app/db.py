@@ -46,6 +46,14 @@ user_following_table = Table(
     Base.metadata,
     Column('follower_id', ForeignKey('user.id', ondelete='CASCADE'), primary_key=True),
     Column('followed_id', ForeignKey('user.id', ondelete='CASCADE'), primary_key=True),
+    # Время создания подписки. Nullable: у рёбер, созданных до инструментации,
+    # реальная дата неизвестна (NULL = легаси), новые проставляются server_default.
+    Column(
+        'created_at',
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=True,
+    ),
     CheckConstraint('follower_id <> followed_id'),
 )
 

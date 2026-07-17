@@ -11,7 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.constants import Gender
-from app.db import User, UserAttribution, Wish, WishRecommendation
+from app.db import (
+    User,
+    UserAttribution,
+    Wish,
+    WishRecommendation,
+    user_following_table,
+)
 from app.main import app, get_current_user, get_db
 from app.utils import utc_now
 from app.vk import VkUserBasicData, VkUserExtraData
@@ -803,6 +809,14 @@ class TestFollowUnfollow:
         assert response.status_code == 200
         db.refresh(user)
         assert other_user in user.follows
+        # Ребро подписки получает время создания (инструментация графа).
+        created_at = db.execute(
+            select(user_following_table.c.created_at).where(
+                user_following_table.c.follower_id == user.id,
+                user_following_table.c.followed_id == other_user.id,
+            )
+        ).scalar_one()
+        assert created_at is not None
 
     def test_follow_user_push(
         self, auth_client: TestClient, db: Session, user: User, other_user: User, mocker
