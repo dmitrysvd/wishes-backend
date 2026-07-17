@@ -3,7 +3,7 @@ from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 
 from app.config import settings
-from app.db import User, Wish, WishRecommendation
+from app.db import FollowEvent, User, Wish, WishRecommendation
 
 
 class UserAdmin(ModelView, model=User):
@@ -35,6 +35,26 @@ class WishRecommendationAdmin(ModelView, model=WishRecommendation):
     ]
     icon = 'fa-solid fa-bullhorn'
     column_searchable_list = [WishRecommendation.title]
+    can_export = False
+
+
+class FollowEventAdmin(ModelView, model=FollowEvent):
+    name = 'Follow Event'
+    name_plural = 'Follow Events'
+    # Append-only лог инструментации графа — только чтение, руками не правим.
+    can_create = False
+    can_edit = False
+    can_delete = False
+    column_list = [
+        FollowEvent.created_at,
+        FollowEvent.actor_id,
+        FollowEvent.target_id,
+        FollowEvent.action,
+        FollowEvent.source,
+    ]
+    icon = 'fa-solid fa-diagram-project'
+    column_searchable_list = [FollowEvent.actor_id, FollowEvent.target_id]
+    column_default_sort = ('created_at', True)
     can_export = False
 
 
@@ -71,4 +91,5 @@ def setup_admin(app, engine):
     admin.add_view(UserAdmin)
     admin.add_view(WishAdmin)
     admin.add_view(WishRecommendationAdmin)
+    admin.add_view(FollowEventAdmin)
     return admin
