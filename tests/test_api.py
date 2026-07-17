@@ -9,6 +9,7 @@ from firebase_admin.exceptions import AlreadyExistsError
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.constants import Gender
 from app.db import User, UserAttribution, Wish, WishRecommendation
 from app.main import app, get_current_user, get_db
@@ -890,13 +891,19 @@ class TestUserImages:
         user: User,
         mocked_profile_media: Path,
     ):
+        # Подсовываем подставной Host — он НЕ должен попасть в photo_url.
         response = auth_client.post(
             '/set_profile_image',
             files={'image': ('profile.jpg', b'fake image content', 'image/jpeg')},
+            headers={'host': 'evil.attacker.com'},
         )
         assert response.is_success
         db.refresh(user)
         assert user.photo_path is not None
+        # URL строится из доверенного FRONTEND_URL, а не из заголовка Host.
+        assert user.photo_url is not None
+        assert user.photo_url.startswith(f'{settings.FRONTEND_URL}/media/')
+        assert 'evil.attacker.com' not in user.photo_url
 
     def test_delete_profile_image_real(
         self,

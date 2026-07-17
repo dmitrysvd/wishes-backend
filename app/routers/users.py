@@ -7,7 +7,6 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     HTTPException,
-    Request,
     UploadFile,
 )
 from httpx import HTTPError
@@ -71,7 +70,6 @@ def update_profile(
 
 @router.post('/set_profile_image')
 def set_profile_image(
-    request: Request,
     image: UploadFile,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -82,9 +80,10 @@ def set_profile_image(
     file_path = PROFILE_IMAGES_DIR / file_name
     file_path.write_bytes(content)
     related_media_path = file_path.relative_to(settings.MEDIA_ROOT)
-    user.photo_url = (
-        f'{request.url.scheme}://{request.headers["host"]}/media/{related_media_path}'
-    )
+    # URL строим из доверенного FRONTEND_URL, а не из заголовка Host запроса:
+    # Host подконтролен клиенту и попадал бы в сохранённый photo_url, который
+    # отдаётся другим пользователям (host-header injection / stored URL poisoning).
+    user.photo_url = f'{settings.FRONTEND_URL}/media/{related_media_path}'
     user.photo_path = str(file_path)
     db.add(user)
     db.commit()
