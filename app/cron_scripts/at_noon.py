@@ -104,9 +104,7 @@ def send_upcoming_birthday_of_followed_user_notification():
                 user.pre_bday_push_for_followers_last_sent_at
             ):
                 continue
-            user.pre_bday_push_for_followers_last_sent_at = utc_now()
-            db.add(user)
-            db.commit()
+            sent_any = False
             for follower in user.followed_by:
                 if not follower.firebase_push_token:
                     continue
@@ -120,6 +118,23 @@ def send_upcoming_birthday_of_followed_user_notification():
                     ),
                     link=get_user_deep_link(user),
                 )
+                # Пишем факт отправки в лог — наблюдаемость follower-ДР-пуша.
+                db.add(
+                    PushSendingLog(
+                        sent_at=datetime.now(),
+                        reason=PushReason.FOLLOWER_BIRTHDAY,
+                        reason_user_id=user.id,
+                        target_user_id=follower.id,
+                    )
+                )
+                sent_any = True
+            # Гвард обновляем только если реально хоть кому-то отправили. Иначе у
+            # именинника без достижимых подписчиков timestamp сжигался бы вхолостую
+            # и блокировал пуш на 200 дней для тех, кто подпишется позже (ещё в окне).
+            if sent_any:
+                user.pre_bday_push_for_followers_last_sent_at = utc_now()
+                db.add(user)
+                db.commit()
 
 
 def main():

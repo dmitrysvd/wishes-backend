@@ -105,6 +105,16 @@ async def test_send_upcoming_birthday_of_followed_user_notification(db, mocker):
     assert follower in kwargs['target_users']
     assert 'её' in kwargs['body']
 
+    # Факт отправки записан в лог (наблюдаемость follower-ДР-пуша).
+    log = db.scalars(
+        select(PushSendingLog).where(
+            PushSendingLog.reason == PushReason.FOLLOWER_BIRTHDAY
+        )
+    ).first()
+    assert log is not None
+    assert log.reason_user_id == followed_user.id
+    assert log.target_user_id == follower.id
+
     db.refresh(followed_user)
     assert followed_user.pre_bday_push_for_followers_last_sent_at is not None
 
@@ -206,6 +216,10 @@ def test_send_upcoming_birthday_followed_no_token(db, mocker):
     db.commit()
     send_upcoming_birthday_of_followed_user_notification()
     mock_send_push.assert_not_called()
+    # Никому не отправили -> timestamp не сжигаем (иначе 200-дневный гвард
+    # заблокировал бы будущих подписчиков, оформившихся ещё в окне).
+    db.refresh(followed)
+    assert followed.pre_bday_push_for_followers_last_sent_at is None
 
 
 @pytest.mark.anyio
