@@ -1,12 +1,29 @@
 from uuid import UUID
 
+import pytest
+from sqlalchemy.exc import IntegrityError
+
 from app.db import User, Wish
+from app.utils import utc_now
 
 
 def test_user_repr_str():
     user = User(display_name='Test')
     assert 'Test' in repr(user)
     assert 'Test' in str(user)
+
+
+def test_push_token_empty_string_rejected(db):
+    # CHECK push_token_not_empty: '' в firebase_push_token недопустима (NULL — ок).
+    user = User(
+        display_name='Empty Token',
+        firebase_uid='empty_token_uid',
+        firebase_push_token='',
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    with pytest.raises(IntegrityError):
+        db.commit()
 
 
 def test_wish_str():

@@ -14,7 +14,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option('sqlalchemy.url', settings.DATABASE_URL)
+# URL берём из настроек, но уважаем уже выставленный вызывающим (напр. тесты
+# передают тестовую БД через Config.set_main_option).
+if not config.get_main_option('sqlalchemy.url'):
+    config.set_main_option('sqlalchemy.url', settings.DATABASE_URL)
 
 # add your model's MetaData object here
 # for 'autogenerate' support
