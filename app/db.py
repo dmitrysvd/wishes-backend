@@ -236,6 +236,8 @@ class Wish(Base):
 class PushReason(enum.Enum):
     CURRENT_USER_BIRTHDAY = enum.auto()
     FOLLOWER_BIRTHDAY = enum.auto()
+    # Сезонный глобальный повод (НГ/8 марта/…) — не зависит от follow-графа.
+    SEASONAL = enum.auto()
 
 
 class PushSendingLog(Base):
@@ -250,6 +252,8 @@ class PushSendingLog(Base):
         ForeignKey('user.id', ondelete='CASCADE'), nullable=False
     )
     reason: Mapped[PushReason] = mapped_column(Enum(PushReason))
+    # Ключ дедупа сезонной кампании вида `mar8-2026`. Для не-сезонных пушей пуст.
+    campaign_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class FollowEvent(Base):
