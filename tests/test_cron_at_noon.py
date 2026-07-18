@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.cron_scripts.at_noon import (
     SeasonalCampaign,
+    SeasonalSegment,
     followers_push_recently_sent,
     get_next_birthday,
     is_in_campaign_window,
@@ -16,7 +17,9 @@ from app.db import Gender, PushReason, PushSendingLog, User
 from app.utils import utc_now
 
 
-def _today_campaign(window_days: int = 0) -> SeasonalCampaign:
+def _today_campaign(
+    window_days: int = 0, filters: tuple = (), seg_key: str = 'all'
+) -> SeasonalCampaign:
     # Кампания с якорем на сегодня — окно всегда включает текущий день.
     today = date.today()
     return SeasonalCampaign(
@@ -24,8 +27,14 @@ def _today_campaign(window_days: int = 0) -> SeasonalCampaign:
         month=today.month,
         day=today.day,
         window_days=window_days,
-        title='Тестовый повод',
-        body='Тестовое тело',
+        segments=(
+            SeasonalSegment(
+                key=seg_key,
+                filters=filters,
+                title='Тестовый повод',
+                body='Тестовое тело',
+            ),
+        ),
     )
 
 
@@ -171,9 +180,7 @@ async def test_followed_user_push_skipped_when_recently_sent(db, mocker):
 
 
 def test_is_in_campaign_window():
-    campaign = SeasonalCampaign(
-        key='mar8', month=3, day=8, window_days=7, title='t', body='b'
-    )
+    campaign = SeasonalCampaign(key='mar8', month=3, day=8, window_days=7, segments=())
     # Ровно на якоре — в окне.
     assert is_in_campaign_window(campaign, date(2026, 3, 8)) is True
     # За день до конца окна (якорь - 7) — в окне.
@@ -209,9 +216,65 @@ async def test_seasonal_sent_in_window(db, mocker):
         select(PushSendingLog).where(PushSendingLog.reason == PushReason.SEASONAL)
     ).first()
     assert log is not None
-    # campaign_key содержит год якоря (текущий).
-    assert log.campaign_key == f'test-{date.today().year}'
+    # campaign_key содержит ключ сегмента и год якоря (текущий).
+    assert log.campaign_key == f'test-all-{date.today().year}'
     assert log.target_user_id == user.id
+
+
+@pytest.mark.anyio
+async def test_seasonal_targets_only_matching_gender(db, mocker):
+    # Гендерный сегмент (8 марта = female) шлём только женщинам; мужчина и
+    # unknown-пол отсекаются SQL-фильтром (NULL == female → не проходит).
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    campaign = SeasonalCampaign(
+        key='mar8',
+        month=3,
+        day=8,
+        window_days=7,
+        segments=(
+            SeasonalSegment(
+                key='female',
+                filters=(User.gender == Gender.female,),
+                title='Скоро 8 Марта',
+                body='b',
+            ),
+        ),
+    )
+    mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (campaign,))
+    female = User(
+        display_name='F',
+        firebase_uid='f_uid',
+        firebase_push_token='tok_f',
+        gender=Gender.female,
+        registered_at=utc_now(),
+    )
+    male = User(
+        display_name='M',
+        firebase_uid='m_uid',
+        firebase_push_token='tok_m',
+        gender=Gender.male,
+        registered_at=utc_now(),
+    )
+    unknown = User(
+        display_name='U',
+        firebase_uid='u_uid',
+        firebase_push_token='tok_u',
+        gender=None,
+        registered_at=utc_now(),
+    )
+    db.add_all([female, male, unknown])
+    db.commit()
+
+    # today передаём явно — тест детерминирован независимо от реальной даты.
+    send_seasonal_notifications(today=date(2026, 3, 8))
+
+    assert mock_send_push.call_count == 1
+    logs = db.scalars(
+        select(PushSendingLog).where(PushSendingLog.reason == PushReason.SEASONAL)
+    ).all()
+    assert len(logs) == 1
+    assert logs[0].target_user_id == female.id
 
 
 @pytest.mark.anyio
@@ -242,21 +305,15 @@ async def test_seasonal_skips_user_without_token(db, mocker):
     mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
     mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
     mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
-    # Один юзер с пустой строкой-токеном (проходит isnot(None), но falsy),
-    # второй с None — оба должны быть пропущены.
-    empty = User(
-        display_name='Empty Token',
-        firebase_uid='empty_token_uid',
-        firebase_push_token='',
-        registered_at=utc_now(),
-    )
+    # «Нет токена» = NULL (пустая строка на уровне БД запрещена констрейнтом,
+    # см. test_push_token_empty_string_rejected) — такого юзера пропускаем.
     none_token = User(
         display_name='No Token',
         firebase_uid='none_token_uid',
         firebase_push_token=None,
         registered_at=utc_now(),
     )
-    db.add_all([empty, none_token])
+    db.add(none_token)
     db.commit()
 
     send_seasonal_notifications()
