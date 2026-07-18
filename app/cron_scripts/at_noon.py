@@ -18,32 +18,109 @@ NO_REPEAT_FOLLOWERS_PUSH_DAYS = 200
 
 
 @dataclass(frozen=True)
-class SeasonalCampaign:
-    """Один сезонный повод: дата-якорь, окно заблаговременности, копия.
+class SeasonalSegment:
+    """Аудитория внутри кампании: SQLAlchemy-фильтры + своя копия.
 
-    `key` входит в `campaign_key` лога (`f'{key}-{year}'`) — по нему дедупим
-    отправку в пределах одного сезона. `window_days` — сколько дней до якоря
-    (включительно) пуш активен.
+    `filters` подставляются прямо в `select(User).where(...)` — таргетинг живёт
+    в запросе, а не в Python (эффективнее и композируется с фильтром токена и
+    дедупом). Пустой кортеж = «все». Инвариант: фильтры сегментов одной кампании
+    должны быть **взаимоисключающими** — иначе юзер попадёт в два сегмента и
+    получит два пуша. Сравнение на nullable-поле (напр. `gender == female`) по
+    трёхзначной логике SQL само отсекает NULL/unknown — то, что нужно для
+    гендерных поводов (никогда не пиши `!= male` как прокси «женский»).
+
+    `key` входит в `campaign_key` лога (`f'{campaign}-{segment}-{year}'`) —
+    ключ дедупа на сегмент в пределах сезона.
+    """
+
+    key: str
+    filters: tuple
+    title: str
+    body: str
+
+
+@dataclass(frozen=True)
+class SeasonalCampaign:
+    """Один сезонный повод: дата-якорь, окно заблаговременности, сегменты.
+
+    `window_days` — сколько дней до якоря (включительно) пуш активен. Инвариант
+    на якорь: дата `(month, day)` должна существовать в любом году и окно не
+    должно пересекать 1 января — поэтому НГ якорим на 31 декабря, а не на 1
+    января (иначе окно ушло бы в прошлый год). 29 февраля как якорь недопустимо.
     """
 
     key: str
     month: int
     day: int
     window_days: int
-    title: str
-    body: str
+    segments: tuple[SeasonalSegment, ...]
 
 
-# Декларативный список сезонных кампаний. Пилот — 8 марта (Q1 в плане: точные
-# даты/копия — открытый продуктовый вопрос, здесь разумный дефолт).
+# Универсальные (негендерные) сегменты — шлём всем, кто с токеном.
+def _all_users_segment(key: str, title: str, body: str) -> SeasonalSegment:
+    return SeasonalSegment(key=key, filters=(), title=title, body=body)
+
+
+# Декларативный список сезонных кампаний. Копии/даты — разумные дефолты
+# (открытый продуктовый вопрос Q1 в плане 0002). Гендерные поводы (23 фев / 8
+# мар) таргетим ТОЛЬКО по известному полу; unknown-gender в них не попадает.
+# Мужчин на 8 марта не трогаем: даритель-реэнгейджмент уже закрыт пушем о
+# новых хотелках подписок (`app/notifications.py`).
 SEASONAL_CAMPAIGNS: tuple[SeasonalCampaign, ...] = (
+    SeasonalCampaign(
+        key='new-year',
+        month=12,
+        day=31,
+        window_days=14,
+        segments=(
+            _all_users_segment(
+                'all',
+                'Скоро Новый год 🎄',
+                'Обнови список желаний — самый подарочный сезон уже близко ✨',
+            ),
+        ),
+    ),
+    SeasonalCampaign(
+        key='feb14',
+        month=2,
+        day=14,
+        window_days=7,
+        segments=(
+            _all_users_segment(
+                'all',
+                'Скоро День святого Валентина 💝',
+                'Обнови список желаний, чтобы близкий человек знал, '
+                'что тебе будет приятно получить',
+            ),
+        ),
+    ),
+    SeasonalCampaign(
+        key='feb23',
+        month=2,
+        day=23,
+        window_days=7,
+        segments=(
+            SeasonalSegment(
+                key='male',
+                filters=(User.gender == Gender.male,),
+                title='Скоро 23 Февраля 🎖',
+                body='Обнови список желаний, чтобы близкие знали, что подарить',
+            ),
+        ),
+    ),
     SeasonalCampaign(
         key='mar8',
         month=3,
         day=8,
         window_days=7,
-        title='Скоро 8 Марта 🌷',
-        body='Обнови список желаний, чтобы близкие знали, что подарить ✨',
+        segments=(
+            SeasonalSegment(
+                key='female',
+                filters=(User.gender == Gender.female,),
+                title='Скоро 8 Марта 🌷',
+                body='Обнови список желаний, чтобы близкие знали, что подарить ✨',
+            ),
+        ),
     ),
 )
 
@@ -179,55 +256,57 @@ def is_in_campaign_window(campaign: SeasonalCampaign, today: date) -> bool:
     return window_start <= today <= anchor
 
 
-def send_seasonal_notifications() -> None:
-    """Сезонные глобальные пуши всем юзерам со свежим токеном.
+def send_seasonal_notifications(today: date | None = None) -> None:
+    """Сезонные глобальные пуши по сегментам кампаний.
 
-    Для каждой активной сегодня кампании шлём одному юзеру не более одного пуша
-    за сезон: дедуп через `PushSendingLog(reason=SEASONAL, campaign_key)`.
+    Для каждой активной сегодня кампании и каждого её сегмента выбираем юзеров с
+    живым токеном, подходящих под фильтры сегмента и ещё не получавших этот пуш
+    в текущем сезоне. Один юзер за сезон получает не более одного пуша на
+    сегмент — дедуп свёрнут прямо в запрос через `campaign_key`. `today`
+    параметризован ради тестируемости без подмены системного времени.
     """
-    today = date.today()
+    today = today or date.today()
     for campaign in SEASONAL_CAMPAIGNS:
         if not is_in_campaign_window(campaign, today):
             continue
-        # Год якоря входит в ключ, чтобы «этот сезон» дедупился корректно.
-        campaign_key = f'{campaign.key}-{today.year}'
-        with SessionLocal() as db:
-            users = db.scalars(
-                select(User).where(User.firebase_push_token.isnot(None))
-            ).all()
-        sent_count = 0
-        for user in users:
-            if not user.firebase_push_token:
-                continue
+        for segment in campaign.segments:
+            # Год якоря входит в ключ, чтобы «этот сезон» дедупился корректно.
+            campaign_key = f'{campaign.key}-{segment.key}-{today.year}'
+            # Кому уже слали этот сегмент в этом сезоне — исключаем в запросе.
+            already_sent = select(PushSendingLog.target_user_id).where(
+                (PushSendingLog.reason == PushReason.SEASONAL)
+                & (PushSendingLog.campaign_key == campaign_key)
+            )
             with SessionLocal() as db:
-                if db.scalars(
-                    select(PushSendingLog).where(
-                        (PushSendingLog.reason == PushReason.SEASONAL)
-                        & (PushSendingLog.campaign_key == campaign_key)
-                        & (PushSendingLog.target_user_id == user.id)
+                users = db.scalars(
+                    select(User).where(
+                        User.firebase_push_token.isnot(None),
+                        *segment.filters,
+                        User.id.not_in(already_sent),
                     )
-                ).first():
-                    continue
-            send_push(
-                target_users=[user],
-                title=campaign.title,
-                body=campaign.body,
-                link=get_user_deep_link(user),
+                ).all()
+            for user in users:
+                send_push(
+                    target_users=[user],
+                    title=segment.title,
+                    body=segment.body,
+                    link=get_user_deep_link(user),
+                )
+                push_log = PushSendingLog(
+                    sent_at=datetime.now(),
+                    reason=PushReason.SEASONAL,
+                    # У сезонного пуша нет «виновника»-юзера — ссылаемся на
+                    # самого получателя ради NOT NULL на reason_user_id.
+                    reason_user_id=user.id,
+                    target_user_id=user.id,
+                    campaign_key=campaign_key,
+                )
+                with SessionLocal() as db:
+                    db.add(push_log)
+                    db.commit()
+            logger.info(
+                f'Сезонная кампания {campaign_key}: отправлено {len(users)} пушей'
             )
-            push_log = PushSendingLog(
-                sent_at=datetime.now(),
-                reason=PushReason.SEASONAL,
-                # У сезонного пуша нет «виновника»-юзера — ссылаемся на самого
-                # получателя, чтобы удовлетворить NOT NULL на reason_user_id.
-                reason_user_id=user.id,
-                target_user_id=user.id,
-                campaign_key=campaign_key,
-            )
-            with SessionLocal() as db:
-                db.add(push_log)
-                db.commit()
-            sent_count += 1
-        logger.info(f'Сезонная кампания {campaign_key}: отправлено {sent_count} пушей')
 
 
 def main():
