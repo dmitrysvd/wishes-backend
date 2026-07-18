@@ -501,6 +501,89 @@ class RequestVkAuthAndroidSchema(BaseModel):
     )
 
 
+class RequestVkAuthVkidSchema(BaseModel):
+    """Вход через VK ID (Confidential Flow, OAuth 2.1) — единый для web и мобилок.
+
+    Платформо-нейтральный контракт: VK ID SDK (веб-виджет One Tap `@vkid/sdk` или
+    нативный SDK на устройстве) проводит авторизацию с per-request PKCE и `state`
+    внутри себя и отдаёт клиенту **authorization code**, а не готовый токен. Клиент
+    пересылает `code` бэку, и обмен `code → access_token` идёт **на сервере**.
+    Почему не токен напрямую (как в легаси `/auth/vk/mobile` / silent_token
+    `/auth/vk/web`): в Public Flow VK привязывает `access_token` к IP клиента, и
+    серверная валидация с IP датацентра невозможна; Confidential Flow привязывает
+    токен к IP бэка, который его и использует. `client_secret` сервер не раскрывает.
+
+    Email/phone в теле НЕ передаются намеренно: подтверждённый email бэк берёт из
+    `id_token` VK ID (доверенный источник), а не из тела клиента — иначе возможен
+    захват чужого аккаунта подстановкой чужого email при связывании по email.
+
+    Сайд-эффект (атрибуция): при первичном создании юзера (`user_created=true`)
+    учитывается `attribution` (first-touch, best-effort). Для существующего юзера
+    игнорируется. См. `RegistrationAttributionSchema`.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'code': 'vk1.a.authorization-code-from-sdk',
+                    'code_verifier': 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
+                    'device_id': 'vk-device-id-from-sdk',
+                    'redirect_uri': 'https://hotelki.pro/',
+                    'attribution': {
+                        'referrer_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                        'utm_source': 'vk',
+                    },
+                },
+                {
+                    'code': 'vk1.a.authorization-code-from-sdk',
+                    'code_verifier': 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
+                    'device_id': 'vk-device-id-from-sdk',
+                    'redirect_uri': 'https://hotelki.pro/',
+                },
+            ]
+        }
+    )
+
+    code: str = Field(
+        description=(
+            'Одноразовый authorization code из VK ID SDK (веб One Tap `code` или '
+            '`ConfidentialFlowData.code` на мобилке). Бэк обменивает его на токены у '
+            'VK ID Backend. Повторный обмен уже использованного/истёкшего `code` → '
+            '`401`.'
+        )
+    )
+    code_verifier: str = Field(
+        description=(
+            'PKCE `code_verifier`, сгенерированный SDK под этот `code`. Бэк передаёт '
+            'его в обмене; VK сверяет с `code_challenge` из шага авторизации. '
+            'Несовпадение → `401`.'
+        )
+    )
+    device_id: str = Field(
+        description=(
+            'Идентификатор устройства/сессии из VK ID SDK (веб `device_id` или '
+            '`ConfidentialFlowData.deviceId`). Требуется VK ID при обмене кода.'
+        )
+    )
+    redirect_uri: str = Field(
+        description=(
+            '`redirect_uri`, с которым SDK проводил авторизацию (на вебе — origin '
+            'приложения, напр. `https://hotelki.pro/`; на мобилке — зашитый в SDK). '
+            'Бэк передаёт его в обмене как есть; VK сверяет байт-в-байт с шагом '
+            'авторизации. Задаёт клиент (а не сервер), т.к. значение известно SDK. '
+            'Несовпадение → `401` (`invalid_request`).'
+        )
+    )
+    attribution: RegistrationAttributionSchema | None = Field(
+        default=None,
+        description=(
+            'Атрибуция установки/реферала, учитывается только при создании нового '
+            'юзера. Опущено/`null` = без атрибуции.'
+        ),
+    )
+
+
 class ResponseVkAuthWebSchema(BaseModel):
     vk_access_token: str
     firebase_uid: str
