@@ -92,4 +92,4 @@
   (`wishes-product/.claude/skills/verify-contract/verify.sh`).
 
 ## Git
-- Не делай сам `git push`, если пользователь явно не попросил об этом.
+- Push в `master` — только с согласия человека. Push в другие ветки этого не требует.
