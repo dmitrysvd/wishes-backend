@@ -330,7 +330,10 @@ class RequestFirebaseAuthSchema(BaseModel):
 
 
 class SavePushTokenSchema(BaseModel):
-    push_token: str
+    # Пустой токен бессмыслен: пуш по нему не уйдёт, а «нет токена» кодируется
+    # как NULL в БД. min_length=1 не пускает '' в колонку (см. CHECK-констрейнт
+    # push_token_not_empty на модели User).
+    push_token: str = Field(min_length=1)
 
 
 class FollowActionSchema(BaseModel):
