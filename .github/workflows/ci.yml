@@ -87,9 +87,74 @@ jobs:
       - name: Tests + coverage (100%)
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=100
 
+  migrations:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Обязательные настройки app/config.py. FIREBASE_KEY_PATH нужен лишь как
+      # строка для валидации Settings — alembic импортит app.config/app.db, но
+      # не app.firebase, файл не читается.
+      SECRET_KEY: ci-secret
+      IS_DEBUG: 'true'
+      VK_SERVICE_KEY: ci
+      VK_APP_ID: '0'
+      FIREBASE_KEY_PATH: /tmp/firebase-ci.json
+      TEST_TOKEN: test_token
+      MEDIA_ROOT: /tmp/media
+      LOGS_DIR: /tmp/logs
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
+      TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: '0.10.4'
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Single alembic head
+        # Две независимые головы (миграции из разных веток от одного down_revision)
+        # сделали бы `alembic upgrade head` неоднозначным и уронили бы деплой —
+        # ловим здесь, до него, с понятным сообщением.
+        run: |
+          heads="$(uv run alembic heads)"
+          echo "$heads"
+          count="$(echo "$heads" | grep -c '(head)' || true)"
+          test "$count" -eq 1 || { echo "Множественные alembic-головы ($count) — нужен 'alembic merge heads'"; exit 1; }
+
+      - name: Migrations apply from scratch
+        # Прогон всей цепочки на чистой БД: ловит сломанную миграцию/битый
+        # down_revision, чего тест-джоба на create_all не видела бы.
+        run: uv run alembic upgrade head
+
+      - name: No model/migration drift
+        # `alembic check` падает, если модели разошлись с миграциями (напр.
+        # поле/констрейнт есть в модели, но забыт в миграции — и наоборот).
+        run: uv run alembic check
+
   build-and-deploy:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, migrations]
 
     steps:
       - name: Checkout repository
