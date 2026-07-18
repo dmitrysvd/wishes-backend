@@ -103,7 +103,7 @@ SEASONAL_CAMPAIGNS: tuple[SeasonalCampaign, ...] = (
             SeasonalSegment(
                 key='male',
                 filters=(User.gender == Gender.male,),
-                title='Скоро 23 Февраля 🎖',
+                title='Скоро 23 Февраля 🎁',
                 body='Обнови список желаний, чтобы близкие знали, что подарить',
             ),
         ),
