@@ -12,25 +12,12 @@ restarting services, etc.).
 The SSH host alias is configured in the user's `~/.ssh/config`; refer to it by its
 alias rather than hardcoding an address.
 
-## Network sandbox: SSH must go through the SOCKS5 proxy
-
-This environment runs in a restricted network namespace with **no default route** —
-a direct `ssh <host>` fails with `Network is unreachable` or `connect: Network is
-unreachable`. Outbound traffic only works through the SOCKS5 proxy that listens on
-`127.0.0.1:1080` (an HTTP proxy is also available on `127.0.0.1:1081`).
-
-`--dangerously-disable-sandbox` does **not** help — the restriction is on the
-namespace, not on Bash permissions.
-
-`nc` (OpenBSD netcat) is usually **not** installed; use `ncat` (from nmap) for the
-SOCKS5 `ProxyCommand`.
-
 ### Running remote commands
 
-Run commands directly over SSH through the proxy:
+Run commands directly over SSH:
 
 ```bash
-ssh -o ProxyCommand='ncat --proxy 127.0.0.1:1080 --proxy-type socks5 %h %p' <host> 'docker ps'
+ssh <host> 'docker ps'
 ```
 
 Optionally, drive remote work inside a tmux session so the user can
@@ -39,8 +26,7 @@ work. Not required; use it when it helps.
 
 ```bash
 tmux kill-session -t <session> 2>/dev/null
-tmux new-session -d -s <session> -x 220 -y 50 \
-  "ssh -o ProxyCommand='ncat --proxy 127.0.0.1:1080 --proxy-type socks5 %h %p' <host>"
+tmux new-session -d -s <session> -x 220 -y 50 "ssh <host>"
 tmux send-keys -t <session> 'docker compose ls' Enter
 sleep 3
 tmux capture-pane -t <session> -p -S -40
@@ -57,15 +43,13 @@ tmux capture-pane -t <session> -p -S -40
   appends to their line — send `C-u` first, and never press Enter on half-typed text
   that isn't yours.
 
-### Copying files to the server (scp through the proxy)
+### Copying files to the server (scp)
 
 To deploy a script/config, write it locally and `scp` it — far more reliable than
-heredoc-ing a multi-line file through `send-keys`. The same `ProxyCommand` is
-required:
+heredoc-ing a multi-line file through `send-keys`:
 
 ```bash
-scp -o ProxyCommand='ncat --proxy 127.0.0.1:1080 --proxy-type socks5 %h %p' \
-  ./local_file.sh <host>:/home/<user>/remote_file.sh
+scp ./local_file.sh <host>:/home/<user>/remote_file.sh
 ```
 
 Then `chmod +x` and test it.
