@@ -3,7 +3,7 @@ from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 
 from app.config import settings
-from app.db import FollowEvent, User, Wish, WishRecommendation
+from app.db import FollowEvent, User, UserAttribution, Wish, WishRecommendation
 
 
 class UserAdmin(ModelView, model=User):
@@ -58,6 +58,25 @@ class FollowEventAdmin(ModelView, model=FollowEvent):
     can_export = False
 
 
+class UserAttributionAdmin(ModelView, model=UserAttribution):
+    name = 'User Attribution'
+    name_plural = 'User Attributions'
+    # First-touch атрибуция ставится один раз при регистрации — только чтение.
+    can_create = False
+    can_edit = False
+    can_delete = False
+    column_list = [
+        UserAttribution.created_at,
+        UserAttribution.user_id,
+        UserAttribution.referrer_id,
+        UserAttribution.utm_source,
+    ]
+    icon = 'fa-solid fa-bullseye'
+    column_searchable_list = [UserAttribution.user_id, UserAttribution.referrer_id]
+    column_default_sort = ('created_at', True)
+    can_export = False
+
+
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
         form = await request.form()
@@ -92,4 +111,5 @@ def setup_admin(app, engine):
     admin.add_view(WishAdmin)
     admin.add_view(WishRecommendationAdmin)
     admin.add_view(FollowEventAdmin)
+    admin.add_view(UserAttributionAdmin)
     return admin
