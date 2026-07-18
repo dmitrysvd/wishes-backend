@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from firebase_admin.auth import verify_id_token
@@ -19,6 +21,7 @@ from app.schemas import (
     RequestFirebaseAuthSchema,
     RequestVkAuthAndroidSchema,
     RequestVkAuthMobileSchema,
+    RequestVkAuthVkidSchema,
     RequestVkAuthWebSchema,
     ResponseVkAuthMobileSchema,
     ResponseVkAuthWebSchema,
@@ -34,6 +37,63 @@ from app.vk import (
 )
 
 router = APIRouter(tags=[AUTH_TAG])
+
+# Общие коды ответов для VK ID Confidential Flow (обмен `code` на сервере).
+# Разделяются каноническим /auth/vk/vkid и его deprecated-алиасом /auth/vk/android.
+_VK_CODE_AUTH_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {
+        'description': (
+            'VK ID отклонил обмен `code`: код невалиден, истёк, уже использован, '
+            'либо `code_verifier`/`device_id`/`redirect_uri` не совпали. Повторять '
+            'с тем же `code` бессмысленно — нужен новый вход.'
+        ),
+        'content': {'application/json': {'example': {'detail': 'Not authenticated'}}},
+    },
+    409: {
+        'description': (
+            'Email из подтверждённого профиля VK уже занят другим аккаунтом '
+            '(например, регистрация была через Google). Нужно войти через '
+            'соответствующий аккаунт.'
+        ),
+        'content': {
+            'application/json': {
+                'example': {
+                    'detail': (
+                        'Пользователь с таким email уже существует. '
+                        'Зайдите через соответствующий аккаунт.'
+                    )
+                }
+            }
+        },
+    },
+}
+
+
+def auth_vk_via_code(
+    request_data: RequestVkAuthVkidSchema | RequestVkAuthAndroidSchema,
+    db: Session,
+) -> ResponseVkAuthMobileSchema:
+    """Обмен VK ID authorization `code` на сессию (Confidential Flow).
+
+    Общая логика канонического `/auth/vk/vkid` и его алиаса `/auth/vk/android`:
+    серверный обмен `code` на access_token у VK ID Backend (токен привязан к IP
+    бэка), подтверждённый профиль (в т.ч. email) берётся из `id_token`, а не из тела.
+    """
+    access_token, vk_extra_data = exchange_vk_code(
+        request_data.code,
+        request_data.code_verifier,
+        request_data.device_id,
+        request_data.redirect_uri,
+    )
+    # email из серверного обмена VK ID — подтверждён VK (не из тела клиента).
+    firebase_uid, firebase_token, is_new_user = auth_vk(
+        access_token, vk_extra_data, db, request_data.attribution, email_verified=True
+    )
+    return ResponseVkAuthMobileSchema(
+        firebase_uid=firebase_uid,
+        firebase_token=firebase_token,
+        user_created=is_new_user,
+    )
 
 
 def auth_vk(
@@ -170,51 +230,24 @@ def auth_vk_mobile(
 
 
 @router.post(
-    '/auth/vk/android',
+    '/auth/vk/vkid',
     # Публичный вход: токена у клиента ещё нет — снимаем глобальное требование ApiKey.
     openapi_extra={'security': []},
-    responses={
-        401: {
-            'description': (
-                'VK ID отклонил обмен `code`: код невалиден, истёк, уже '
-                'использован, либо `code_verifier`/`device_id` не совпали. '
-                'Повторять с тем же `code` бессмысленно — нужен новый вход.'
-            ),
-            'content': {
-                'application/json': {'example': {'detail': 'Not authenticated'}}
-            },
-        },
-        409: {
-            'description': (
-                'Email из подтверждённого профиля VK уже занят другим аккаунтом '
-                '(например, регистрация была через Google). Нужно войти через '
-                'соответствующий аккаунт.'
-            ),
-            'content': {
-                'application/json': {
-                    'example': {
-                        'detail': (
-                            'Пользователь с таким email уже существует. '
-                            'Зайдите через соответствующий аккаунт.'
-                        )
-                    }
-                }
-            },
-        },
-    },
+    responses=_VK_CODE_AUTH_RESPONSES,
 )
-def auth_vk_android(
-    request_data: RequestVkAuthAndroidSchema,
+def auth_vk_vkid(
+    request_data: RequestVkAuthVkidSchema,
     db: Session = Depends(get_db),
 ) -> ResponseVkAuthMobileSchema:
     """
-    Аутентификация через VK ID SDK на Android (Confidential Flow, OAuth 2.1).
+    Аутентификация через VK ID (Confidential Flow, OAuth 2.1) — единый вход веб+мобилки.
 
-    Клиент присылает authorization `code` (+ `code_verifier`, `device_id`) от VK ID
-    SDK; бэк меняет его на токены у VK ID Backend (обмен на стороне сервера, токен
-    привязан к IP бэка), берёт подтверждённый профиль (в т.ч. email) из `id_token`
-    и заводит/находит юзера. Создаст пользователя в firebase и на сервере, если не
-    существовал. Возвращает данные для аутентификации в firebase.
+    Клиент (веб-виджет One Tap `@vkid/sdk` или нативный SDK) присылает authorization
+    `code` (+ `code_verifier`, `device_id`, `redirect_uri`); бэк меняет его на токены
+    у VK ID Backend (обмен на стороне сервера, токен привязан к IP бэка), берёт
+    подтверждённый профиль (в т.ч. email) из `id_token` и заводит/находит юзера.
+    Создаст пользователя в firebase и на сервере, если не существовал. Возвращает
+    данные для аутентификации в firebase (`signInWithCustomToken`).
 
     Недоступность VK ID / таймаут обмена — это `5xx` (вне контракта): фронт
     фолбэчит генерик-ошибкой «попробуйте позже», отдельной семантики у тела нет.
@@ -225,21 +258,29 @@ def auth_vk_android(
     игнорируется, регистрацию не валит. Для существующего юзера атрибуция
     игнорируется (first-touch).
     """
-    access_token, vk_extra_data = exchange_vk_code(
-        request_data.code,
-        request_data.code_verifier,
-        request_data.device_id,
-        request_data.redirect_uri,
-    )
-    # email из серверного обмена VK ID — подтверждён VK (не из тела клиента).
-    firebase_uid, firebase_token, is_new_user = auth_vk(
-        access_token, vk_extra_data, db, request_data.attribution, email_verified=True
-    )
-    return ResponseVkAuthMobileSchema(
-        firebase_uid=firebase_uid,
-        firebase_token=firebase_token,
-        user_created=is_new_user,
-    )
+    return auth_vk_via_code(request_data, db)
+
+
+@router.post(
+    '/auth/vk/android',
+    # Публичный вход: токена у клиента ещё нет — снимаем глобальное требование ApiKey.
+    openapi_extra={'security': []},
+    deprecated=True,
+    responses=_VK_CODE_AUTH_RESPONSES,
+)
+def auth_vk_android(
+    request_data: RequestVkAuthAndroidSchema,
+    db: Session = Depends(get_db),
+) -> ResponseVkAuthMobileSchema:
+    """
+    **DEPRECATED — используйте `POST /auth/vk/vkid`.**
+
+    Исторический эндпоинт VK ID Confidential Flow для Android (фича 0004). Оставлен
+    как алиас `/auth/vk/vkid` (та же логика, тот же VK-app) ради уже зашипленного
+    Android-клиента; новые интеграции — на `/auth/vk/vkid`. Снимется, когда Android
+    переедет.
+    """
+    return auth_vk_via_code(request_data, db)
 
 
 @router.post('/auth/firebase', response_class=Response)

@@ -711,6 +711,109 @@ class TestAuth:
             == 1
         )
 
+    def test_auth_vk_vkid_success(
+        self,
+        api_client: TestClient,
+        db: Session,
+        mocker,
+    ):
+        """Единый VK ID Confidential Flow: обмен code на сервере, юзер заводится."""
+        mocker.patch(
+            'app.routers.auth.exchange_vk_code',
+            return_value=(
+                'vk2.a.vkid_token',
+                VkUserExtraData(email='vkid_web@test.com', phone=None),
+            ),
+        )
+        response = api_client.post(
+            '/auth/vk/vkid',
+            json={
+                'code': 'auth_code',
+                'code_verifier': 'pkce_verifier',
+                'device_id': 'device_1',
+                'redirect_uri': 'https://hotelki.pro/',
+            },
+        )
+        assert response.is_success, response.json()
+        body = response.json()
+        assert body['user_created'] is True
+        assert body['firebase_token']
+        # Ответ веб-версии НЕ содержит vk_access_token (Confidential Flow).
+        assert 'vk_access_token' not in body
+        user = db.scalars(select(User).where(User.vk_id == '12345678')).one()
+        assert user.email == 'vkid_web@test.com'
+
+    def test_auth_vk_vkid_links_verified_email(
+        self,
+        api_client: TestClient,
+        db: Session,
+        mocker,
+    ):
+        """Вход через /auth/vk/vkid с подтверждённым (из VK ID) email существующего
+        аккаунта связывается с ним — второй аккаунт не плодится."""
+        assert api_client.post(
+            '/auth/firebase', json={'id_token': 'id_token'}
+        ).is_success
+        firebase_user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
+
+        mocker.patch(
+            'app.routers.auth.exchange_vk_code',
+            return_value=(
+                'vk2.a.vkid_token',
+                VkUserExtraData(email=self.FIREBASE_USER_EMAIL, phone=None),
+            ),
+        )
+        response = api_client.post(
+            '/auth/vk/vkid',
+            json={
+                'code': 'auth_code',
+                'code_verifier': 'pkce_verifier',
+                'device_id': 'device_1',
+                'redirect_uri': 'https://hotelki.pro/',
+            },
+        )
+        assert response.status_code == 200
+        db.refresh(firebase_user)
+        assert firebase_user.vk_id == '12345678'
+        assert (
+            db.scalars(
+                select(func.count(User.id)).where(
+                    User.email == self.FIREBASE_USER_EMAIL
+                )
+            ).one()
+            == 1
+        )
+
+    def test_auth_vk_vkid_email_taken_returns_409(
+        self,
+        api_client: TestClient,
+        db: Session,
+        mocker,
+    ):
+        """Подтверждённый VK-email занят другим аккаунтом (firebase отвергает
+        создание) → 409, как задокументировано в контракте /auth/vk/vkid."""
+        mocker.patch(
+            'app.routers.auth.exchange_vk_code',
+            return_value=(
+                'vk2.a.vkid_token',
+                VkUserExtraData(email='other_taken@test.com', phone=None),
+            ),
+        )
+        mocker.patch(
+            'app.routers.auth.create_firebase_user',
+            side_effect=AlreadyExistsError('email exists'),
+        )
+        response = api_client.post(
+            '/auth/vk/vkid',
+            json={
+                'code': 'auth_code',
+                'code_verifier': 'pkce_verifier',
+                'device_id': 'device_1',
+                'redirect_uri': 'https://hotelki.pro/',
+            },
+        )
+        assert response.status_code == 409
+
 
 def test_search_user(
     auth_client: TestClient,
