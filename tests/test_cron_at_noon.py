@@ -4,12 +4,14 @@ import pytest
 from sqlalchemy import select
 
 from app.cron_scripts.at_noon import (
+    NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS,
     followers_push_recently_sent,
     get_next_birthday,
+    send_empty_list_reactivation_notifications,
     send_upcoming_birthday_of_current_user_notification,
     send_upcoming_birthday_of_followed_user_notification,
 )
-from app.db import Gender, PushReason, PushSendingLog, User
+from app.db import Gender, PushReason, PushSendingLog, User, Wish
 from app.utils import utc_now
 
 
@@ -163,9 +165,13 @@ def test_at_noon_main(mocker):
     mock_2 = mocker.patch(
         'app.cron_scripts.at_noon.send_upcoming_birthday_of_followed_user_notification'
     )
+    mock_3 = mocker.patch(
+        'app.cron_scripts.at_noon.send_empty_list_reactivation_notifications'
+    )
     main()
     mock_1.assert_called_once()
     mock_2.assert_called_once()
+    mock_3.assert_called_once()
 
 
 def test_at_noon_script_execution(mocker):
@@ -269,3 +275,126 @@ async def test_followed_user_no_push_when_birthday_outside_window(db, mocker):
     mock_send_push.assert_not_called()
     db.refresh(followed)
     assert followed.pre_bday_push_for_followers_last_sent_at is None
+
+
+@pytest.mark.anyio
+async def test_empty_list_reactivation_sends_and_dedups(db, mocker):
+    # Пустой список + живой токен -> шлём ровно один пуш, лог записан.
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    mocker.patch(
+        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://link'
+    )
+    user = User(
+        display_name='Empty List User',
+        firebase_uid='empty_uid',
+        firebase_push_token='token_empty',
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+
+    send_empty_list_reactivation_notifications()
+
+    assert mock_send_push.call_count == 1
+    args, kwargs = mock_send_push.call_args
+    assert user in kwargs['target_users']
+    assert kwargs['link'] == 'http://link'
+    log = db.scalars(
+        select(PushSendingLog).where(
+            PushSendingLog.reason == PushReason.EMPTY_LIST_REACTIVATION
+        )
+    ).first()
+    assert log is not None
+    assert log.target_user_id == user.id
+    # reason_user_id NOT NULL -> сам получатель.
+    assert log.reason_user_id == user.id
+
+    # Повторный прогон — дедуп по свежему логу, второй пуш не уходит.
+    mock_send_push.reset_mock()
+    send_empty_list_reactivation_notifications()
+    mock_send_push.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_empty_list_reactivation_skips_non_archived_wish(db, mocker):
+    # Есть хотя бы одна не-архивная хотелка -> список не пустой, не шлём.
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    user = User(
+        display_name='Has Wish',
+        firebase_uid='has_wish_uid',
+        firebase_push_token='token_has_wish',
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+    db.add(Wish(user_id=user.id, name='Подарок', is_archived=False))
+    db.commit()
+
+    send_empty_list_reactivation_notifications()
+    mock_send_push.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_empty_list_reactivation_sends_when_only_archived(db, mocker):
+    # Только архивные хотелки -> публичный список пуст, шлём.
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    mocker.patch(
+        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://link'
+    )
+    user = User(
+        display_name='Only Archived',
+        firebase_uid='only_archived_uid',
+        firebase_push_token='token_archived',
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+    db.add(Wish(user_id=user.id, name='Старое желание', is_archived=True))
+    db.commit()
+
+    send_empty_list_reactivation_notifications()
+    assert mock_send_push.call_count == 1
+
+
+@pytest.mark.anyio
+async def test_empty_list_reactivation_skips_recent_log(db, mocker):
+    # Реактивация уже слалась в окне дедупа -> не шлём.
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    user = User(
+        display_name='Recently Reactivated',
+        firebase_uid='recent_react_uid',
+        firebase_push_token='token_recent_react',
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+    db.add(
+        PushSendingLog(
+            sent_at=datetime.now()
+            - timedelta(days=NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS - 1),
+            reason=PushReason.EMPTY_LIST_REACTIVATION,
+            reason_user_id=user.id,
+            target_user_id=user.id,
+        )
+    )
+    db.commit()
+
+    send_empty_list_reactivation_notifications()
+    mock_send_push.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_empty_list_reactivation_no_token_skipped(db, mocker):
+    # Нет токена -> кандидат отфильтрован, не шлём.
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    user = User(
+        display_name='No Token Empty',
+        firebase_uid='no_token_empty_uid',
+        firebase_push_token=None,
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+
+    send_empty_list_reactivation_notifications()
+    mock_send_push.assert_not_called()

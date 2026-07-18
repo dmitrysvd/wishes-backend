@@ -236,6 +236,7 @@ class Wish(Base):
 class PushReason(enum.Enum):
     CURRENT_USER_BIRTHDAY = enum.auto()
     FOLLOWER_BIRTHDAY = enum.auto()
+    EMPTY_LIST_REACTIVATION = enum.auto()
 
 
 class PushSendingLog(Base):
