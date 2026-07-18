@@ -66,6 +66,11 @@ def test_get_vk_user_friends(mocker):
 
 def test_firebase_send_push(mocker):
     mock_send = mocker.patch('firebase_admin.messaging.send_each')
+    # send_each возвращает BatchResponse с одним успешным ответом
+    ok_response = mocker.Mock(success=True, exception=None)
+    mock_send.return_value = mocker.Mock(
+        responses=[ok_response], success_count=1, failure_count=0
+    )
     user = User(firebase_push_token='token1', id='uuid1')
 
     send_push([user], 'Title', 'Body')

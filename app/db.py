@@ -60,6 +60,11 @@ user_following_table = Table(
 
 class User(Base):
     __tablename__ = 'user'
+    __table_args__ = (
+        # «Нет токена» = NULL; пустая строка запрещена, чтобы не было второго
+        # представления того же состояния (NULL проходит: NULL <> '' → unknown).
+        CheckConstraint("firebase_push_token <> ''", name='push_token_not_empty'),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid4
@@ -236,6 +241,8 @@ class Wish(Base):
 class PushReason(enum.Enum):
     CURRENT_USER_BIRTHDAY = enum.auto()
     FOLLOWER_BIRTHDAY = enum.auto()
+    # Сезонный глобальный повод (НГ/8 марта/…) — не зависит от follow-графа.
+    SEASONAL = enum.auto()
 
 
 class PushSendingLog(Base):
@@ -250,6 +257,8 @@ class PushSendingLog(Base):
         ForeignKey('user.id', ondelete='CASCADE'), nullable=False
     )
     reason: Mapped[PushReason] = mapped_column(Enum(PushReason))
+    # Ключ дедупа сезонной кампании вида `mar8-2026`. Для не-сезонных пушей пуст.
+    campaign_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class FollowEvent(Base):

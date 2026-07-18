@@ -1,10 +1,11 @@
 import httpx
 import pytest
-from sqlalchemy import create_engine
+from alembic.config import Config
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+from alembic import command
 from app.config import settings
-from app.db import Base
 
 
 @pytest.fixture(autouse=True)
@@ -27,12 +28,30 @@ def _httpx_ignore_env(monkeypatch):
         monkeypatch.setattr(client_cls, '__init__', patched_init)
 
 
+def _reset_schema(engine):
+    # Пересоздаём public начисто: сносит таблицы И enum-типы/расширения, чтобы
+    # мусор от упавшего прогона не уронил CREATE TYPE в первой миграции.
+    with engine.begin() as conn:
+        conn.execute(text('DROP SCHEMA public CASCADE'))
+        conn.execute(text('CREATE SCHEMA public'))
+
+
 @pytest.fixture(scope='session', autouse=True)
 def test_engine():
     engine = create_engine(settings.TEST_DATABASE_URL)
-    Base.metadata.create_all(bind=engine)
+    # Схему тестовой БД поднимаем МИГРАЦИЯМИ (как на проде), а не create_all —
+    # тесты идут против реальной схемы и ловят дрейф «модель ↔ миграция» и
+    # сломанные/множественные головы (upgrade head упадёт).
+    _reset_schema(engine)
+    # Config без ini-файла: не трогаем логгинг (иначе fileConfig в env.py
+    # переопределил бы логи pytest/loguru). URL передаём явно на тестовую БД —
+    # env.py уважает уже выставленный sqlalchemy.url.
+    alembic_cfg = Config()
+    alembic_cfg.set_main_option('script_location', 'alembic')
+    alembic_cfg.set_main_option('sqlalchemy.url', settings.TEST_DATABASE_URL)
+    command.upgrade(alembic_cfg, 'head')
     yield engine
-    Base.metadata.drop_all(bind=engine)
+    _reset_schema(engine)
 
 
 @pytest.fixture
@@ -67,6 +86,7 @@ def db(test_engine, mocker):
     modules = [
         'app.db',
         'app.dependencies',
+        'app.firebase',
         'app.notifications',
         'app.cron_scripts.at_noon',
         'app.cron_scripts.backfill_profile_images',

@@ -1,11 +1,14 @@
 import enum
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from hawk_python_sdk import Hawk
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.admin.setup import setup_admin
 from app.config import settings
@@ -105,6 +108,25 @@ async def trigger_error():
 
 @app.get('/health')
 async def health():
+    # Liveness: процесс жив и отвечает. Дёргается docker-healthcheck'ом.
+    # БД здесь намеренно не проверяем — её падение не должно перезапускать
+    # здоровое приложение. Для проверки БД см. /health/ready.
+    return {'status': 'ok'}
+
+
+@app.get('/health/ready')
+async def health_ready(db: Annotated[Session, Depends(get_db)]):
+    # Readiness для внешнего мониторинга (uptime-бот): сервис реально способен
+    # обслуживать запросы, т.е. БД доступна. Отдаёт 503, если нет.
+    try:
+        # SET LOCAL — таймаут в рамках текущей транзакции, чтобы при зависшей (не
+        # мёртвой) БД эндпоинт быстро отдал 503, а не держал соединение бота.
+        # get_db закрывает сессию с rollback, поэтому в пул значение не протекает.
+        db.execute(text("SET LOCAL statement_timeout = '3s'"))
+        db.execute(text('SELECT 1'))
+    except Exception:
+        logger.error('health/ready: БД недоступна')
+        raise HTTPException(status_code=503, detail='db unavailable') from None
     return {'status': 'ok'}
 
 

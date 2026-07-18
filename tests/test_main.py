@@ -10,6 +10,39 @@ def test_health(api_client: TestClient):
     assert response.json() == {'status': 'ok'}
 
 
+def test_health_ready_ok(db, api_client: TestClient):
+    # БД доступна (тестовое соединение) → readiness отдаёт 200.
+    response = api_client.get('/health/ready')
+    assert response.status_code == 200
+    assert response.json() == {'status': 'ok'}
+
+
+def test_health_ready_db_down(api_client: TestClient):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.dependencies import get_db
+
+    # Движок на несуществующий порт — реальный отказ подключения (без мока).
+    broken_engine = create_engine('postgresql://x:x@127.0.0.1:1/x')
+    broken_session = sessionmaker(bind=broken_engine)
+
+    def broken_get_db():
+        session = broken_session()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    app.dependency_overrides[get_db] = broken_get_db
+    try:
+        response = api_client.get('/health/ready')
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+    assert response.status_code == 503
+    assert response.json() == {'detail': 'db unavailable'}
+
+
 def test_head_supported_by_default(api_client: TestClient):
     # Все GET-роуты должны отвечать на HEAD
     response = api_client.head('/health')
