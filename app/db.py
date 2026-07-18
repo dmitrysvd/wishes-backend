@@ -60,6 +60,11 @@ user_following_table = Table(
 
 class User(Base):
     __tablename__ = 'user'
+    __table_args__ = (
+        # «Нет токена» = NULL; пустая строка запрещена, чтобы не было второго
+        # представления того же состояния (NULL проходит: NULL <> '' → unknown).
+        CheckConstraint("firebase_push_token <> ''", name='push_token_not_empty'),
+    )
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid4
