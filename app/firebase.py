@@ -1,9 +1,14 @@
+from collections.abc import Sequence
+from typing import Protocol
+from uuid import UUID
+
 import firebase_admin
 from firebase_admin import auth, messaging
 from firebase_admin.auth import UserRecord
+from sqlalchemy import update
 
 from app.config import settings
-from app.db import User
+from app.db import SessionLocal, User
 from app.logging import logger
 
 cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
@@ -46,8 +51,51 @@ def send_push(target_users: list[User], title: str, body: str, link: str | None 
     logger.info(
         f'Отправка {len(messages)} собщений пользователям: {users_with_message_ids}'
     )
-    if messages:
-        messaging.send_each(messages, dry_run=settings.IS_DEBUG)
+    if not messages:
+        return
+    response = messaging.send_each(messages, dry_run=settings.IS_DEBUG)
+    logger.info(
+        'Результат отправки пушей: доставлено {success}, провалено {failure}',
+        success=response.success_count,
+        failure=response.failure_count,
+    )
+    dead = dead_token_user_ids(response.responses, users_with_message_ids)
+    if dead:
+        # Обнуляем протухшие токены, которые FCM признал недоставляемыми по адресату
+        with SessionLocal() as db:
+            db.execute(
+                update(User).where(User.id.in_(dead)).values(firebase_push_token=None)
+            )
+            db.commit()
+        logger.warning(
+            'Обнулено протухших пуш-токенов: {count}',
+            count=len(dead),
+        )
+
+
+class SendResponseLike(Protocol):
+    """Структурный контракт ответа FCM: то, что читает разбор доставки."""
+
+    success: bool
+    exception: Exception | None
+
+
+def dead_token_user_ids(
+    responses: Sequence[SendResponseLike],
+    user_ids: Sequence[UUID],
+) -> list[UUID]:
+    """Отбирает id адресатов с устойчивыми ошибками доставки (мёртвые токены).
+
+    Транзиентные ошибки (quota/internal) не считаются мёртвыми — токен сохраняем.
+    """
+    dead = []
+    for resp, user_id in zip(responses, user_ids, strict=True):
+        if not resp.success and isinstance(
+            resp.exception,
+            (messaging.UnregisteredError, messaging.SenderIdMismatchError),
+        ):
+            dead.append(user_id)
+    return dead
 
 
 def create_firebase_user(
