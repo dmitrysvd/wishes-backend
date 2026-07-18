@@ -5,6 +5,7 @@ from sqlalchemy import select
 
 from app.cron_scripts.at_noon import (
     NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS,
+    RECENT_REGISTRANT_DAYS,
     followers_push_recently_sent,
     get_next_birthday,
     send_empty_list_reactivation_notifications,
@@ -392,6 +393,24 @@ async def test_empty_list_reactivation_no_token_skipped(db, mocker):
         firebase_uid='no_token_empty_uid',
         firebase_push_token=None,
         registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+
+    send_empty_list_reactivation_notifications()
+    mock_send_push.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_empty_list_reactivation_skips_old_registrant(db, mocker):
+    # Давний регистрант с пустым списком не трогается — шлём только недавним.
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    user = User(
+        display_name='Old Empty',
+        firebase_uid='old_empty_uid',
+        firebase_push_token='token_old',
+        registered_at=datetime.now() - timedelta(days=RECENT_REGISTRANT_DAYS + 1),
     )
     db.add(user)
     db.commit()

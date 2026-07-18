@@ -16,6 +16,10 @@ CURRENT_USER_BIRTHDAY_NOTIFY_DAYS_IN_ADVANCE = 21
 NO_REPEAT_FOLLOWERS_PUSH_DAYS = 200
 # Не чаще одного реактивационного пуша про пустой список на юзера.
 NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS = 90
+# Реактивацию шлём только недавним регистрантам: пока намерение завести список
+# свежее (онбординг). Холодное «у тебя пусто» давним неактивным юзерам — высокий
+# риск раздражения при низком выхлопе, поэтому их не трогаем.
+RECENT_REGISTRANT_DAYS = 30
 
 
 def get_next_birthday(birth_date: date) -> datetime:
@@ -145,16 +149,21 @@ def send_empty_list_reactivation_notifications():
     Пустой список — тупик петли дарения: даже пришедший по ссылке даритель не
     видит, что подарить. Деликатно подталкиваем завести хотелки. Критерий
     «пустой список» — нет ни одной НЕ-архивной хотелки (тот же признак, что и у
-    публичного вишлиста в `app/routers/public.py`). Дедуп — не чаще одного пуша
-    на юзера в `NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS` дней через
-    `PushSendingLog`.
+    публичного вишлиста в `app/routers/public.py`). Шлём только недавним
+    регистрантам (`RECENT_REGISTRANT_DAYS`) — онбординг, а не холодная
+    реактивация давно неактивных. Дедуп — не чаще одного пуша на юзера в
+    `NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS` дней через `PushSendingLog`.
     """
     with SessionLocal() as db:
-        # Юзеры с живым токеном и без единой не-архивной хотелки.
+        # Недавние регистранты с живым токеном и без единой не-архивной хотелки.
         users_with_empty_list = db.scalars(
             select(User).where(
                 User.firebase_push_token.isnot(None)
                 & ~User.wishes.any(~Wish.is_archived)
+                & (
+                    User.registered_at
+                    > datetime.now() - timedelta(days=RECENT_REGISTRANT_DAYS)
+                )
             )
         ).all()
     for user in users_with_empty_list:
