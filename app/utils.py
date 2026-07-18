@@ -56,11 +56,16 @@ def save_registration_attribution(
     (нет ни валидного реферера, ни канала). Вызывать только для нового юзера
     (`is_new_user`) — для повторного логина атрибуция игнорируется целиком.
     """
-    if attribution is None:
-        return
     # id фиксируем заранее: после провалившегося commit сессия деактивна и ленивое
     # обращение к user.id из except-ветки само бросило бы исключение.
     user_id = user.id
+    if attribution is None:
+        # Слепая зона: неотличимо от «клиент прислал пустой attribution», см. ниже.
+        logger.info(
+            'Регистрация user_id={user_id}: attribution не передан клиентом',
+            user_id=user_id,
+        )
+        return
     try:
         referrer_id = _resolve_referrer_id(db, user, attribution.referrer_id)
         # Канал не ограничен по длине на проводе — молча усекаем до лимита;
@@ -68,6 +73,13 @@ def save_registration_attribution(
         utm_source = (attribution.utm_source or '')[:UTM_SOURCE_MAX_LENGTH] or None
         if referrer_id is None and utm_source is None:
             # чистый органик — фиксировать нечего
+            logger.info(
+                'Регистрация user_id={user_id}: attribution передан, но пуст '
+                '(raw_referrer_id={raw_referrer_id!r}, utm_source={raw_utm!r})',
+                user_id=user_id,
+                raw_referrer_id=attribution.referrer_id,
+                raw_utm=attribution.utm_source,
+            )
             return
         db.add(
             UserAttribution(
@@ -77,6 +89,13 @@ def save_registration_attribution(
             )
         )
         db.commit()
+        logger.info(
+            'Регистрация user_id={user_id}: атрибуция сохранена '
+            '(referrer_id={referrer_id}, utm_source={utm_source})',
+            user_id=user_id,
+            referrer_id=referrer_id,
+            utm_source=utm_source,
+        )
     except Exception as exc:
         # атрибуция — best-effort, регистрацию не валим
         logger.warning(
