@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
@@ -14,6 +15,37 @@ FOLLOWERS_BIRTHDAY_WINDOW_DAYS = (3, 14)
 CURRENT_USER_BIRTHDAY_NOTIFY_DAYS_IN_ADVANCE = 21
 # Не повторять напоминание подписчикам про одного и того же именинника чаще.
 NO_REPEAT_FOLLOWERS_PUSH_DAYS = 200
+
+
+@dataclass(frozen=True)
+class SeasonalCampaign:
+    """Один сезонный повод: дата-якорь, окно заблаговременности, копия.
+
+    `key` входит в `campaign_key` лога (`f'{key}-{year}'`) — по нему дедупим
+    отправку в пределах одного сезона. `window_days` — сколько дней до якоря
+    (включительно) пуш активен.
+    """
+
+    key: str
+    month: int
+    day: int
+    window_days: int
+    title: str
+    body: str
+
+
+# Декларативный список сезонных кампаний. Пилот — 8 марта (Q1 в плане: точные
+# даты/копия — открытый продуктовый вопрос, здесь разумный дефолт).
+SEASONAL_CAMPAIGNS: tuple[SeasonalCampaign, ...] = (
+    SeasonalCampaign(
+        key='mar8',
+        month=3,
+        day=8,
+        window_days=7,
+        title='Скоро 8 Марта 🌷',
+        body='Обнови список желаний, чтобы близкие знали, что подарить ✨',
+    ),
+)
 
 
 def get_next_birthday(birth_date: date) -> datetime:
@@ -137,10 +169,72 @@ def send_upcoming_birthday_of_followed_user_notification():
                 db.commit()
 
 
+def is_in_campaign_window(campaign: SeasonalCampaign, today: date) -> bool:
+    """Попадает ли `today` в окно `[якорь - window_days, якорь]` кампании.
+
+    Якорь берётся в текущем году `today`; год якоря = `today.year`.
+    """
+    anchor = date(today.year, campaign.month, campaign.day)
+    window_start = anchor - timedelta(days=campaign.window_days)
+    return window_start <= today <= anchor
+
+
+def send_seasonal_notifications() -> None:
+    """Сезонные глобальные пуши всем юзерам со свежим токеном.
+
+    Для каждой активной сегодня кампании шлём одному юзеру не более одного пуша
+    за сезон: дедуп через `PushSendingLog(reason=SEASONAL, campaign_key)`.
+    """
+    today = date.today()
+    for campaign in SEASONAL_CAMPAIGNS:
+        if not is_in_campaign_window(campaign, today):
+            continue
+        # Год якоря входит в ключ, чтобы «этот сезон» дедупился корректно.
+        campaign_key = f'{campaign.key}-{today.year}'
+        with SessionLocal() as db:
+            users = db.scalars(
+                select(User).where(User.firebase_push_token.isnot(None))
+            ).all()
+        sent_count = 0
+        for user in users:
+            if not user.firebase_push_token:
+                continue
+            with SessionLocal() as db:
+                if db.scalars(
+                    select(PushSendingLog).where(
+                        (PushSendingLog.reason == PushReason.SEASONAL)
+                        & (PushSendingLog.campaign_key == campaign_key)
+                        & (PushSendingLog.target_user_id == user.id)
+                    )
+                ).first():
+                    continue
+            send_push(
+                target_users=[user],
+                title=campaign.title,
+                body=campaign.body,
+                link=get_user_deep_link(user),
+            )
+            push_log = PushSendingLog(
+                sent_at=datetime.now(),
+                reason=PushReason.SEASONAL,
+                # У сезонного пуша нет «виновника»-юзера — ссылаемся на самого
+                # получателя, чтобы удовлетворить NOT NULL на reason_user_id.
+                reason_user_id=user.id,
+                target_user_id=user.id,
+                campaign_key=campaign_key,
+            )
+            with SessionLocal() as db:
+                db.add(push_log)
+                db.commit()
+            sent_count += 1
+        logger.info(f'Сезонная кампания {campaign_key}: отправлено {sent_count} пушей')
+
+
 def main():
     logger.info('Запуск полуденного крона')
     send_upcoming_birthday_of_current_user_notification()
     send_upcoming_birthday_of_followed_user_notification()
+    send_seasonal_notifications()
 
 
 if __name__ == '__main__':

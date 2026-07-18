@@ -4,13 +4,29 @@ import pytest
 from sqlalchemy import select
 
 from app.cron_scripts.at_noon import (
+    SeasonalCampaign,
     followers_push_recently_sent,
     get_next_birthday,
+    is_in_campaign_window,
+    send_seasonal_notifications,
     send_upcoming_birthday_of_current_user_notification,
     send_upcoming_birthday_of_followed_user_notification,
 )
 from app.db import Gender, PushReason, PushSendingLog, User
 from app.utils import utc_now
+
+
+def _today_campaign(window_days: int = 0) -> SeasonalCampaign:
+    # Кампания с якорем на сегодня — окно всегда включает текущий день.
+    today = date.today()
+    return SeasonalCampaign(
+        key='test',
+        month=today.month,
+        day=today.day,
+        window_days=window_days,
+        title='Тестовый повод',
+        body='Тестовое тело',
+    )
 
 
 def test_get_next_birthday():
@@ -154,6 +170,117 @@ async def test_followed_user_push_skipped_when_recently_sent(db, mocker):
     mock_send_push.assert_not_called()
 
 
+def test_is_in_campaign_window():
+    campaign = SeasonalCampaign(
+        key='mar8', month=3, day=8, window_days=7, title='t', body='b'
+    )
+    # Ровно на якоре — в окне.
+    assert is_in_campaign_window(campaign, date(2026, 3, 8)) is True
+    # За день до конца окна (якорь - 7) — в окне.
+    assert is_in_campaign_window(campaign, date(2026, 3, 1)) is True
+    # За день до начала окна — вне.
+    assert is_in_campaign_window(campaign, date(2026, 2, 28)) is False
+    # После якоря — вне.
+    assert is_in_campaign_window(campaign, date(2026, 3, 9)) is False
+
+
+@pytest.mark.anyio
+async def test_seasonal_sent_in_window(db, mocker):
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    mocker.patch(
+        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://own'
+    )
+    mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
+    user = User(
+        display_name='Seasonal User',
+        firebase_uid='seasonal_uid',
+        firebase_push_token='token_seasonal',
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+
+    send_seasonal_notifications()
+
+    assert mock_send_push.call_count == 1
+    _, kwargs = mock_send_push.call_args
+    assert kwargs['link'] == 'http://own'
+    log = db.scalars(
+        select(PushSendingLog).where(PushSendingLog.reason == PushReason.SEASONAL)
+    ).first()
+    assert log is not None
+    # campaign_key содержит год якоря (текущий).
+    assert log.campaign_key == f'test-{date.today().year}'
+    assert log.target_user_id == user.id
+
+
+@pytest.mark.anyio
+async def test_seasonal_dedup_same_season(db, mocker):
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
+    user = User(
+        display_name='Dedup User',
+        firebase_uid='dedup_uid',
+        firebase_push_token='token_dedup',
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+
+    send_seasonal_notifications()
+    assert mock_send_push.call_count == 1
+
+    # Повтор в тот же сезон — не шлём.
+    mock_send_push.reset_mock()
+    send_seasonal_notifications()
+    mock_send_push.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_seasonal_skips_user_without_token(db, mocker):
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
+    # Один юзер с пустой строкой-токеном (проходит isnot(None), но falsy),
+    # второй с None — оба должны быть пропущены.
+    empty = User(
+        display_name='Empty Token',
+        firebase_uid='empty_token_uid',
+        firebase_push_token='',
+        registered_at=utc_now(),
+    )
+    none_token = User(
+        display_name='No Token',
+        firebase_uid='none_token_uid',
+        firebase_push_token=None,
+        registered_at=utc_now(),
+    )
+    db.add_all([empty, none_token])
+    db.commit()
+
+    send_seasonal_notifications()
+    mock_send_push.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_seasonal_not_sent_out_of_window(db, mocker):
+    mock_send_push = mocker.patch('app.cron_scripts.at_noon.send_push')
+    mocker.patch('app.cron_scripts.at_noon.is_in_campaign_window', return_value=False)
+    mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
+    user = User(
+        display_name='Out Of Window',
+        firebase_uid='oow_uid',
+        firebase_push_token='token_oow',
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+
+    send_seasonal_notifications()
+    mock_send_push.assert_not_called()
+
+
 def test_at_noon_main(mocker):
     from app.cron_scripts.at_noon import main
 
@@ -163,9 +290,11 @@ def test_at_noon_main(mocker):
     mock_2 = mocker.patch(
         'app.cron_scripts.at_noon.send_upcoming_birthday_of_followed_user_notification'
     )
+    mock_3 = mocker.patch('app.cron_scripts.at_noon.send_seasonal_notifications')
     main()
     mock_1.assert_called_once()
     mock_2.assert_called_once()
+    mock_3.assert_called_once()
 
 
 def test_at_noon_script_execution(mocker):
