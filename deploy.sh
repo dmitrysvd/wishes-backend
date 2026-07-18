@@ -36,5 +36,9 @@ else
   echo "Пропуск nginx: /usr/local/sbin/apply-nginx-wishes.sh не установлен (см. deploy/nginx/README.md)"
 fi
 
-echo "Очистка старых контейнеров"
-docker image prune -f
+echo "Очистка неиспользуемых образов"
+# -a: удаляет и тегированные образы прошлых деплоёв (каждый деплой тегирует по SHA,
+# поэтому они не dangling и без -a копились бы до переполнения диска). На диске
+# остаётся только текущий образ + postgres (заняты контейнерами). Откат
+# `bash deploy.sh <old-sha>` перекачивает образ из registry, локальный кэш не нужен.
+docker image prune -af
