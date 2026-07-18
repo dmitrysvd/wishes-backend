@@ -243,6 +243,7 @@ class PushReason(enum.Enum):
     FOLLOWER_BIRTHDAY = enum.auto()
     # Сезонный глобальный повод (НГ/8 марта/…) — не зависит от follow-графа.
     SEASONAL = enum.auto()
+    EMPTY_LIST_REACTIVATION = enum.auto()
 
 
 class PushSendingLog(Base):

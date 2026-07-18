@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import select
 
-from app.db import Gender, PushReason, PushSendingLog, SessionLocal, User
+from app.db import Gender, PushReason, PushSendingLog, SessionLocal, User, Wish
 from app.firebase import send_push
 from app.logging import logger
 from app.main import get_user_deep_link
@@ -15,6 +15,12 @@ FOLLOWERS_BIRTHDAY_WINDOW_DAYS = (3, 14)
 CURRENT_USER_BIRTHDAY_NOTIFY_DAYS_IN_ADVANCE = 21
 # Не повторять напоминание подписчикам про одного и того же именинника чаще.
 NO_REPEAT_FOLLOWERS_PUSH_DAYS = 200
+# Не чаще одного реактивационного пуша про пустой список на юзера.
+NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS = 90
+# Реактивацию шлём только недавним регистрантам: пока намерение завести список
+# свежее (онбординг). Холодное «у тебя пусто» давним неактивным юзерам — высокий
+# риск раздражения при низком выхлопе, поэтому их не трогаем.
+RECENT_REGISTRANT_DAYS = 30
 
 
 @dataclass(frozen=True)
@@ -246,6 +252,64 @@ def send_upcoming_birthday_of_followed_user_notification():
                 db.commit()
 
 
+def send_empty_list_reactivation_notifications():
+    """Реактивация пользователей с пустым списком желаний.
+
+    Пустой список — тупик петли дарения: даже пришедший по ссылке даритель не
+    видит, что подарить. Деликатно подталкиваем завести хотелки. Критерий
+    «пустой список» — нет ни одной НЕ-архивной хотелки (тот же признак, что и у
+    публичного вишлиста в `app/routers/public.py`). Шлём только недавним
+    регистрантам (`RECENT_REGISTRANT_DAYS`) — онбординг, а не холодная
+    реактивация давно неактивных. Дедуп — не чаще одного пуша на юзера в
+    `NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS` дней через `PushSendingLog`.
+    """
+    with SessionLocal() as db:
+        # Недавние регистранты с живым токеном и без единой не-архивной хотелки.
+        users_with_empty_list = db.scalars(
+            select(User).where(
+                User.firebase_push_token.isnot(None)
+                & ~User.wishes.any(~Wish.is_archived)
+                & (
+                    User.registered_at
+                    > datetime.now() - timedelta(days=RECENT_REGISTRANT_DAYS)
+                )
+            )
+        ).all()
+    for user in users_with_empty_list:
+        with SessionLocal() as db:
+            recently_sent = db.scalars(
+                select(PushSendingLog).where(
+                    (PushSendingLog.reason == PushReason.EMPTY_LIST_REACTIVATION)
+                    & (PushSendingLog.target_user_id == user.id)
+                    & (
+                        PushSendingLog.sent_at
+                        > datetime.now()
+                        - timedelta(days=NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS)
+                    )
+                )
+            ).first()
+        if recently_sent:
+            continue
+        send_push(
+            target_users=[user],
+            # Копия деликатная (черновик, продуктовый вопрос Q1 в плане 0004).
+            title='Твой список желаний пуст 🎁',
+            body=('Заполни его, чтобы близкие знали, что подарить тебе на праздник'),
+            link=get_user_deep_link(user),
+        )
+        # Реактивация без «виновника» — reason_user_id NOT NULL ставим равным
+        # самому получателю (как пуш собственного ДР).
+        push_log = PushSendingLog(
+            sent_at=datetime.now(),
+            reason=PushReason.EMPTY_LIST_REACTIVATION,
+            reason_user_id=user.id,
+            target_user_id=user.id,
+        )
+        with SessionLocal() as db:
+            db.add(push_log)
+            db.commit()
+
+
 def is_in_campaign_window(campaign: SeasonalCampaign, today: date) -> bool:
     """Попадает ли `today` в окно `[якорь - window_days, якорь]` кампании.
 
@@ -314,6 +378,7 @@ def main():
     send_upcoming_birthday_of_current_user_notification()
     send_upcoming_birthday_of_followed_user_notification()
     send_seasonal_notifications()
+    send_empty_list_reactivation_notifications()
 
 
 if __name__ == '__main__':
