@@ -658,7 +658,7 @@ class TestAuth:
                 'code': 'auth_code',
                 'code_verifier': 'pkce_verifier',
                 'device_id': 'device_1',
-                'redirect_uri': 'https://hotelki.pro/vk-auth',
+                'redirect_uri': 'vk51800170://vk.com/service.html',
             },
         )
         assert response.is_success, response.json()
@@ -695,7 +695,7 @@ class TestAuth:
                 'code': 'auth_code',
                 'code_verifier': 'pkce_verifier',
                 'device_id': 'device_1',
-                'redirect_uri': 'https://hotelki.pro/vk-auth',
+                'redirect_uri': 'vk51800170://vk.com/service.html',
             },
         )
         assert response.status_code == 200

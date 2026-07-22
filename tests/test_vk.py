@@ -3,6 +3,7 @@ from datetime import date
 import pytest
 from fastapi import HTTPException
 
+from app.config import settings
 from app.constants import Gender
 from app.vk import (
     VkResponseError,
@@ -194,6 +195,28 @@ def test_exchange_vk_code_success(mocker):
     assert extra.phone == '+70000000000'
     # redirect_uri от клиента пробрасывается в обмен как есть.
     assert mock_post.call_args.kwargs['data']['redirect_uri'] == 'https://app/redir'
+
+
+def test_exchange_vk_code_web_redirect_uses_web_app(mocker):
+    # Веб One Tap ходит с https-origin → обмен под веб-app (VK_WEB_APP_ID).
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'access_token': 'vk2.a.t', 'user_id': 1}
+    mock_post = mocker.patch('httpx.post', return_value=mock_response)
+
+    exchange_vk_code('code', 'verifier', 'device', 'https://hotelki.pro/')
+
+    assert mock_post.call_args.kwargs['data']['client_id'] == settings.VK_WEB_APP_ID
+
+
+def test_exchange_vk_code_native_redirect_uses_mobile_app(mocker):
+    # Нативный SDK ходит с кастомной vk-схемой → обмен под мобильный app (VK_APP_ID).
+    mock_response = mocker.Mock()
+    mock_response.json.return_value = {'access_token': 'vk2.a.t', 'user_id': 1}
+    mock_post = mocker.patch('httpx.post', return_value=mock_response)
+
+    exchange_vk_code('code', 'verifier', 'device', 'vk51800170://vk.com/service.html')
+
+    assert mock_post.call_args.kwargs['data']['client_id'] == settings.VK_APP_ID
 
 
 def test_exchange_vk_code_error(mocker):
