@@ -31,6 +31,7 @@ jobs:
       IS_DEBUG: 'true'
       VK_SERVICE_KEY: ci
       VK_APP_ID: '0'
+      VK_WEB_APP_ID: '0'
       FIREBASE_KEY_PATH: /tmp/firebase-ci.json
       TEST_TOKEN: test_token
       MEDIA_ROOT: /tmp/media
@@ -113,6 +114,7 @@ jobs:
       IS_DEBUG: 'true'
       VK_SERVICE_KEY: ci
       VK_APP_ID: '0'
+      VK_WEB_APP_ID: '0'
       FIREBASE_KEY_PATH: /tmp/firebase-ci.json
       TEST_TOKEN: test_token
       MEDIA_ROOT: /tmp/media
@@ -200,7 +202,7 @@ jobs:
           PY
           IMAGE=${{ secrets.DOCKERHUB_USERNAME }}/wishes-app:${{ github.sha }}
           docker run -d --name smoke \
-            -e SECRET_KEY=ci -e IS_DEBUG=false -e VK_SERVICE_KEY=ci -e VK_APP_ID=0 \
+            -e SECRET_KEY=ci -e IS_DEBUG=false -e VK_SERVICE_KEY=ci -e VK_APP_ID=0 -e VK_WEB_APP_ID=0 \
             -e FIREBASE_KEY_PATH=/firebase.json -e TEST_TOKEN=t \
             -e MEDIA_ROOT=/tmp/media -e LOGS_DIR=/tmp/logs \
             -e DATABASE_URL=postgresql://x:x@127.0.0.1:5432/x \
