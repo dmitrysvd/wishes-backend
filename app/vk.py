@@ -306,39 +306,3 @@ def exchange_vk_code(
         _fail_unexpected_vk_response('oauth2/auth', response_json, exc)
     vk_user_extra = VkUserExtraData(email=parsed.email, phone=parsed.phone)
     return parsed.access_token, vk_user_extra
-
-
-class _VkExchangeTokenResultSchema(BaseModel):
-    access_token: str
-    email: str | None = None
-    phone: str | None = None
-
-
-class _VkExchangeTokenResponseSchema(BaseModel):
-    response: _VkExchangeTokenResultSchema
-
-
-def exchange_tokens(silent_token: str, uuid: str) -> tuple[str, VkUserExtraData]:
-    response = httpx.post(
-        'https://api.vk.com/method/auth.exchangeSilentAuthToken',
-        data={
-            'v': VK_API_VERSION,
-            'token': silent_token,
-            'access_token': settings.VK_SERVICE_KEY,
-            'uuid': uuid,
-        },
-    )
-    response.raise_for_status()
-    response_json = response.json()
-    if 'error' in response_json:
-        logger.debug('Ошибка авторизации vk: {text}', text=response_json['error'])
-        raise HTTPException(status_code=401, detail='Not authenticated')
-    try:
-        parsed = _VkExchangeTokenResponseSchema.model_validate(response_json)
-    except ValidationError as exc:
-        _fail_unexpected_vk_response('exchangeSilentAuthToken', response_json, exc)
-    vk_user_extra = VkUserExtraData(
-        phone=parsed.response.phone,
-        email=parsed.response.email,
-    )
-    return parsed.response.access_token, vk_user_extra

@@ -522,38 +522,6 @@ class TestAuth:
         assert row.referrer_id == third_user.id
         assert row.utm_source == 'telegram'
 
-    def test_auth_vk_web_passes_attribution(
-        self,
-        api_client: TestClient,
-        db: Session,
-        mocker,
-    ):
-        """Веб-эндпоинт прокидывает attribution в auth_vk."""
-        mocker.patch(
-            'app.routers.auth.exchange_tokens',
-            return_value=(
-                'web_attr_token',
-                VkUserExtraData(email='web_attr@mail.com', phone=None),
-            ),
-        )
-        response = api_client.post(
-            '/auth/vk/web',
-            json={
-                'silent_token': 's',
-                'uuid': 'u',
-                'attribution': {'utm_source': 'vk'},
-            },
-        )
-        assert response.is_success
-        user = db.scalars(
-            select(User).where(User.vk_access_token == 'web_attr_token')
-        ).one()
-        row = db.scalars(
-            select(UserAttribution).where(UserAttribution.user_id == user.id)
-        ).one()
-        assert row.utm_source == 'vk'
-        assert row.referrer_id is None
-
     def test_auth_firebase_saves_attribution(
         self,
         api_client: TestClient,
@@ -637,79 +605,6 @@ class TestAuth:
         # Firebase-аккаунт НЕ захвачен: vk_id не подставлен.
         db.refresh(firebase_user)
         assert firebase_user.vk_id is None
-
-    def test_auth_vk_android_success(
-        self,
-        api_client: TestClient,
-        db: Session,
-        mocker,
-    ):
-        """Confidential Flow: обмен code на сервере, новый юзер заводится."""
-        mocker.patch(
-            'app.routers.auth.exchange_vk_code',
-            return_value=(
-                'vk2.a.android_token',
-                VkUserExtraData(email='android_vk@test.com', phone=None),
-            ),
-        )
-        response = api_client.post(
-            '/auth/vk/android',
-            json={
-                'code': 'auth_code',
-                'code_verifier': 'pkce_verifier',
-                'device_id': 'device_1',
-                'redirect_uri': 'vk51800170://vk.com/service.html',
-            },
-        )
-        assert response.is_success, response.json()
-        body = response.json()
-        assert body['user_created'] is True
-        assert body['firebase_token']
-        user = db.scalars(select(User).where(User.vk_id == '12345678')).one()
-        assert user.email == 'android_vk@test.com'
-
-    def test_auth_vk_android_links_verified_email(
-        self,
-        api_client: TestClient,
-        db: Session,
-        mocker,
-    ):
-        """Android-вход с ПОДТВЕРЖДЁННЫМ (из VK ID) email существующего аккаунта
-        связывается с ним — второй аккаунт не плодится. Это безопасно: email от VK,
-        не из тела клиента."""
-        assert api_client.post(
-            '/auth/firebase', json={'id_token': 'id_token'}
-        ).is_success
-        firebase_user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
-
-        mocker.patch(
-            'app.routers.auth.exchange_vk_code',
-            return_value=(
-                'vk2.a.android_token',
-                VkUserExtraData(email=self.FIREBASE_USER_EMAIL, phone=None),
-            ),
-        )
-        response = api_client.post(
-            '/auth/vk/android',
-            json={
-                'code': 'auth_code',
-                'code_verifier': 'pkce_verifier',
-                'device_id': 'device_1',
-                'redirect_uri': 'vk51800170://vk.com/service.html',
-            },
-        )
-        assert response.status_code == 200
-        # Связался с существующим аккаунтом: vk_id подставлен, второго нет.
-        db.refresh(firebase_user)
-        assert firebase_user.vk_id == '12345678'
-        assert (
-            db.scalars(
-                select(func.count(User.id)).where(
-                    User.email == self.FIREBASE_USER_EMAIL
-                )
-            ).one()
-            == 1
-        )
 
     def test_auth_vk_vkid_success(
         self,
@@ -1087,34 +982,6 @@ class TestUserImages:
         db.refresh(user)
         assert user.photo_path is None
         assert not file_path.exists()
-
-    def test_auth_vk_web_success(self, api_client: TestClient, mocker):
-        mocker.patch(
-            'app.routers.auth.exchange_tokens',
-            return_value=('token', VkUserExtraData(email='web@mail.com', phone=None)),
-        )
-        mocker.patch(
-            'app.routers.auth.get_vk_user_data_by_access_token',
-            return_value=VkUserBasicData(
-                id=999,
-                first_name='A',
-                last_name='B',
-                photo_url='',
-                gender=Gender.male,
-                birthdate=date(2000, 1, 1),
-            ),
-        )
-        mocker.patch('app.routers.auth.create_firebase_user', return_value='uid')
-        mocker.patch('app.routers.auth.get_vk_user_friends', return_value=[])
-        mocker.patch(
-            'app.routers.auth.create_custom_firebase_token', return_value='fb_token'
-        )
-
-        response = api_client.post(
-            '/auth/vk/web', json={'silent_token': 's', 'uuid': 'u'}
-        )
-        assert response.status_code == 200
-        assert response.json()['vk_access_token'] == 'token'
 
 
 class TestUsersExtra:
