@@ -239,6 +239,22 @@ class _VkIdTokenResponseSchema(BaseModel):
     phone: str | None = None
 
 
+def _vk_app_id_for_redirect(redirect_uri: str) -> int:
+    """Выбрать VK-приложение (`client_id`) под платформу по схеме `redirect_uri`.
+
+    Веб и мобилка — ВСЕГДА разные VK ID-приложения (консоль VK ID при создании
+    заводит отдельные app под web и под android), поэтому `code`, выпущенный под
+    одно app, обменивается только под его же `client_id`. Платформу определяем по
+    схеме `redirect_uri`: веб One Tap ходит с https-origin (`https://hotelki.pro/`),
+    нативный SDK — с кастомной схемой `vk<app_id>://…`. По схеме и различаем, не
+    завязываясь на конкретный app id или путь.
+    """
+    scheme = redirect_uri.split('://', 1)[0].lower()
+    if scheme in ('http', 'https'):
+        return settings.VK_WEB_APP_ID
+    return settings.VK_APP_ID
+
+
 def exchange_vk_code(
     code: str, code_verifier: str, device_id: str, redirect_uri: str
 ) -> tuple[str, VkUserExtraData]:
@@ -251,6 +267,8 @@ def exchange_vk_code(
     `redirect_uri` приходит от клиента: он зашит в VK ID SDK и должен байт-в-байт
     совпадать с шагом авторизации на устройстве, поэтому сервер его не знает и не
     хардкодит, а лишь пробрасывает. Несовпадение → VK отвечает `invalid_request`.
+    По его схеме бэк ещё и выбирает VK-app для обмена (`_vk_app_id_for_redirect`):
+    веб и мобилка — разные приложения, `code` меняется только под своим `client_id`.
 
     Email/phone возвращает сам VK (подтверждённый источник) — их НЕ берём из тела
     запроса клиента (иначе возможен захват чужого аккаунта подстановкой email).
@@ -262,7 +280,8 @@ def exchange_vk_code(
             'code': code,
             'code_verifier': code_verifier,
             'device_id': device_id,
-            'client_id': settings.VK_APP_ID,
+            # Веб и мобилка — разные VK-app; выбираем нужный по схеме redirect_uri.
+            'client_id': _vk_app_id_for_redirect(redirect_uri),
             'redirect_uri': redirect_uri,
         },
     )

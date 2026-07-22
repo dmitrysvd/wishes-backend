@@ -7,7 +7,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     IS_DEBUG: bool
     VK_SERVICE_KEY: str
-    VK_APP_ID: int
+    # VK ID-приложения: веб и мобилка — ВСЕГДА разные app (консоль VK ID заводит
+    # отдельные под платформы). `code` обменивается только под тем app, что его
+    # выпустил; платформу бэк выбирает по схеме `redirect_uri` (см. exchange_vk_code).
+    VK_APP_ID: int  # мобильный (нативный SDK, redirect vk<app_id>://…)
+    VK_WEB_APP_ID: int  # веб (One Tap @vkid/sdk, redirect https-origin)
     FIREBASE_KEY_PATH: Path
     TEST_TOKEN: str
     MEDIA_ROOT: Path
