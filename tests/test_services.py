@@ -11,7 +11,6 @@ from app.firebase import (
     send_push,
 )
 from app.vk import (
-    exchange_tokens,
     get_extra_user_data_by_silent_token,
     get_gender,
     get_vk_user_data_by_access_token,
@@ -125,24 +124,6 @@ def test_firebase_get_user_data(mocker):
     mock_get.assert_called_once_with('uid1')
     assert result.uid == 'test_uid'
     assert result.email == 'test@test.com'
-
-
-def test_exchange_tokens(mocker):
-    mock_response = MagicMock()
-    mock_response.raise_for_status.return_value = None
-    mock_response.json.return_value = {
-        'response': {
-            'access_token': 'new_access_token',
-            'phone': '12345',
-            'email': 'test@test.com',
-        }
-    }
-    mocker.patch('httpx.post', return_value=mock_response)
-
-    token, extra = exchange_tokens('silent_token', 'uuid')
-    assert token == 'new_access_token'
-    assert extra.phone == '12345'
-    assert extra.email == 'test@test.com'
 
 
 def test_get_extra_user_data_by_silent_token(mocker):

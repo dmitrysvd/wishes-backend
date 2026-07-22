@@ -19,18 +19,14 @@ from app.logging import logger
 from app.schemas import (
     RegistrationAttributionSchema,
     RequestFirebaseAuthSchema,
-    RequestVkAuthAndroidSchema,
     RequestVkAuthMobileSchema,
     RequestVkAuthVkidSchema,
-    RequestVkAuthWebSchema,
     ResponseVkAuthMobileSchema,
-    ResponseVkAuthWebSchema,
     SavePushTokenSchema,
 )
 from app.utils import new_user_handler, save_registration_attribution, utc_now
 from app.vk import (
     VkUserExtraData,
-    exchange_tokens,
     exchange_vk_code,
     get_vk_user_data_by_access_token,
     get_vk_user_friends,
@@ -38,8 +34,7 @@ from app.vk import (
 
 router = APIRouter(tags=[AUTH_TAG])
 
-# Общие коды ответов для VK ID Confidential Flow (обмен `code` на сервере).
-# Разделяются каноническим /auth/vk/vkid и его deprecated-алиасом /auth/vk/android.
+# Коды ответов для VK ID Confidential Flow (обмен `code` на сервере) — /auth/vk/vkid.
 _VK_CODE_AUTH_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {
         'description': (
@@ -70,14 +65,14 @@ _VK_CODE_AUTH_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 def auth_vk_via_code(
-    request_data: RequestVkAuthVkidSchema | RequestVkAuthAndroidSchema,
+    request_data: RequestVkAuthVkidSchema,
     db: Session,
 ) -> ResponseVkAuthMobileSchema:
     """Обмен VK ID authorization `code` на сессию (Confidential Flow).
 
-    Общая логика канонического `/auth/vk/vkid` и его алиаса `/auth/vk/android`:
-    серверный обмен `code` на access_token у VK ID Backend (токен привязан к IP
-    бэка), подтверждённый профиль (в т.ч. email) берётся из `id_token`, а не из тела.
+    Логика `/auth/vk/vkid`: серверный обмен `code` на access_token у VK ID Backend
+    (токен привязан к IP бэка), подтверждённый профиль (в т.ч. email) берётся из
+    `id_token`, а не из тела.
     """
     access_token, vk_extra_data = exchange_vk_code(
         request_data.code,
@@ -169,44 +164,19 @@ def auth_vk(
     return firebase_uid, firebase_token, is_new_user
 
 
-@router.post('/auth/vk/web')
-def auth_vk_web(
-    request_data: RequestVkAuthWebSchema,
-    db: Session = Depends(get_db),
-) -> ResponseVkAuthWebSchema:
-    """
-    Аутентификация через ВК в вебе.
-
-    Возвращает данные для аутентификации в firebase.
-    Создаст пользователя в firebase, если не существовал.
-
-    Сайд-эффект (атрибуция): если передан `attribution` и юзер создаётся впервые
-    (`user_created=true`), бэк фиксирует реферера и канал установки (см.
-    `RegistrationAttributionSchema`). Best-effort: невалидная атрибуция тихо
-    игнорируется, регистрацию не валит. Для существующего юзера атрибуция
-    игнорируется (first-touch).
-    """
-    silent_token = request_data.silent_token
-    uuid = request_data.uuid
-    access_token, vk_extra_data = exchange_tokens(silent_token, uuid)
-    # email из серверного обмена (exchange_tokens) — подтверждён VK.
-    firebase_uid, firebase_token, is_new_user = auth_vk(
-        access_token, vk_extra_data, db, request_data.attribution, email_verified=True
-    )
-    return ResponseVkAuthWebSchema(
-        vk_access_token=access_token,
-        firebase_uid=firebase_uid,
-        firebase_token=firebase_token,
-        user_created=is_new_user,
-    )
-
-
-@router.post('/auth/vk/mobile')
+@router.post('/auth/vk/mobile', deprecated=True)
 def auth_vk_mobile(
     auth_data: RequestVkAuthMobileSchema, db: Session = Depends(get_db)
 ) -> ResponseVkAuthMobileSchema:
     """
-    Аутентификация через ВК на мобильных устройствах.
+    **DEPRECATED — используйте `POST /auth/vk/vkid`.**
+
+    Легаси-вход через ВК на мобильных устройствах (Public Flow): клиент присылает
+    готовый `access_token`, а email/phone — в теле запроса (не подтверждены VK,
+    поэтому вход по email с существующим аккаунтом не связывается). Оставлен ради
+    уже зашипленных старых мобильных клиентов; новые интеграции — на `/auth/vk/vkid`
+    (Confidential Flow, подтверждённый профиль из `id_token`). Снимется, когда старые
+    клиенты переедут.
 
     Создаст пользователя в firebase и на сервере, если не существовал.
     Возвращает данные для аутентификации в firebase.
@@ -257,28 +227,6 @@ def auth_vk_vkid(
     `RegistrationAttributionSchema`). Best-effort: невалидная атрибуция тихо
     игнорируется, регистрацию не валит. Для существующего юзера атрибуция
     игнорируется (first-touch).
-    """
-    return auth_vk_via_code(request_data, db)
-
-
-@router.post(
-    '/auth/vk/android',
-    # Публичный вход: токена у клиента ещё нет — снимаем глобальное требование ApiKey.
-    openapi_extra={'security': []},
-    deprecated=True,
-    responses=_VK_CODE_AUTH_RESPONSES,
-)
-def auth_vk_android(
-    request_data: RequestVkAuthAndroidSchema,
-    db: Session = Depends(get_db),
-) -> ResponseVkAuthMobileSchema:
-    """
-    **DEPRECATED — используйте `POST /auth/vk/vkid`.**
-
-    Исторический эндпоинт VK ID Confidential Flow для Android (фича 0004). Оставлен
-    как алиас `/auth/vk/vkid` (та же логика, тот же VK-app) ради уже зашипленного
-    Android-клиента; новые интеграции — на `/auth/vk/vkid`. Снимется, когда Android
-    переедет.
     """
     return auth_vk_via_code(request_data, db)
 

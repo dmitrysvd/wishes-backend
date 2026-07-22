@@ -7,7 +7,6 @@ from app.config import settings
 from app.constants import Gender
 from app.vk import (
     VkResponseError,
-    exchange_tokens,
     exchange_vk_code,
     get_gender,
     get_vk_user_data_by_access_token,
@@ -144,37 +143,6 @@ def test_get_vk_user_friends_malformed(mocker):
 
     with pytest.raises(VkResponseError):
         get_vk_user_friends('token')
-
-
-def test_exchange_tokens_success(mocker):
-    mock_response = mocker.Mock()
-    mock_response.json.return_value = {
-        'response': {'access_token': 'new_token', 'email': 'test@test.com'}
-    }
-    mocker.patch('httpx.post', return_value=mock_response)
-
-    token, extra = exchange_tokens('silent', 'uuid')
-    assert token == 'new_token'
-    assert extra.email == 'test@test.com'
-
-
-def test_exchange_tokens_error(mocker):
-    mock_response = mocker.Mock()
-    mock_response.json.return_value = {'error': 'some error'}
-    mocker.patch('httpx.post', return_value=mock_response)
-
-    with pytest.raises(HTTPException) as exc:
-        exchange_tokens('silent', 'uuid')
-    assert exc.value.status_code == 401
-
-
-def test_exchange_tokens_malformed(mocker):
-    mock_response = mocker.Mock()
-    mock_response.json.return_value = {'response': {'no_access_token': True}}
-    mocker.patch('httpx.post', return_value=mock_response)
-
-    with pytest.raises(VkResponseError):
-        exchange_tokens('silent', 'uuid')
 
 
 def test_exchange_vk_code_success(mocker):
