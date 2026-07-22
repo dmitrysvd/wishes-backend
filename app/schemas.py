@@ -448,7 +448,7 @@ class RequestVkAuthAndroidSchema(BaseModel):
                     'code': 'vk1.a.authorization-code-from-sdk',
                     'code_verifier': 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
                     'device_id': 'vk-device-id-from-sdk',
-                    'redirect_uri': 'https://hotelki.pro/vk-auth',
+                    'redirect_uri': 'vk51800170://vk.com/service.html',
                     'attribution': {
                         'referrer_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
                         'utm_source': 'whatsapp',
@@ -458,7 +458,7 @@ class RequestVkAuthAndroidSchema(BaseModel):
                     'code': 'vk1.a.authorization-code-from-sdk',
                     'code_verifier': 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
                     'device_id': 'vk-device-id-from-sdk',
-                    'redirect_uri': 'https://hotelki.pro/vk-auth',
+                    'redirect_uri': 'vk51800170://vk.com/service.html',
                 },
             ]
         }
@@ -486,10 +486,13 @@ class RequestVkAuthAndroidSchema(BaseModel):
     )
     redirect_uri: str = Field(
         description=(
-            '`redirect_uri`, с которым SDK проводил авторизацию на устройстве. '
-            'Бэк передаёт его в обмене как есть; VK сверяет байт-в-байт с шагом '
-            'авторизации. Задаёт клиент (а не сервер), т.к. значение зашито в SDK. '
-            'Несовпадение → `401` (`invalid_request`).'
+            '`redirect_uri`, с которым SDK проводил авторизацию на устройстве — '
+            'кастомная схема `vk<app_id>://…` (напр. '
+            '`vk51800170://vk.com/service.html`), зашитая в нативный SDK. Бэк '
+            'передаёт его в обмене как есть; VK сверяет '
+            'байт-в-байт с шагом авторизации. Задаёт клиент (а не сервер), т.к. '
+            'значение зашито в SDK. По не-http схеме бэк выбирает мобильный VK-app для '
+            'обмена. Несовпадение → `401` (`invalid_request`).'
         )
     )
     attribution: RegistrationAttributionSchema | None = Field(
@@ -568,11 +571,15 @@ class RequestVkAuthVkidSchema(BaseModel):
     )
     redirect_uri: str = Field(
         description=(
-            '`redirect_uri`, с которым SDK проводил авторизацию (на вебе — origin '
-            'приложения, напр. `https://hotelki.pro/`; на мобилке — зашитый в SDK). '
-            'Бэк передаёт его в обмене как есть; VK сверяет байт-в-байт с шагом '
-            'авторизации. Задаёт клиент (а не сервер), т.к. значение известно SDK. '
-            'Несовпадение → `401` (`invalid_request`).'
+            '`redirect_uri`, с которым SDK проводил авторизацию: на вебе — https-'
+            'origin приложения (напр. `https://hotelki.pro/`); на мобилке — кастомная '
+            'схема `vk<app_id>://…`, зашитая в нативный SDK. Бэк передаёт его в обмене '
+            'как есть; VK сверяет байт-в-байт с шагом авторизации. Задаёт клиент (а не '
+            'сервер), т.к. значение известно SDK. Веб и мобилка — ВСЕГДА разные '
+            'VK ID-приложения, поэтому по СХЕМЕ `redirect_uri` бэк выбирает, под '
+            'каким VK-app обменивать `code`: `http(s)://…` → веб-app, иная '
+            '(`vk…://`) схема → '
+            'мобильный app. Несовпадение → `401` (`invalid_request`).'
         )
     )
     attribution: RegistrationAttributionSchema | None = Field(
