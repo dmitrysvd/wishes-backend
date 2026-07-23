@@ -205,6 +205,7 @@ class TestBirthdayRadarInvite:
                 'first_name': 'Пётр',
                 'last_name': 'Смирнов',
                 'bdate': _bdate_in(4),
+                'photo_100': 'https://sun9-1.userapi.com/pyotr.jpg',
             }
         ]
         db.commit()
@@ -216,8 +217,17 @@ class TestBirthdayRadarInvite:
         assert entry['user_id'] is None
         assert entry['active_wishes_count'] is None
         assert entry['followed_by_me'] is None
-        assert entry['photo_url'] is None
+        assert entry['photo_url'] == 'https://sun9-1.userapi.com/pyotr.jpg'
         assert entry['days_until_birthday'] == 4
+
+    def test_invite_without_photo_is_null(
+        self, client: TestClient, current_user: User, db
+    ):
+        # Старый снимок без photo_100 → photo_url null (плейсхолдер на фронте).
+        current_user.vk_friends_data = [{'id': 222, 'bdate': _bdate_in(3)}]
+        db.commit()
+        entry = client.get('/birthday_radar').json()['entries'][0]
+        assert entry['photo_url'] is None
 
     def test_invite_nameless_friend_fallback(
         self, client: TestClient, current_user: User, db
