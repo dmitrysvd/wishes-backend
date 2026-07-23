@@ -15,6 +15,7 @@
 Запуск на сервере: `python -m app.cron_scripts.backfill_vk_friends [--dry-run]`.
 """
 
+import time
 from collections.abc import Callable
 
 from sqlalchemy import select
@@ -22,6 +23,10 @@ from sqlalchemy import select
 from app.db import SessionLocal, User
 from app.logging import logger
 from app.vk import get_vk_user_friends
+
+# Лёгкая пауза между запросами к VK, секунды: ~3 запроса/с (лимит VK на токен),
+# чтобы массовый прогон не выглядел флудом с одного IP и VK не прикрыл доступ.
+REQUEST_DELAY_SECONDS = 0.34
 
 
 def backfill_user_vk_friends(
@@ -66,6 +71,7 @@ def main(
     fetch_friends: Callable[[str], list] = get_vk_user_friends,
     *,
     dry_run: bool = False,
+    delay_seconds: float = REQUEST_DELAY_SECONDS,
 ) -> None:
     logger.info(
         'Бэкфилл снимков VK-друзей запущен{suffix}',
@@ -83,6 +89,8 @@ def main(
                 failed += 1
             if not dry_run:
                 db.add(user)
+            # Пауза после каждого VK-запроса, чтобы не словить бан за флуд.
+            time.sleep(delay_seconds)
         if not dry_run:
             db.commit()
     logger.info(
