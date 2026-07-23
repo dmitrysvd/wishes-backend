@@ -39,10 +39,13 @@ def test_scripts_main_execution(mocker):
 
     from app.cron_scripts import every_hour, every_minute
 
-    mocker.patch('app.cron_scripts.every_hour.main')
-    script_path_hour = os.path.abspath(every_hour.__file__)
-    runpy.run_path(script_path_hour, run_name='__main__')
+    # runpy заново импортирует модуль как __main__, поэтому патчить `.main` в
+    # исходном модуле бесполезно (это другой объект) — исполнялся бы настоящий
+    # main() с реальным доступом к БД. Глушим сами рабочие функции в
+    # app.notifications: свежий `from app.notifications import ...` внутри
+    # перезапущенного модуля подхватит уже подменённые атрибуты.
+    mocker.patch('app.notifications.send_reservation_notifincations')
+    mocker.patch('app.notifications.send_wish_creation_notifications')
 
-    mocker.patch('app.cron_scripts.every_minute.main')
-    script_path_minute = os.path.abspath(every_minute.__file__)
-    runpy.run_path(script_path_minute, run_name='__main__')
+    runpy.run_path(os.path.abspath(every_hour.__file__), run_name='__main__')
+    runpy.run_path(os.path.abspath(every_minute.__file__), run_name='__main__')

@@ -24,6 +24,7 @@ AUTH_TAG = 'auth'
 WISHES_TAG = 'wishes'
 USERS_TAG = 'users'
 PUBLIC_TAG = 'public'
+DEV_TAG = 'dev'
 
 
 class PaginationParams:
@@ -46,6 +47,41 @@ def get_db():
         db.close()
 
 
+def _is_test_auth_token(token: str) -> bool:
+    """Похож ли заголовок на токен dev/test-байпаса (фича 0009).
+
+    Активно только если секрет сконфигурен в окружении. Формат — `{secret}:{id}`;
+    двоеточие обязательно, чтобы токен не совпал по одному лишь префиксу.
+    """
+    return settings.TEST_AUTH_SECRET is not None and token.startswith(
+        f'{settings.TEST_AUTH_SECRET}:'
+    )
+
+
+def _resolve_test_auth_user(token: str, db: Session) -> User:
+    """Достать сид-юзера по токену dev/test-байпаса.
+
+    Принимаем ТОЛЬКО сид-юзеров (`is_test`): даже с валидным секретом токен на
+    реальный аккаунт не резолвится. Битый UUID/несуществующий/не-тест → 401 без
+    утечки, работают ли какие-то юзеры.
+    """
+    raw_id = token.split(':', 1)[1]
+    try:
+        user_id = UUID(raw_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
+        ) from None
+    user = db.execute(
+        select(User).where(User.id == user_id, User.is_test.is_(True))
+    ).scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
+        )
+    return user
+
+
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     token = request.headers.get('Authorization')
     if not token:
@@ -53,14 +89,10 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
             status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
         )
 
-    if settings.IS_DEBUG and token.startswith(settings.TEST_TOKEN):
-        user_id = UUID(token.split(':')[-1])
-        user = db.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
-        if not user:
-            raise HTTPException(
-                status_code=HTTP_401_UNAUTHORIZED, detail='Not authenticated'
-            )
-        return user
+    # dev/test-байпас (фича 0009): работает и в проде-подобной среде, но только
+    # для сид-юзеров. Гейтится наличием секрета, не `IS_DEBUG`.
+    if _is_test_auth_token(token):
+        return _resolve_test_auth_user(token, db)
 
     try:
         decoded_token = verify_id_token(token)

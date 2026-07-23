@@ -92,6 +92,13 @@ class User(Base):
     firebase_push_token: Mapped[str | None] = mapped_column(String(1000))
     firebase_push_token_saved_at: Mapped[datetime | None] = mapped_column()
 
+    # True — сид-юзер dev/test-байпаса (фича 0009). Токен по секрету выдаётся и
+    # принимается ТОЛЬКО для таких юзеров: даже утёкший секрет не даёт войти в
+    # реальный аккаунт. Реальные пользователи всегда False.
+    is_test: Mapped[bool] = mapped_column(
+        default=False, server_default='false', nullable=False
+    )
+
     registered_at: Mapped[datetime] = mapped_column(nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column()
 

@@ -25,37 +25,72 @@ def test_get_current_user_no_token(db):
     assert exc.value.status_code == 401
 
 
-def test_get_current_user_debug_token(db, mocker):
-    mocker.patch('app.dependencies.settings.IS_DEBUG', True)
-    mocker.patch('app.dependencies.settings.TEST_TOKEN', 'debug_token')
+def _auth_request(token: str) -> Request:
+    return Request(
+        scope={'type': 'http', 'headers': [(b'authorization', token.encode())]}
+    )
+
+
+def test_get_current_user_test_auth_token(db, mocker):
+    # Валидный секрет + сид-юзер (is_test) → байпас пускает.
+    mocker.patch('app.dependencies.settings.TEST_AUTH_SECRET', 'dev-secret')
 
     user = User(
-        display_name='Debug User', firebase_uid='debug_uid', registered_at=utc_now()
+        display_name='Seed User',
+        firebase_uid='seed_uid',
+        is_test=True,
+        registered_at=utc_now(),
     )
     db.add(user)
     db.commit()
 
-    token = f'debug_token:{user.id}'
-    request = Request(
-        scope={'type': 'http', 'headers': [(b'authorization', token.encode())]}
-    )
-
-    result = get_current_user(request, db)
+    result = get_current_user(_auth_request(f'dev-secret:{user.id}'), db)
     assert result.id == user.id
 
 
-def test_get_current_user_debug_token_not_found(db, mocker):
-    mocker.patch('app.dependencies.settings.IS_DEBUG', True)
-    mocker.patch('app.dependencies.settings.TEST_TOKEN', 'debug_token')
+def test_get_current_user_test_auth_token_rejects_real_user(db, mocker):
+    # Секрет верный, но юзер НЕ сид (is_test=False) → отказ: реальный аккаунт
+    # байпасом не выдаётся, даже зная его id.
+    mocker.patch('app.dependencies.settings.TEST_AUTH_SECRET', 'dev-secret')
 
-    token = f'debug_token:{uuid4()}'
-    request = Request(
-        scope={'type': 'http', 'headers': [(b'authorization', token.encode())]}
+    user = User(
+        display_name='Real User', firebase_uid='real_uid', registered_at=utc_now()
+    )
+    db.add(user)
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc:
+        get_current_user(_auth_request(f'dev-secret:{user.id}'), db)
+    assert exc.value.status_code == 401
+
+
+def test_get_current_user_test_auth_token_not_found(db, mocker):
+    mocker.patch('app.dependencies.settings.TEST_AUTH_SECRET', 'dev-secret')
+
+    with pytest.raises(HTTPException) as exc:
+        get_current_user(_auth_request(f'dev-secret:{uuid4()}'), db)
+    assert exc.value.status_code == 401
+
+
+def test_get_current_user_test_auth_token_malformed_uuid(db, mocker):
+    mocker.patch('app.dependencies.settings.TEST_AUTH_SECRET', 'dev-secret')
+
+    with pytest.raises(HTTPException) as exc:
+        get_current_user(_auth_request('dev-secret:not-a-uuid'), db)
+    assert exc.value.status_code == 401
+
+
+def test_get_current_user_test_auth_disabled_falls_through(db, mocker):
+    # Секрет не сконфигурен (None) → байпас выключен, токен уходит в firebase-путь.
+    mocker.patch('app.dependencies.settings.TEST_AUTH_SECRET', None)
+    verify = mocker.patch(
+        'app.dependencies.verify_id_token', return_value={'uid': 'no_such_uid'}
     )
 
     with pytest.raises(HTTPException) as exc:
-        get_current_user(request, db)
+        get_current_user(_auth_request('dev-secret:whatever'), db)
     assert exc.value.status_code == 401
+    verify.assert_called_once()
 
 
 def test_get_current_user_firebase_token_expired(db, mocker):
