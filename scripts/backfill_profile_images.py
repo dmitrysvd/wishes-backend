@@ -12,7 +12,7 @@ VK-ссылки протухают, доступность чужого CDN вн
 Протухшие ссылки (404/сетевая ошибка) обнуляем в `photo_url` → фронт падает на
 инициалы; каждую логируем — это заодно и замер, сколько VK-ссылок уже мертвы.
 
-Запуск на сервере: `python -m app.cron_scripts.backfill_profile_images`.
+Запуск на сервере: `python scripts/backfill_profile_images.py`.
 """
 
 import httpx

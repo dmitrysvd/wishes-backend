@@ -12,7 +12,7 @@
 просто пропускаются и считаются в `failed`, скрипт на них не падает. Это заодно замер,
 у скольких токен ещё жив.
 
-Запуск на сервере: `python -m app.cron_scripts.backfill_vk_friends [--dry-run]`.
+Запуск на сервере: `python scripts/backfill_vk_friends.py [--dry-run]`.
 """
 
 import time
