@@ -7,10 +7,10 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.cron_scripts import backfill_profile_images
-from app.cron_scripts.backfill_profile_images import main
 from app.db import User
 from app.utils import utc_now
+from scripts import backfill_profile_images
+from scripts.backfill_profile_images import main
 
 
 def _client(handler) -> httpx.Client:

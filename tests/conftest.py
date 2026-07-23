@@ -89,8 +89,8 @@ def db(test_engine, mocker):
         'app.firebase',
         'app.notifications',
         'app.cron_scripts.at_noon',
-        'app.cron_scripts.backfill_profile_images',
-        'app.cron_scripts.backfill_vk_friends',
+        'scripts.backfill_profile_images',
+        'scripts.backfill_vk_friends',
     ]
     for module in modules:
         try:

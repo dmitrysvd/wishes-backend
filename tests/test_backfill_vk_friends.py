@@ -3,10 +3,10 @@ import runpy
 
 from sqlalchemy.orm import Session
 
-from app.cron_scripts import backfill_vk_friends
-from app.cron_scripts.backfill_vk_friends import main
 from app.db import User
 from app.utils import utc_now
+from scripts import backfill_vk_friends
+from scripts.backfill_vk_friends import main
 
 
 def _make_user(db: Session, suffix: str, **kwargs) -> User:
