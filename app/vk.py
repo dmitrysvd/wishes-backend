@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.config import settings
-from app.constants import Gender
+from app.constants import VK_HIDDEN_BIRTH_YEAR, Gender
 from app.logging import logger
 
 VK_API_VERSION = '5.191'
@@ -56,14 +56,26 @@ def get_gender(vk_gender: int) -> Gender | None:
 
 
 def _parse_vk_birthdate(bdate: str | None) -> date | None:
-    """Разобрать `bdate` из VK. Полная дата (`DD.MM.YYYY`) → `date`; скрытый год
-    (`DD.MM`), пустое или неразбираемое значение → `None`."""
+    """Разобрать `bdate` из VK в дату дня рождения.
+
+    Полная дата `DD.MM.YYYY` → точная `date`. Скрытый год `DD.MM` → дата с
+    плейсхолдер-годом `VK_HIDDEN_BIRTH_YEAR`: год юзер скрыл, но день+месяц нам важны
+    (всё приложение использует только их — пуши, публичный вишлист, радар), поэтому
+    не выбрасываем такие ДР. Пустое/неразбираемое значение → `None`.
+    """
     if not bdate:
         return None
     try:
         return datetime.strptime(bdate, '%d.%m.%Y').date()
     except ValueError:
-        # Юзер скрыл год (формат `DD.MM`) — год обязателен, иначе даты нет.
+        pass
+    # Скрытый год (`DD.MM`): сохраняем день+месяц с плейсхолдер-годом.
+    parts = bdate.split('.')
+    if len(parts) != 2:
+        return None
+    try:
+        return date(VK_HIDDEN_BIRTH_YEAR, int(parts[1]), int(parts[0]))
+    except ValueError:
         return None
 
 
