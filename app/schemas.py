@@ -11,7 +11,7 @@ from pydantic import (
     field_validator,
 )
 
-from app.constants import FollowSource, Gender
+from app.constants import BirthdayRadarKind, FollowSource, Gender
 
 ItemT = TypeVar('ItemT', bound=BaseModel)
 
@@ -240,6 +240,172 @@ class PublicWishlistSchema(BaseModel):
             'и курсора (список одного человека невелик). Порядок не гарантирован. '
             'Пустой список — у владельца пока нет желаний (это НЕ ошибка): '
             'показывайте заглушку и CTA, не пустой экран.'
+        ),
+    )
+
+
+class BirthdayRadarEntrySchema(BaseModel):
+    """Одна строка бёрздей-радара — приближающийся день рождения человека.
+
+    Два вида строки различаются полем `kind` (см. `BirthdayRadarKind`):
+    - `in_app` — у человека есть аккаунт: заполнены `user_id`, `active_wishes_count`,
+      `followed_by_me`; `vk_id` = null. Тап ведёт в его список (S5).
+    - `invite` — человек только среди VK-друзей, аккаунта нет: заполнен `vk_id`;
+      `user_id`/`active_wishes_count`/`followed_by_me` = null. Показываем «Пригласить»
+      (шеринг инвайт-ссылки текущего юзера из `GET /invite_link/`).
+
+    День рождения (`birthday`) всегда известен — строки без известной даты в радар не
+    попадают. Год не отдаётся намеренно: это PII третьего лица (как на публичной
+    странице S5a).
+    """
+
+    kind: BirthdayRadarKind = Field(
+        description=(
+            'Вид строки: `in_app` — есть аккаунт (веди в список), `invite` — только '
+            'VK-друг без аккаунта (предложи пригласить). Определяет, какие поля '
+            'заполнены (см. описание схемы).'
+        ),
+        examples=['in_app'],
+    )
+    display_name: str = Field(
+        description=(
+            'Отображаемое имя. Для `in_app` — имя из профиля; для `invite` — имя '
+            'VK-друга (имя + фамилия из VK).'
+        ),
+        examples=['Аня'],
+    )
+    photo_url: HttpUrl | None = Field(
+        default=None,
+        description=(
+            'URL аватара. Для `invite` всегда null (в снимке VK-друзей фото нет) — '
+            'показывайте плейсхолдер. Для `in_app` — фото из профиля или null.'
+        ),
+        examples=['https://lh3.googleusercontent.com/a/default-user'],
+    )
+    birthday: PublicBirthdaySchema = Field(
+        description=(
+            'День и месяц дня рождения (без года). Всегда присутствует — строки без '
+            'известной даты в радар не включаются.'
+        ),
+    )
+    days_until_birthday: int = Field(
+        description=(
+            'Сколько дней до ближайшего дня рождения (0 — сегодня, 1 — завтра). '
+            'Считается сервером от текущей даты. По этому полю список уже '
+            'отсортирован по возрастанию — ближайшие ДР сверху.'
+        ),
+        ge=0,
+        examples=[5],
+    )
+    user_id: UUID | None = Field(
+        default=None,
+        description=(
+            'Идентификатор аккаунта в приложении — для навигации в его список (S5). '
+            'Заполнен только при `kind = in_app`; для `invite` = null.'
+        ),
+        examples=['3fa85f64-5717-4562-b3fc-2c963f66afa6'],
+    )
+    active_wishes_count: int | None = Field(
+        default=None,
+        description=(
+            'Число активных (не архивных) хотелок. `0` — список пуст (покажите '
+            '«список пуст» без давления, без CTA), `>0` — есть что подарить (CTA '
+            '«Посмотреть список»). Заполнено только при `kind = in_app`; для '
+            '`invite` = null.'
+        ),
+        ge=0,
+        examples=[3],
+    )
+    followed_by_me: bool | None = Field(
+        default=None,
+        description=(
+            'Подписан ли текущий юзер на этого человека (подсказка для кнопки '
+            'подписки). Заполнено только при `kind = in_app`; для `invite` = null.'
+        ),
+        examples=[False],
+    )
+    vk_id: str | None = Field(
+        default=None,
+        description=(
+            'VK id VK-друга — стабильный ключ строки и, при желании, ссылка на его '
+            'VK-профиль. Заполнен только при `kind = invite`; для `in_app` = null.'
+        ),
+        examples=['123456789'],
+    )
+
+
+class BirthdayRadarSchema(BaseModel):
+    """Бёрздей-радар: приближающиеся ДР VK-друзей и подписок текущего юзера.
+
+    Источник — VK-друзья юзера (из данных VK) плюс те, на кого он подписан в
+    приложении и кто указал дату рождения; дубли схлопнуты (человек в списке один
+    раз, при наличии аккаунта — как `in_app`). Год рождения наружу не отдаётся (PII
+    третьего лица).
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'vk_linked': True,
+                    'entries': [
+                        {
+                            'kind': 'in_app',
+                            'display_name': 'Аня',
+                            'photo_url': 'https://lh3.googleusercontent.com/a/default-user',
+                            'birthday': {'day': 26, 'month': 7},
+                            'days_until_birthday': 3,
+                            'user_id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                            'active_wishes_count': 3,
+                            'followed_by_me': True,
+                            'vk_id': None,
+                        },
+                        {
+                            'kind': 'invite',
+                            'display_name': 'Пётр Смирнов',
+                            'photo_url': None,
+                            'birthday': {'day': 2, 'month': 8},
+                            'days_until_birthday': 10,
+                            'user_id': None,
+                            'active_wishes_count': None,
+                            'followed_by_me': None,
+                            'vk_id': '123456789',
+                        },
+                        {
+                            'kind': 'in_app',
+                            'display_name': 'Игорь',
+                            'photo_url': None,
+                            'birthday': {'day': 20, 'month': 8},
+                            'days_until_birthday': 28,
+                            'user_id': '9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e',
+                            'active_wishes_count': 0,
+                            'followed_by_me': False,
+                            'vk_id': None,
+                        },
+                    ],
+                },
+                {'vk_linked': False, 'entries': []},
+                {'vk_linked': True, 'entries': []},
+            ]
+        }
+    )
+
+    vk_linked: bool = Field(
+        description=(
+            'Привязан ли у текущего юзера VK. Нужно, чтобы различить два пустых '
+            'состояния радара: `false` + пустой `entries` → показать CTA «Привяжи '
+            'VK, чтобы видеть ДР друзей»; `true` + пустой `entries` → «Пока не нашли '
+            'дни рождения среди друзей».'
+        ),
+        examples=[True],
+    )
+    entries: list[BirthdayRadarEntrySchema] = Field(
+        description=(
+            'Строки радара, уже отсортированные по возрастанию `days_until_birthday` '
+            '(ближайшие ДР сверху); при равном числе дней — по `display_name` '
+            '(лексикографически, стабильный детерминированный порядок). Отдаются '
+            'ЦЕЛИКОМ, без пагинации. Пустой список — нет известных ближайших ДР (это '
+            'не ошибка); какое пустое состояние показать, различайте по `vk_linked`.'
         ),
     )
 
