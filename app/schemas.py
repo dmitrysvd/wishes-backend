@@ -254,9 +254,10 @@ class BirthdayRadarEntrySchema(BaseModel):
       `user_id`/`active_wishes_count`/`followed_by_me` = null. Показываем «Пригласить»
       (шеринг инвайт-ссылки текущего юзера из `GET /invite_link/`).
 
-    День рождения (`birthday`) всегда известен — строки без известной даты в радар не
-    попадают. Год не отдаётся намеренно: это PII третьего лица (как на публичной
-    странице S5a).
+    Поля `display_name`, `birthday`, `days_until_birthday` присутствуют всегда (оба
+    вида). `photo_url` тоже общий для обоих видов и может быть null (см. его описание) —
+    рендерите плейсхолдер. `birthday` всегда известен: строки без известной даты в радар
+    не попадают. Год не отдаётся намеренно: это PII третьего лица (как на S5a).
     """
 
     kind: BirthdayRadarKind = Field(
@@ -277,8 +278,10 @@ class BirthdayRadarEntrySchema(BaseModel):
     photo_url: HttpUrl | None = Field(
         default=None,
         description=(
-            'URL аватара. Для `invite` всегда null (в снимке VK-друзей фото нет) — '
-            'показывайте плейсхолдер. Для `in_app` — фото из профиля или null.'
+            'URL аватара. Для `in_app` — фото из профиля аккаунта (или null). Для '
+            '`invite` — аватар VK-друга; может быть null, если снимок VK-друзей снят '
+            'до того, как бэк начал собирать фото (заполнится при следующем входе '
+            'владельца или ручном бэкфиле). null → показывайте плейсхолдер.'
         ),
         examples=['https://lh3.googleusercontent.com/a/default-user'],
     )
@@ -363,7 +366,7 @@ class BirthdayRadarSchema(BaseModel):
                         {
                             'kind': 'invite',
                             'display_name': 'Пётр Смирнов',
-                            'photo_url': None,
+                            'photo_url': 'https://sun9-1.userapi.com/s/v1/ig2/pyotr.jpg',
                             'birthday': {'day': 2, 'month': 8},
                             'days_until_birthday': 10,
                             'user_id': None,

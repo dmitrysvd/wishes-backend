@@ -223,8 +223,10 @@ def get_vk_user_friends(access_token: str):
             'v': VK_API_VERSION,
             'access_token': access_token,
             'order': 'hints',  # по рейтингу
-            # нужно использовать любое поле, чтобы возвращались объекты, а не id-шники.
-            'fields': 'bdate',
+            # bdate — для бёрздей-радара; photo_100 — аватар друга (invite-строки
+            # радара, лицо повышает CTR приглашения). Наличие полей заодно заставляет
+            # friends.get вернуть объекты, а не голые id.
+            'fields': 'bdate,photo_100',
         },
     )
     response.raise_for_status()
