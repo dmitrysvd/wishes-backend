@@ -145,8 +145,14 @@ def auth_vk(
 
     user.vk_access_token = access_token
     user.vk_id = str(vk_basic_data.id)
-    if not user.vk_friends_data:
+    # Снимок VK-друзей обновляем на КАЖДОМ входе (раньше был one-shot и протухал:
+    # новые друзья не попадали, ушедшие оставались — бьёт по бёрздей-радару и
+    # possible_friends). Best-effort: сбой VK-запроса не должен ронять логин —
+    # оставляем прежний снимок.
+    try:
         user.vk_friends_data = get_vk_user_friends(access_token)
+    except Exception as exc:
+        logger.warning('Не удалось обновить список VK-друзей: {exc}', exc=exc)
     user.last_login_at = utc_now()
     db.add(user)
     db.commit()
