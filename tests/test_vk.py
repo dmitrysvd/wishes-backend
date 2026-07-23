@@ -4,7 +4,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.config import settings
-from app.constants import Gender
+from app.constants import VK_HIDDEN_BIRTH_YEAR, Gender
 from app.vk import (
     VkResponseError,
     exchange_vk_code,
@@ -44,24 +44,40 @@ def test_get_vk_user_data_by_access_token(mocker):
     assert data.birthdate == date(1990, 1, 1)
 
 
-def test_get_vk_user_data_by_access_token_hidden_fields(mocker):
-    # Юзер скрыл пол и год рождения: sex отсутствует, bdate без года.
+def _vk_user_response(mocker, bdate: str | None):
     mock_response = mocker.Mock()
-    mock_response.json.return_value = {
-        'response': [
-            {
-                'id': 123,
-                'first_name': 'Ivan',
-                'last_name': 'Ivanov',
-                'photo_200': 'http://photo',
-                'bdate': '1.5',
-            }
-        ]
+    payload = {
+        'id': 123,
+        'first_name': 'Ivan',
+        'last_name': 'Ivanov',
+        'photo_200': 'http://photo',
     }
+    if bdate is not None:
+        payload['bdate'] = bdate
+    mock_response.json.return_value = {'response': [payload]}
     mocker.patch('httpx.get', return_value=mock_response)
 
+
+def test_get_vk_user_data_by_access_token_hidden_year(mocker):
+    # Год скрыт (`DD.MM`): день+месяц сохраняем с плейсхолдер-годом, не теряем ДР.
+    _vk_user_response(mocker, '1.5')
     data = get_vk_user_data_by_access_token('token')
     assert data.gender is None
+    assert data.birthdate == date(VK_HIDDEN_BIRTH_YEAR, 5, 1)
+
+
+def test_get_vk_user_data_by_access_token_hidden_year_leap_day(mocker):
+    # 29.02 при скрытом годе не теряется — плейсхолдер-год високосный.
+    _vk_user_response(mocker, '29.2')
+    data = get_vk_user_data_by_access_token('token')
+    assert data.birthdate == date(VK_HIDDEN_BIRTH_YEAR, 2, 29)
+
+
+@pytest.mark.parametrize('bdate', [None, '', 'garbage', '31.2', '1.5.bad'])
+def test_get_vk_user_data_by_access_token_unparseable_bdate(mocker, bdate):
+    # Пустое/битое/несуществующая дата → birthdate None, регистрация не падает.
+    _vk_user_response(mocker, bdate)
+    data = get_vk_user_data_by_access_token('token')
     assert data.birthdate is None
 
 
