@@ -39,6 +39,17 @@ class FollowSource(enum.Enum):
     other = 'other'  # прочее/неизвестно
 
 
+class TestPersona(enum.Enum):
+    """Персона сид-юзера для dev/test-байпаса аутентификации (фича 0009).
+
+    `rich` — аккаунт с привязанным VK, друзьями-с-ДР и подписками (данные для
+    бёрздей-радара/списков); `empty` — без VK и без данных (пустые состояния).
+    """
+
+    rich = 'rich'
+    empty = 'empty'
+
+
 # Пагинация
 DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 100

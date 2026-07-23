@@ -37,6 +37,33 @@ def _reset_schema(engine):
 
 
 @pytest.fixture(scope='session', autouse=True)
+def _forbid_real_database():
+    """Гарантия: ни один тест не коннектится к боевой БД (`DATABASE_URL`).
+
+    Любая попытка подключиться к реальному движку `app.db.engine` роняет тест
+    громкой ошибкой. Тесты обязаны идти в тестовую БД через фикстуру `db` (она
+    бьётся об отдельный `test_engine`/`TEST_DATABASE_URL`) либо мокать доступ к
+    данным. Ловит забытую фикстуру `db` и незамоканный путь — вместо тихого
+    удара в прод (как было с cron-скриптами через runpy).
+    """
+    from unittest.mock import patch
+
+    from app import db as db_module
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError(
+            'Тест попытался подключиться к боевой БД (DATABASE_URL). Используй '
+            'фикстуру `db` (тестовая БД) или замокай доступ к данным.'
+        )
+
+    with (
+        patch.object(db_module.engine, 'connect', _raise),
+        patch.object(db_module.engine, 'raw_connection', _raise),
+    ):
+        yield
+
+
+@pytest.fixture(scope='session', autouse=True)
 def test_engine():
     engine = create_engine(settings.TEST_DATABASE_URL)
     # Схему тестовой БД поднимаем МИГРАЦИЯМИ (как на проде), а не create_all —

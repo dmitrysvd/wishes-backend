@@ -21,6 +21,7 @@ from app.logging import logger
 from app.routers import (
     auth,
     birthday_radar,
+    dev,
     og,
     public,
     recommendations,
@@ -88,6 +89,7 @@ app.include_router(users.router)
 app.include_router(birthday_radar.router)
 app.include_router(public.router)
 app.include_router(og.router)
+app.include_router(dev.router)
 
 # Админка
 setup_admin(app, engine)

@@ -13,7 +13,13 @@ class Settings(BaseSettings):
     VK_APP_ID: int  # мобильный (нативный SDK, redirect vk<app_id>://…)
     VK_WEB_APP_ID: int  # веб (One Tap @vkid/sdk, redirect https-origin)
     FIREBASE_KEY_PATH: Path
-    TEST_TOKEN: str
+    # Секрет dev/test-байпаса аутентификации (фича 0009). Наличие значения =
+    # включённость: если не задан (None) — эндпоинт `POST /dev/test_token` отдаёт
+    # 404 и header-байпас по этому секрету выключен. Гейтит НЕ по `IS_DEBUG`,
+    # чтобы токен работал против задеплоенного бэка; безопасность держится тем,
+    # что байпас выдаёт/принимает токен ТОЛЬКО для сид-юзеров (`User.is_test`).
+    # Как ключи подписи: на диске, gitignored, из окружения. В проде не задаётся.
+    TEST_AUTH_SECRET: str | None = None
     MEDIA_ROOT: Path
     LOGS_DIR: Path
     URL_ROOT_PATH: str = '/'

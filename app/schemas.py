@@ -11,7 +11,7 @@ from pydantic import (
     field_validator,
 )
 
-from app.constants import BirthdayRadarKind, FollowSource, Gender
+from app.constants import BirthdayRadarKind, FollowSource, Gender, TestPersona
 
 ItemT = TypeVar('ItemT', bound=BaseModel)
 
@@ -678,6 +678,63 @@ class ResponseVkAuthMobileSchema(BaseModel):
             '`false` — вход в существующий аккаунт. Влияет на учёт `attribution` '
             '(учитывается только при `true`).'
         )
+    )
+
+
+class TestTokenRequestSchema(BaseModel):
+    """Запрос токена сид-юзера для авто-тестов (фича 0009)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [{'secret': 'shared-dev-secret', 'persona': 'rich'}]
+        }
+    )
+
+    secret: str = Field(
+        description=(
+            'Общий dev/test-секрет из окружения бэка (НЕ пароль пользователя). '
+            'Неверный/пустой → `403`. Утечка секрета не раскрывает данные прода: '
+            'токен выдаётся только сид-юзерам.'
+        )
+    )
+    persona: TestPersona = Field(
+        default=TestPersona.rich,
+        description=(
+            'Какого сид-юзера вернуть. `rich` — привязан VK, друзья-с-ДР, подписки '
+            'и желания (данные для радара/списков); `empty` — без VK и без данных '
+            '(пустые состояния). Опущено = `rich`.'
+        ),
+    )
+
+
+class TestTokenResponseSchema(BaseModel):
+    """Ответ с bearer-токеном сид-юзера (фича 0009)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'token': 'shared-dev-secret:3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                    'persona': 'rich',
+                    'user_id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                }
+            ]
+        }
+    )
+
+    token: str = Field(
+        description=(
+            'Готовый bearer сид-юзера: кладётся в заголовок `Authorization` как '
+            'есть, эквивалентен токену после OAuth — существующий клиент '
+            '(`ApiRepository`, `login.sh`) работает без изменений. Без явного TTL: '
+            'валиден, пока сконфигурен тот же секрет и сид-юзер существует.'
+        )
+    )
+    persona: TestPersona = Field(
+        description='Персона выданного сид-юзера (эхо запроса).'
+    )
+    user_id: UUID = Field(
+        description='UUID сид-юзера — стабилен между вызовами (get-or-create).'
     )
 
 
