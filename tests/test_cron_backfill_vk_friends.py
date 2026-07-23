@@ -27,7 +27,7 @@ def test_main_refreshes_snapshot(db: Session):
     )
     fresh = [{'id': 1, 'bdate': '1.1', 'photo_100': 'https://vk/p.jpg'}]
 
-    main(fetch_friends=lambda _token: fresh)
+    main(fetch_friends=lambda _token: fresh, delay_seconds=0)
 
     db.refresh(user)
     assert user.vk_friends_data == fresh
@@ -42,7 +42,7 @@ def test_main_keeps_snapshot_when_token_dead(db: Session):
         raise Exception('token expired')
 
     # Сбой не роняет прогон, снимок остаётся прежним.
-    main(fetch_friends=_raise)
+    main(fetch_friends=_raise, delay_seconds=0)
 
     db.refresh(user)
     assert user.vk_friends_data == [{'id': 'keep'}]
@@ -54,7 +54,7 @@ def test_main_skips_users_without_token(db: Session):
     def _fail(_token):
         raise AssertionError('юзер без токена не должен опрашиваться')
 
-    main(fetch_friends=_fail)
+    main(fetch_friends=_fail, delay_seconds=0)
 
     db.refresh(user)
     assert user.vk_friends_data == [{'id': 'x'}]
@@ -63,7 +63,7 @@ def test_main_skips_users_without_token(db: Session):
 def test_dry_run_writes_nothing(db: Session):
     user = _make_user(db, 'dry', vk_access_token='tok', vk_friends_data=[{'id': 'old'}])
 
-    main(fetch_friends=lambda _token: [{'id': 'new'}], dry_run=True)
+    main(fetch_friends=lambda _token: [{'id': 'new'}], dry_run=True, delay_seconds=0)
 
     db.refresh(user)
     assert user.vk_friends_data == [{'id': 'old'}]
