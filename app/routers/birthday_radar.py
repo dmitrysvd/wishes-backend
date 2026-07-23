@@ -1,4 +1,5 @@
 from datetime import date
+from typing import NamedTuple
 
 from fastapi import APIRouter, Depends
 from pydantic import HttpUrl
@@ -16,6 +17,20 @@ from app.schemas import (
 )
 
 router = APIRouter(tags=[USERS_TAG])
+
+
+class _RadarFriend(NamedTuple):
+    """Распознанный VK-друг для радара: имя, аватар и день/месяц ДР."""
+
+    name: str
+    photo_url: str | None
+    day: int
+    month: int
+
+
+def _coerce_url(value: str | None) -> HttpUrl | None:
+    """Строку из БД/VK привести к HttpUrl (контракт), пустое/None → None."""
+    return HttpUrl(value) if value else None
 
 
 def parse_vk_bdate_day_month(bdate: str | None) -> tuple[int, int] | None:
@@ -71,15 +86,20 @@ def build_birthday_radar(
     """
     vk_linked = current_user.vk_id is not None
 
-    # 1. VK-друзья с распознанным днём рождения: vk_id -> (имя, день, месяц).
-    vk_friends: dict[str, tuple[str, int, int]] = {}
+    # 1. VK-друзья с распознанным днём рождения: vk_id -> _RadarFriend.
+    vk_friends: dict[str, _RadarFriend] = {}
     for friend in current_user.vk_friends_data or []:
         friend_id = friend.get('id')
         day_month = parse_vk_bdate_day_month(friend.get('bdate'))
         if friend_id is None or day_month is None:
             continue
         name = f'{friend.get("first_name", "")} {friend.get("last_name", "")}'.strip()
-        vk_friends[str(friend_id)] = (name or 'Друг из ВК', day_month[0], day_month[1])
+        vk_friends[str(friend_id)] = _RadarFriend(
+            name=name or 'Друг из ВК',
+            photo_url=friend.get('photo_100'),
+            day=day_month[0],
+            month=day_month[1],
+        )
 
     # 2. Кто из VK-друзей уже в приложении (матч по vk_id, как в possible_friends).
     app_users_by_vk: dict[str, User] = {}
@@ -107,8 +127,8 @@ def build_birthday_radar(
             BirthdayRadarEntrySchema(
                 kind=BirthdayRadarKind.in_app,
                 display_name=user.display_name,
-                # В БД photo_url — строка; контракт отдаёт HttpUrl, коэрсим явно.
-                photo_url=HttpUrl(user.photo_url) if user.photo_url else None,
+                # Фото in_app-строки — из профиля аккаунта (не из VK-снимка).
+                photo_url=_coerce_url(user.photo_url),
                 birthday=PublicBirthdaySchema(day=day, month=month),
                 days_until_birthday=days_until_birthday(day, month, today),
                 user_id=user.id,
@@ -121,26 +141,30 @@ def build_birthday_radar(
         )
 
     # 3а. VK-друзья, которые есть в приложении → in_app (ДР из профиля, фолбэк — VK).
-    for vk_id, (_, day, month) in vk_friends.items():
+    for vk_id, friend in vk_friends.items():
         app_user = app_users_by_vk.get(vk_id)
         if app_user is not None:
-            add_in_app(app_user, fallback_day_month=(day, month))
+            add_in_app(app_user, fallback_day_month=(friend.day, friend.month))
 
     # 3б. Подписки с известным ДР → in_app (ДР только из профиля).
     for followed in current_user.follows:
         add_in_app(followed, fallback_day_month=None)
 
     # 4. VK-друзья без аккаунта → invite (крючок роста графа).
-    for vk_id, (name, day, month) in vk_friends.items():
+    for vk_id, friend in vk_friends.items():
         if vk_id in app_users_by_vk:
             continue
         entries.append(
             BirthdayRadarEntrySchema(
                 kind=BirthdayRadarKind.invite,
-                display_name=name,
-                photo_url=None,
-                birthday=PublicBirthdaySchema(day=day, month=month),
-                days_until_birthday=days_until_birthday(day, month, today),
+                display_name=friend.name,
+                # Фото invite-строки — аватар VK-друга из снимка (может отсутствовать
+                # в старых снимках, снятых до сбора photo_100).
+                photo_url=_coerce_url(friend.photo_url),
+                birthday=PublicBirthdaySchema(day=friend.day, month=friend.month),
+                days_until_birthday=days_until_birthday(
+                    friend.day, friend.month, today
+                ),
                 user_id=None,
                 active_wishes_count=None,
                 followed_by_me=None,
