@@ -12,6 +12,7 @@ from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 from app.config import settings
 from app.db import User, Wish, WishRecommendation
 from app.dependencies import WISHES_TAG, get_current_user, get_current_user_wish, get_db
+from app.helpers.wish_helpers import build_wish_read
 from app.schemas import WishReadSchema, WishWriteSchema
 
 router = APIRouter(tags=[WISHES_TAG])
@@ -48,13 +49,13 @@ def add_wish(
     )
     db.add(wish)
     db.commit()
-    return wish
+    return build_wish_read(wish, user.id)
 
 
 @router.get('/wishes', response_model=list[WishReadSchema])
 def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     query = Wish.get_active_wish_query().where(Wish.user == user)
-    return db.scalars(query)
+    return [build_wish_read(wish, user.id) for wish in db.scalars(query)]
 
 
 @router.get('/reserved_wishes', response_model=list[WishReadSchema])
@@ -62,7 +63,7 @@ def my_reserved_wishes(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     query = Wish.get_active_wish_query().where(Wish.reserved_by == user)
-    return db.scalars(query)
+    return [build_wish_read(wish, user.id) for wish in db.scalars(query)]
 
 
 @router.get('/wishes/{wish_id}', response_model=WishReadSchema)
@@ -74,7 +75,7 @@ def get_wish(
     wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
     if not wish or (wish.is_archived and wish.user != user):
         raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
-    return wish
+    return build_wish_read(wish, user.id)
 
 
 @router.put('/wishes/{wish_id}')
@@ -127,13 +128,36 @@ def delete_wish_image(
     db.commit()
 
 
-@router.get('/users/{user_id}/wishes', response_model=list[WishReadSchema])
-def user_wishes(user_id: UUID, db: Session = Depends(get_db)):
+@router.get(
+    '/users/{user_id}/wishes',
+    response_model=list[WishReadSchema],
+    responses={
+        401: {
+            'description': (
+                'Нет или истёк токен. Список внутри приложения доступен только '
+                'авторизованному юзеру; гостю (веб-страница по расшаренной ссылке) — '
+                '`GET /public/users/{user_id}/wishlist`.'
+            )
+        },
+        404: {'description': 'Пользователя с таким `user_id` нет.'},
+    },
+)
+def user_wishes(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Активные хотелки указанного юзера (экран чужого списка в приложении).
+
+    Требует авторизации: раньше роут был открыт анониму и вместе с профилем
+    владельца отдавал наружу связь «кто что зарезервировал». Публичный сценарий
+    (гость по ссылке) закрыт отдельным `GET /public/users/{user_id}/wishlist`.
+    """
     user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
     if not user:
         raise HTTPException(404, 'Пользователь не найден')
     query = Wish.get_active_wish_query().where(Wish.user == user)
-    return db.scalars(query)
+    return [build_wish_read(wish, current_user.id) for wish in db.scalars(query)]
 
 
 @router.post('/wishes/{wish_id}/reserve', response_class=Response)
@@ -193,4 +217,5 @@ def unarchive_wish(
 def archived_wishes(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    return db.scalars(select(Wish).where(Wish.user == user, Wish.is_archived))
+    query = select(Wish).where(Wish.user == user, Wish.is_archived)
+    return [build_wish_read(wish, user.id) for wish in db.scalars(query)]
