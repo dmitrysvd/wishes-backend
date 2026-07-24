@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.constants import FollowAction, FollowSource, Gender
+from app.constants import HIDDEN_RESERVER_ID, FollowAction, FollowSource, Gender
 from app.db import (
     FollowEvent,
     User,
@@ -145,6 +145,88 @@ class TestMyWishes:
         response = auth_client.get(f'/users/{user.id}/wishes')
         assert response.is_success
         assert [w['id'] for w in response.json()] == [str(wish.id)]
+
+    def test_get_user_wishes_requires_auth(self, user: User):
+        """Список внутри приложения закрыт для анонима: гостю — /public/…/wishlist."""
+        app.dependency_overrides.pop(get_current_user)
+        response = TestClient(app).get(f'/users/{user.id}/wishes')
+        assert response.status_code == 401
+
+    def test_free_wish_has_no_reserver(self, auth_client: TestClient, wish: Wish):
+        response = auth_client.get('/wishes')
+        assert response.is_success
+        assert response.json()[0]['is_reserved'] is False
+        assert response.json()[0]['reserved_by_id'] is None
+
+    def test_owner_does_not_see_who_reserved(
+        self, auth_client: TestClient, wish: Wish, other_user: User, db: Session
+    ):
+        """Владельцу списка личность дарителя — спойлер: отдаём только заглушку."""
+        wish.reserved_by_id = other_user.id
+        db.commit()
+
+        response = auth_client.get('/wishes')
+        assert response.is_success
+        wish_data = response.json()[0]
+        # Резерв виден (клиент покажет «зарезервировано»), даритель — нет.
+        assert wish_data['is_reserved'] is True
+        assert wish_data['reserved_by_id'] == str(HIDDEN_RESERVER_ID)
+
+    def test_single_wish_hides_who_reserved(
+        self, auth_client: TestClient, wish: Wish, other_user: User, db: Session
+    ):
+        wish.reserved_by_id = other_user.id
+        db.commit()
+
+        response = auth_client.get(f'/wishes/{wish.id}')
+        assert response.is_success
+        assert response.json()['reserved_by_id'] == str(HIDDEN_RESERVER_ID)
+
+    def test_foreign_list_hides_who_reserved(
+        self,
+        auth_client: TestClient,
+        other_user_wish: Wish,
+        other_user: User,
+        third_user: User,
+        db: Session,
+    ):
+        """В чужом списке чужая резервация тоже схлопывается в заглушку."""
+        other_user_wish.reserved_by_id = third_user.id
+        db.commit()
+
+        response = auth_client.get(f'/users/{other_user.id}/wishes')
+        assert response.is_success
+        wish_data = response.json()[0]
+        assert wish_data['is_reserved'] is True
+        assert wish_data['reserved_by_id'] == str(HIDDEN_RESERVER_ID)
+
+    def test_own_reservation_stays_visible(
+        self,
+        auth_client: TestClient,
+        other_user_wish: Wish,
+        other_user: User,
+        user: User,
+        db: Session,
+    ):
+        """Свой резерв виден как есть: на нём держатся счётчик и отмена резерва."""
+        other_user_wish.reserved_by_id = user.id
+        db.commit()
+
+        in_list = auth_client.get(f'/users/{other_user.id}/wishes').json()[0]
+        assert in_list['reserved_by_id'] == str(user.id)
+        reserved = auth_client.get('/reserved_wishes').json()[0]
+        assert reserved['reserved_by_id'] == str(user.id)
+
+    def test_archived_wishes_hide_who_reserved(
+        self, auth_client: TestClient, wish: Wish, other_user: User, db: Session
+    ):
+        wish.is_archived = True
+        wish.reserved_by_id = other_user.id
+        db.commit()
+
+        response = auth_client.get('/archived_wishes')
+        assert response.is_success
+        assert response.json()[0]['reserved_by_id'] == str(HIDDEN_RESERVER_ID)
 
 
 class TestPublicWishlist:
