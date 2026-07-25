@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     TEST_AUTH_SECRET: str | None = None
     MEDIA_ROOT: Path
     LOGS_DIR: Path
+    # Каталог heartbeat-отметок фоновых процессов (см. app/heartbeat.py).
+    # На сервере это /data/heartbeats с хоста: scheduler пишет туда из своего
+    # контейнера, ночной бэкап — с хоста, app читает только на чтение.
+    HEARTBEATS_DIR: Path = Path('/heartbeats')
     # Префикс, под которым бэк живёт за прокси (напр. '/api'). Пустая строка —
     # корень. Значение '/' ломает смонтированные саб-приложения (/admin, /static,
     # /media): Starlette срезает root_path с начала пути, и у Mount пропадает
