@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     TEST_AUTH_SECRET: str | None = None
     MEDIA_ROOT: Path
     LOGS_DIR: Path
+    # Каталог heartbeat-отметок фоновых процессов (см. app/heartbeat.py).
+    # На сервере это /data/heartbeats с хоста: scheduler пишет туда из своего
+    # контейнера, ночной бэкап — с хоста, app читает только на чтение.
+    HEARTBEATS_DIR: Path = Path('/heartbeats')
     URL_ROOT_PATH: str = '/'
     # Hawk (hawk.so) — трекер ошибок. Интеграционный токен проекта.
     HAWK_TOKEN: str | None = None

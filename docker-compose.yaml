@@ -22,6 +22,10 @@ services:
     volumes:
       - /data/media:/media
       - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
+      # Heartbeat-отметки фоновых процессов: приложение их только читает и
+      # отдаёт наружу через /health/heartbeat/{name}. Пишут сюда scheduler
+      # (свой контейнер) и ночной бэкап (cron на хосте).
+      - /data/heartbeats:/heartbeats:ro
     # Только localhost: наружу отдаёт nginx (TLS), он же ходит на localhost:8000.
     ports:
       - 127.0.0.1:8000:8000
@@ -43,6 +47,8 @@ services:
     volumes:
       - /data/media:/media
       - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
+      # На запись: планировщик отмечается здесь при каждом прогоне задачи.
+      - /data/heartbeats:/heartbeats
     depends_on:
       db:
         condition: service_healthy
@@ -50,7 +56,7 @@ services:
     restart: always
     # Здоров, если heartbeat обновлялся в последние 120с (every_minute бьёт раз в минуту).
     healthcheck:
-      test: [ "CMD", "python", "-c", "import os,time,sys; f='/tmp/scheduler_heartbeat'; sys.exit(0 if os.path.exists(f) and time.time()-os.path.getmtime(f) < 120 else 1)" ]
+      test: [ "CMD", "python", "-c", "import os,time,sys; f='/heartbeats/scheduler'; sys.exit(0 if os.path.exists(f) and time.time()-os.path.getmtime(f) < 120 else 1)" ]
       interval: 60s
       timeout: 5s
       retries: 2
