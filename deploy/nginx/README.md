@@ -15,6 +15,55 @@
 Развилка — `map $http_user_agent $is_social_crawler` + `location = /user`
 (идиома `error_page 418` → named location `@og_preview`, без `proxy_pass` внутри `if`).
 
+## Что делает для аналитики
+
+`location /api/v1/` пишет **второй** лог — `/var/log/nginx-analytics/analytics.log`,
+формат `json_analytics` (см. `log_format` в конфиге). Общий `access.log` (combined,
+с IP) остаётся как был — это ops-лог, его не трогаем.
+
+Аналитический лог опирается на два заголовка ответа от бэка
+(`app/helpers/activity.py`): `X-User-Id` и `X-Route`. Первый даёт «кто», второй —
+**шаблон** роута (`/users/{user_id}/wishes`) вместо сырого пути, иначе каждый UUID
+в URL создаёт свой бакет и лог не агрегируется. Оба снимаются `proxy_hide_header`,
+то есть клиенту не уходят, но `$upstream_http_*` успевает их прочитать.
+
+Горизонты разведены намеренно: nginx-лог — детальное **короткое** окно (воронка,
+пути, тайминги), а долгий возврат (DAU/WAU/MAU, сезонность, адопшен радара) живёт
+в таблице `user_activity_day`, которая переживает и ротацию логов, и редеплой.
+Запросы к обоим — в `analytics/` в корне репозитория.
+
+### Одноразовая установка на сервере (root): retention
+
+Дефолтный `/etc/logrotate.d/nginx` даёт `daily` + `rotate 14`, то есть 14 дней —
+для сезонного анализа мало. Аналитическому логу нужна своя ротация, но его нельзя
+класть в `/var/log/nginx/`: тамошний паттерн `*.log` уже матчится общей секцией, и
+второе правило на тот же файл — «duplicate log entry» в logrotate. Поэтому
+отдельный каталог:
+
+```bash
+sudo install -d -o www-data -g adm -m 750 /var/log/nginx-analytics
+sudo tee /etc/logrotate.d/nginx-analytics >/dev/null <<'EOF'
+/var/log/nginx-analytics/analytics.log {
+	daily
+	missingok
+	rotate 90
+	compress
+	delaycompress
+	notifempty
+	create 0640 www-data adm
+	sharedscripts
+	postrotate
+		invoke-rc.d nginx rotate >/dev/null 2>&1
+	endscript
+}
+EOF
+sudo logrotate -d /etc/logrotate.d/nginx-analytics   # dry-run, без записи
+```
+
+Сжатый лог — десятки КБ в сутки, 90 дней стоят единицы МБ. Каталог нужно создать
+**до** применения конфига: без него `nginx -t` упадёт, и `apply-nginx.sh`
+откатится (что правильно, но деплой отработает вхолостую).
+
 ## Применение: автоматически из deploy.sh
 
 `deploy.sh` на каждом деплое вызывает `apply-nginx.sh`, который **идемпотентно**

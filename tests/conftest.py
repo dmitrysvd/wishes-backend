@@ -114,6 +114,7 @@ def db(test_engine, mocker):
         'app.db',
         'app.dependencies',
         'app.firebase',
+        'app.helpers.activity',
         'app.notifications',
         'app.cron_scripts.at_noon',
         'scripts.backfill_profile_images',

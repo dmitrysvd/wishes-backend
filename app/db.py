@@ -14,6 +14,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     Table,
@@ -214,6 +215,14 @@ class Wish(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
+    # Момент резервирования. Nullable: «не зарезервировано», а у резерваций,
+    # сделанных до инструментации, реальная дата неизвестна (NULL = легаси).
+    # Нужен, чтобы резерв можно было отнести ко времени: без него нельзя измерить,
+    # даёт ли повод (бёрздей-радар, пуш) прирост подарков.
+    reserved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     is_reservation_notification_sent: Mapped[bool] = mapped_column(
         default=False, nullable=False
     )
@@ -292,6 +301,46 @@ class FollowEvent(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class UserActivityDay(Base):
+    """Суточный след активности юзера — прибор для измерения возврата.
+
+    `User.last_login_at` хранит только ПОСЛЕДНИЙ вход и затирается при каждом
+    следующем: по нему нельзя ни посчитать честный DAU/WAU/MAU, ни увидеть,
+    вернулся ли человек к следующему поводу (свой ДР, ДР друга, НГ) — а возврат
+    у продукта событийный, и мерить его нужно на горизонте 6–12 месяцев.
+
+    Здесь на юзера копится по одной строке в сутки (upsert по составному
+    ключу), поэтому история возвратов не теряется, а запись остаётся дешёвой:
+    не больше одной строки на юзера в день, независимо от числа запросов.
+
+    `radar_open_count` отделяет «просто зашёл» от «открыл бёрздей-радар» —
+    без этого работу фичи 0007 не отделить от фона.
+
+    Сутки считаем в UTC (как и все остальные метки времени в проекте).
+    """
+
+    __tablename__ = 'user_activity_day'
+
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), primary_key=True
+    )
+    activity_date: Mapped[date] = mapped_column(Date(), primary_key=True)
+    first_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    # Число авторизованных запросов за сутки — грубая глубина визита.
+    request_count: Mapped[int] = mapped_column(
+        Integer(), server_default='0', nullable=False
+    )
+    # Из них — открытий бёрздей-радара (GET /birthday_radar).
+    radar_open_count: Mapped[int] = mapped_column(
+        Integer(), server_default='0', nullable=False
     )
 
 

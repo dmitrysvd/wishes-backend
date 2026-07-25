@@ -50,6 +50,13 @@ class TestPersona(enum.Enum):
     empty = 'empty'
 
 
+# Прибор возврата (UserActivityDay): ключи в `request.state`, через которые роуты
+# сообщают HTTP-мидлвари, что записать. Живут здесь, а не в app.helpers.activity,
+# чтобы app.dependencies мог их импортировать без цикла
+# (app.helpers → pagination → app.dependencies).
+ACTIVITY_STATE_USER_ID = 'activity_user_id'
+ACTIVITY_STATE_RADAR_OPENED = 'activity_radar_opened'
+
 # Пагинация
 DEFAULT_PAGE_LIMIT = 20
 MAX_PAGE_LIMIT = 100
