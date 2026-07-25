@@ -10,6 +10,7 @@ from hawk_python_sdk import Hawk
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app import heartbeat
 from app.admin.setup import setup_admin
 from app.config import settings
 from app.db import engine
@@ -103,6 +104,23 @@ def enable_head_for_get_routes(application: FastAPI) -> None:
             route.methods = set(methods) | {'HEAD'}  # ty: ignore[unresolved-attribute]
 
 
+class HeartbeatName(str, enum.Enum):
+    """Фоновые процессы, за свежестью которых следит внешний монитор."""
+
+    BACKUP = 'backup'
+    SCHEDULER = 'scheduler'
+
+
+# Предельный возраст отметки, после которого процесс считаем мёртвым.
+# Бэкап ходит раз в сутки в 03:00 — 26 часов дают запас на сдвиг расписания и
+# долгий дамп. Планировщик тикает раз в минуту, но 5 минут вместо 2 — чтобы
+# рестарт контейнера на деплое не поднимал ложную тревогу.
+HEARTBEAT_MAX_AGE_SECONDS = {
+    HeartbeatName.BACKUP: 26 * 60 * 60,
+    HeartbeatName.SCHEDULER: 5 * 60,
+}
+
+
 class HolidayEvent(enum.Enum):
     NEW_YEAR = 'new_year'
 
@@ -139,6 +157,34 @@ async def health_ready(db: Annotated[Session, Depends(get_db)]):
         logger.error('health/ready: БД недоступна')
         raise HTTPException(status_code=503, detail='db unavailable') from None
     return {'status': 'ok'}
+
+
+def get_heartbeats_dir() -> Path:
+    # Отдельная зависимость, а не обращение к settings в теле ручки: так тест
+    # подменяет каталог через dependency_overrides, без моков файловой системы.
+    return settings.HEARTBEATS_DIR
+
+
+@app.get('/health/heartbeat/{name}')
+async def health_heartbeat(
+    name: HeartbeatName,
+    heartbeats_dir: Annotated[Path, Depends(get_heartbeats_dir)],
+):
+    # Свежесть отметки фонового процесса для внешнего монитора: у бэкапа и
+    # планировщика нет порта, поэтому они отмечаются в файле, а наружу это
+    # выставляется обычной HTTP-ручкой (см. app/heartbeat.py).
+    age = heartbeat.age_seconds(name.value, heartbeats_dir)
+    if age is None:
+        logger.error(f'heartbeat {name.value}: отметки нет')
+        raise HTTPException(status_code=503, detail=f'{name.value}: no heartbeat')
+    max_age = HEARTBEAT_MAX_AGE_SECONDS[name]
+    if age > max_age:
+        logger.error(
+            f'heartbeat {name.value}: отметка устарела '
+            f'({int(age)}с при пороге {max_age}с)'
+        )
+        raise HTTPException(status_code=503, detail=f'{name.value}: heartbeat stale')
+    return {'status': 'ok', 'age_seconds': int(age)}
 
 
 def custom_openapi():

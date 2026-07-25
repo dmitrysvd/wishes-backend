@@ -36,6 +36,7 @@ jobs:
       TEST_TOKEN: test_token
       MEDIA_ROOT: /tmp/media
       LOGS_DIR: /tmp/logs
+      HEARTBEATS_DIR: /tmp/heartbeats
       DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
       TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
 
@@ -119,6 +120,7 @@ jobs:
       TEST_TOKEN: test_token
       MEDIA_ROOT: /tmp/media
       LOGS_DIR: /tmp/logs
+      HEARTBEATS_DIR: /tmp/heartbeats
       DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
       TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/test_db
 
