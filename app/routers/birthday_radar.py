@@ -1,13 +1,13 @@
 from datetime import date
 from typing import NamedTuple
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import HttpUrl
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.status import HTTP_401_UNAUTHORIZED
 
-from app.constants import BirthdayRadarKind
+from app.constants import ACTIVITY_STATE_RADAR_OPENED, BirthdayRadarKind
 from app.db import User
 from app.dependencies import USERS_TAG, get_current_user, get_db
 from app.schemas import (
@@ -197,6 +197,7 @@ def build_birthday_radar(
     },
 )
 def birthday_radar(
+    request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> BirthdayRadarSchema:
@@ -207,4 +208,8 @@ def birthday_radar(
     (`kind = in_app`) даёт навигацию в его список; для VK-друга без аккаунта
     (`kind = invite`) — повод пригласить. Приватность: год рождения не отдаётся.
     """
+    # Метка для прибора возврата: отделяем «открыл радар» от «просто зашёл».
+    # Счётчик копится в UserActivityDay и переживает ротацию access-логов —
+    # адопшен радара нужно смотреть на горизонте сезона, а не двух недель.
+    setattr(request.state, ACTIVITY_STATE_RADAR_OPENED, True)
     return build_birthday_radar(db, user, date.today())

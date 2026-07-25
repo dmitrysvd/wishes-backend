@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from hawk_python_sdk import Hawk
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.admin.setup import setup_admin
 from app.config import settings
@@ -16,7 +17,11 @@ from app.db import engine
 
 # Реэкспорт для обратной совместимости
 from app.dependencies import get_current_user, get_db
-from app.helpers import get_user_deep_link
+from app.helpers import (
+    get_user_deep_link,
+    record_request_activity,
+    set_activity_headers,
+)
 from app.logging import logger
 from app.routers import (
     auth,
@@ -78,6 +83,21 @@ async def internal_exception_handler(request: Request, call_next):
             except Exception:
                 logger.exception('Не удалось отправить ошибку в Hawk')
         raise exc
+    return response
+
+
+@app.middleware('http')
+async def track_user_activity(request: Request, call_next):
+    """Прибор возврата: суточный след в БД + метки `X-User-Id`/`X-Route` для nginx.
+
+    Работает ПОСЛЕ ответа, чтобы не влиять на транзакцию запроса, и в
+    threadpool'е, потому что запись синхронная, а мидлварь — корутина
+    (иначе блокировали бы event loop). Ошибки инструментации глотаются внутри
+    `record_request_activity` — прибор не имеет права ломать запрос.
+    """
+    response = await call_next(request)
+    await run_in_threadpool(record_request_activity, request)
+    set_activity_headers(request, response)
     return response
 
 

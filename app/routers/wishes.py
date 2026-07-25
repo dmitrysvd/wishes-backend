@@ -13,6 +13,7 @@ from app.config import settings
 from app.db import User, Wish, WishRecommendation
 from app.dependencies import WISHES_TAG, get_current_user, get_current_user_wish, get_db
 from app.schemas import WishReadSchema, WishWriteSchema
+from app.utils import utc_now
 
 router = APIRouter(tags=[WISHES_TAG])
 
@@ -151,6 +152,10 @@ def reserve_wish(
     if wish.reserved_by and wish.reserved_by != current_user:
         raise HTTPException(HTTP_403_FORBIDDEN, 'Reserved by someone else')
     wish.reserved_by = current_user
+    # Момент резерва нужен, чтобы отнести подарок ко времени: без него нельзя
+    # проверить, даёт ли повод (радар, пуш) прирост резерваций. У 345 резерваций,
+    # сделанных до этой правки, останется NULL — легаси.
+    wish.reserved_at = utc_now()
     db.add(wish)
     db.commit()
 
@@ -167,6 +172,7 @@ def cancel_wish_reservation(
     if wish.reserved_by and wish.reserved_by != current_user:
         raise HTTPException(HTTP_403_FORBIDDEN, 'Reserved by someone else')
     wish.reserved_by = None
+    wish.reserved_at = None
     db.add(wish)
     db.commit()
 

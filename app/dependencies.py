@@ -16,7 +16,11 @@ from starlette.status import (
 )
 
 from app.config import settings
-from app.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
+from app.constants import (
+    ACTIVITY_STATE_USER_ID,
+    DEFAULT_PAGE_LIMIT,
+    MAX_PAGE_LIMIT,
+)
 from app.db import SessionLocal, User, Wish
 
 # Теги для OpenAPI документации
@@ -83,6 +87,15 @@ def _resolve_test_auth_user(token: str, db: Session) -> User:
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    user = _authenticate(request, db)
+    # Метка для прибора возврата: кто сделал запрос. Саму запись делает мидлварь
+    # после ответа (app.main.track_user_activity) — здесь только помечаем, чтобы
+    # аутентификация оставалась чистой и не лезла в транзакцию запроса.
+    setattr(request.state, ACTIVITY_STATE_USER_ID, user.id)
+    return user
+
+
+def _authenticate(request: Request, db: Session) -> User:
     token = request.headers.get('Authorization')
     if not token:
         raise HTTPException(
