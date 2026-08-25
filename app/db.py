@@ -327,7 +327,11 @@ class UserActivityDay(Base):
     user_id: Mapped[UUID] = mapped_column(
         ForeignKey('user.id', ondelete='CASCADE'), primary_key=True
     )
-    activity_date: Mapped[date] = mapped_column(Date(), primary_key=True)
+    # index=True обязателен, иначе модель разойдётся с миграцией: индекс под
+    # срезы «кто был активен за период» там уже создан, а `alembic check`
+    # сравнивает схему именно с метаданными моделей. Имя SQLAlchemy соберёт по
+    # дефолту (`ix_%(column_0_label)s`) — оно совпадает с именем из миграции.
+    activity_date: Mapped[date] = mapped_column(Date(), primary_key=True, index=True)
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
