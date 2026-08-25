@@ -15,6 +15,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    MetaData,
     Numeric,
     String,
     Table,
@@ -37,9 +38,20 @@ from sqlalchemy.sql import func
 from app.config import settings
 from app.constants import FollowAction, FollowSource, Gender
 
+# Явные имена констрейнтов вместо тех, что придумывает Postgres. Без конвенции
+# безымянные ограничения получают имя от БД, а alembic сличает их по имени —
+# и autogenerate/check на них молча ненадёжен.
+NAMING_CONVENTION = {
+    'ix': 'ix_%(column_0_label)s',
+    'uq': 'uq_%(table_name)s_%(column_0_name)s',
+    'ck': 'ck_%(table_name)s_%(constraint_name)s',
+    'fk': 'fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s',
+    'pk': 'pk_%(table_name)s',
+}
+
 
 class Base(DeclarativeBase):
-    pass
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
 user_following_table = Table(
@@ -55,7 +67,7 @@ user_following_table = Table(
         server_default=func.now(),
         nullable=True,
     ),
-    CheckConstraint('follower_id <> followed_id'),
+    CheckConstraint('follower_id <> followed_id', name='no_self_follow'),
 )
 
 
@@ -148,7 +160,7 @@ class UserAttribution(Base):
 
     __tablename__ = 'user_attribution'
     __table_args__ = (
-        CheckConstraint('user_id <> referrer_id', name='attribution_not_self_referral'),
+        CheckConstraint('user_id <> referrer_id', name='not_self_referral'),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
@@ -192,9 +204,7 @@ class WishRecommendation(Base):
 class Wish(Base):
     __tablename__ = 'wish'
     __table_args__ = (
-        CheckConstraint(
-            'user_id <> reserved_by_id', name='wish_user_not_equal_reserved_by'
-        ),
+        CheckConstraint('user_id <> reserved_by_id', name='user_not_equal_reserved_by'),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
