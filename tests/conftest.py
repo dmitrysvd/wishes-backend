@@ -165,3 +165,19 @@ def api_client():
     from app.main import app
 
     return TestClient(app)
+
+
+@pytest.fixture
+def test_auth_secret(monkeypatch) -> str:
+    """Включить dev/test-байпас (фича 0009) на время теста.
+
+    Это конфигурация системы под тестом, а не мок: байпас by design выключен,
+    пока `TEST_AUTH_SECRET` не задан в окружении, и тесту нужно его задать.
+    Значение ставим на сам объект настроек, а не патчим по строковому пути вроде
+    `app.dependencies.settings.TEST_AUTH_SECRET`: `settings` — синглтон,
+    импортированный в несколько модулей, и патч «через модуль» создаёт ложное
+    впечатление, что правка локальна.
+    """
+    secret = 'test-auth-secret'
+    monkeypatch.setattr(settings, 'TEST_AUTH_SECRET', secret)
+    return secret
