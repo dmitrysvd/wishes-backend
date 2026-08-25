@@ -77,7 +77,7 @@ def upgrade() -> None:
         'user_following',
         sa.Column('follower_id', sa.Uuid(), nullable=False),
         sa.Column('followed_id', sa.Uuid(), nullable=False),
-        sa.CheckConstraint('follower_id <> followed_id'),
+        sa.CheckConstraint('follower_id <> followed_id', name='no_self_follow'),
         sa.ForeignKeyConstraint(['followed_id'], ['user.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['follower_id'], ['user.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('follower_id', 'followed_id'),
