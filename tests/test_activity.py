@@ -18,6 +18,7 @@ from app.helpers.activity import (
     set_activity_headers,
 )
 from app.main import app
+from app.test_auth import build_test_token
 from app.utils import utc_now
 
 
@@ -144,17 +145,21 @@ def test_set_activity_headers_sets_marks(user: User):
     assert response.headers[ROUTE_HEADER] == request.scope['route'].path
 
 
-def test_middleware_records_radar_open_end_to_end(db: Session, user: User, mocker):
+def test_middleware_records_radar_open_end_to_end(
+    db: Session, user: User, test_auth_secret: str
+):
     """Сквозной путь: get_current_user → роут → мидлварь после ответа.
 
     Проверяет и то, что метка доезжает через `request.state` сквозь
     BaseHTTPMiddleware, и то, что заголовки для nginx проставлены.
     """
     # Вход через dev/test-байпас (фича 0009) — он резолвит только сид-юзеров.
-    mocker.patch('app.dependencies.settings.TEST_AUTH_SECRET', 'dev-secret')
+    # Секрет включает фикстура `test_auth_secret`, а сам токен собираем продовым
+    # `build_test_token`: формат тогда живёт в одном месте, и тест не разъедется
+    # с `get_current_user`, если формат поменяется.
     user.is_test = True
     db.commit()
-    client = TestClient(app, headers={'Authorization': f'dev-secret:{user.id}'})
+    client = TestClient(app, headers={'Authorization': build_test_token(user)})
 
     response = client.get('/birthday_radar')
 
