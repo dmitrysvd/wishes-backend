@@ -4,6 +4,7 @@ from app.helpers.activity import (
     set_activity_headers,
 )
 from app.helpers.pagination import paginate
+from app.helpers.uploads import IMAGE_UPLOAD_RESPONSES, read_uploaded_image
 from app.helpers.user_helpers import (
     delete_user_image,
     download_avatar_bytes,
@@ -23,6 +24,8 @@ __all__ = [
     'download_avatar_bytes',
     'refresh_avatar_on_login',
     'paginate',
+    'read_uploaded_image',
+    'IMAGE_UPLOAD_RESPONSES',
     'record_activity',
     'record_request_activity',
     'set_activity_headers',
