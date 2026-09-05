@@ -10,7 +10,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.constants import FollowAction, FollowSource, Gender
+from app.constants import UPLOAD_IMAGE_MAX_BYTES, FollowAction, FollowSource, Gender
 from app.db import (
     FollowEvent,
     User,
@@ -22,6 +22,10 @@ from app.db import (
 from app.main import app, get_current_user, get_db
 from app.utils import utc_now
 from app.vk import VkUserBasicData, VkUserExtraData
+
+# Минимальные валидные сигнатуры картинок для загрузок.
+PNG_BYTES = b'\x89PNG\r\n\x1a\n' + b'\0' * 16
+JPEG_BYTES = b'\xff\xd8\xff\xe0' + b'\0' * 16
 
 
 @pytest.fixture
@@ -951,18 +955,44 @@ class TestUserImages:
         # Подсовываем подставной Host — он НЕ должен попасть в photo_url.
         response = auth_client.post(
             '/set_profile_image',
-            files={'image': ('profile.jpg', b'fake image content', 'image/jpeg')},
+            files={'image': ('profile.jpg', JPEG_BYTES, 'image/jpeg')},
             headers={'host': 'evil.attacker.com'},
         )
         assert response.is_success
         db.refresh(user)
         assert user.photo_path is not None
+        assert user.photo_path.endswith('.jpg')
         # URL строится из доверенного FRONTEND_URL, а не из заголовка Host.
         assert user.photo_url is not None
         assert user.photo_url.startswith(f'{settings.FRONTEND_URL}/media/')
         assert 'evil.attacker.com' not in user.photo_url
         # Ручная загрузка помечается кастомной — бэкфилл/refresh её не перетрут.
         assert user.photo_is_custom is True
+
+    def test_upload_profile_image_too_large(
+        self, auth_client: TestClient, user: User, mocked_profile_media: Path
+    ):
+        # Размер сверяется по фактически принятым байтам, а не по имени/типу.
+        content = JPEG_BYTES + b'\0' * UPLOAD_IMAGE_MAX_BYTES
+        response = auth_client.post(
+            '/set_profile_image',
+            files={'image': ('big.jpg', content, 'image/jpeg')},
+        )
+        assert response.status_code == 413
+        assert user.photo_path is None
+        assert list(mocked_profile_media.iterdir()) == []
+
+    def test_upload_profile_image_not_image(
+        self, auth_client: TestClient, user: User, mocked_profile_media: Path
+    ):
+        # Имя `.jpg` и Content-Type врут — решает сигнатура байт.
+        response = auth_client.post(
+            '/set_profile_image',
+            files={'image': ('evil.jpg', b'<html>not an image</html>', 'image/jpeg')},
+        )
+        assert response.status_code == 415
+        assert user.photo_path is None
+        assert list(mocked_profile_media.iterdir()) == []
 
     def test_delete_profile_image_real(
         self,
@@ -1122,12 +1152,38 @@ class TestWishesExtra:
         mocker.patch('app.routers.wishes.WISH_IMAGES_DIR', tmp_path)
         response = auth_client.post(
             f'/wishes/{wish.id}/image',
-            files={'file': ('image.jpg', b'fake content', 'image/jpeg')},
+            # Кроп на клиенте отдаёт PNG под старым именем `.jpg` — расширение
+            # на диске берётся по сигнатуре, не по имени.
+            files={'file': ('image.jpg', PNG_BYTES, 'image/jpeg')},
         )
         assert response.status_code == 200
         db.refresh(wish)
         assert wish.image is not None
+        assert wish.image.endswith('.png')
         assert (tmp_path / wish.image).exists()
+
+    def test_upload_wish_image_too_large(
+        self, auth_client: TestClient, wish: Wish, tmp_path: Path, mocker
+    ):
+        mocker.patch('app.routers.wishes.WISH_IMAGES_DIR', tmp_path)
+        content = PNG_BYTES + b'\0' * UPLOAD_IMAGE_MAX_BYTES
+        response = auth_client.post(
+            f'/wishes/{wish.id}/image', files={'file': ('big.png', content)}
+        )
+        assert response.status_code == 413
+        assert wish.image is None
+        assert list(tmp_path.iterdir()) == []
+
+    def test_upload_wish_image_not_image(
+        self, auth_client: TestClient, wish: Wish, tmp_path: Path, mocker
+    ):
+        mocker.patch('app.routers.wishes.WISH_IMAGES_DIR', tmp_path)
+        response = auth_client.post(
+            f'/wishes/{wish.id}/image', files={'file': ('x.png', b'not an image')}
+        )
+        assert response.status_code == 415
+        assert wish.image is None
+        assert list(tmp_path.iterdir()) == []
 
     def test_delete_wish_image(self, auth_client: TestClient, wish: Wish, db: Session):
         wish.image = 'fake.jpg'

@@ -12,6 +12,7 @@ from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND
 from app.config import settings
 from app.db import User, Wish, WishRecommendation
 from app.dependencies import WISHES_TAG, get_current_user, get_current_user_wish, get_db
+from app.helpers import IMAGE_UPLOAD_RESPONSES, read_uploaded_image
 from app.schemas import WishReadSchema, WishWriteSchema
 from app.utils import utc_now
 
@@ -101,16 +102,21 @@ def delete_wish(
     db.commit()
 
 
-@router.post('/wishes/{wish_id}/image')
+@router.post('/wishes/{wish_id}/image', responses=IMAGE_UPLOAD_RESPONSES)
 def upload_wish_image(
     file: UploadFile,
     wish: Wish = Depends(get_current_user_wish),
     db: Session = Depends(get_db),
 ):
+    """Загрузить фото хотелки (multipart, поле `file`).
+
+    Размер и тип проверяются на сервере (см. коды 413/415). Файл на диске
+    получает расширение по реальному типу, чтобы отдаваться с верным Content-Type.
+    """
+    content, extension = read_uploaded_image(file)
     WISH_IMAGES_DIR.mkdir(exist_ok=True, parents=True)
-    content = file.file.read()
     content_hash = md5(content).hexdigest()
-    file_name = f'{content_hash}'
+    file_name = f'{content_hash}{extension}'
     file_path = WISH_IMAGES_DIR / file_name
     file_path.write_bytes(content)
     wish.image = file_name

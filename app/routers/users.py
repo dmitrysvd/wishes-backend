@@ -18,9 +18,11 @@ from app.db import FollowEvent, User
 from app.dependencies import USERS_TAG, get_current_user, get_db
 from app.firebase import delete_firebase_user
 from app.helpers import (
+    IMAGE_UPLOAD_RESPONSES,
     delete_user_image,
     get_annotated_users,
     get_user_deep_link,
+    read_uploaded_image,
     save_profile_image_bytes,
     send_push_about_new_follower,
 )
@@ -65,13 +67,17 @@ def update_profile(
     db.commit()
 
 
-@router.post('/set_profile_image')
+@router.post('/set_profile_image', responses=IMAGE_UPLOAD_RESPONSES)
 def set_profile_image(
     image: UploadFile,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    content = image.file.read()
+    """Загрузить свою аватарку (multipart, поле `image`).
+
+    Размер и тип проверяются на сервере (см. коды 413/415).
+    """
+    content, _ = read_uploaded_image(image)
     save_profile_image_bytes(user, content, is_custom=True)
     db.add(user)
     db.commit()
