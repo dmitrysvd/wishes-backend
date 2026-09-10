@@ -65,6 +65,23 @@ class ItemInfoParseError(Exception):
     pass
 
 
+def parse_wildberries_link(link: str) -> tuple[int, int | None] | None:
+    """Артикул (`nm`) и размер (`?size=`, `sizes[].optionId` в API) из ссылки WB.
+
+    `None` — ссылка не на wildberries.ru или в ней нет `catalog/<число>`. Общая
+    точка для парсера превью и наблюдателя цен (`app/helpers/price_watch.py`),
+    чтобы правило «что такое WB-ссылка» жило в одном месте.
+    """
+    if 'wildberries.ru' not in link:
+        return None
+    match = re.search(r'catalog/(\d+)', link)
+    if not match:
+        return None
+    size_match = re.search(r'[?&]size=(\d+)', link)
+    size = int(size_match.group(1)) if size_match else None
+    return int(match.group(1)), size
+
+
 def _is_public_ip(ip: str) -> bool:
     addr = ipaddress.ip_address(ip)
     # Отсекаем всё, что ведёт во внутреннюю инфраструктуру или к спец-адресам.
@@ -269,10 +286,10 @@ async def try_parse_item_by_link(
             return await _parse_ya_market_page(html)
 
         if 'wildberries.ru' in link:
-            match = re.search(r'catalog/(\d+)', link)
-            if not match:
+            parsed = parse_wildberries_link(link)
+            if parsed is None:
                 raise ItemInfoParseError('В URL не найден паттерн catalog/')
-            return await _parse_wildberries(int(match.group(1)), client)
+            return await _parse_wildberries(parsed[0], client)
 
         if not html:
             html = await _fetch_html(link, client)

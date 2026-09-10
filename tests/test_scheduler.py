@@ -32,7 +32,7 @@ def test_start_scheduler(mocker):
 
     start_scheduler()
 
-    assert mock_sched.add_job.call_count == 3
+    assert mock_sched.add_job.call_count == 4
     mock_sched.start.assert_called_once()
 
 

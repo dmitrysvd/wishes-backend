@@ -1,0 +1,22 @@
+{
+  "products": [
+    {
+      "id": 100,
+      "name": "Куртка",
+      "totalQuantity": 10,
+      "sizes": [
+        {"optionId": 1001, "name": "44", "price": {"basic": 150800, "product": 60000, "logistics": 0, "return": 0, "cashback": 0}, "stocks": [{"qty": 5}]},
+        {"optionId": 1002, "name": "46", "price": {"basic": 150800, "product": 55000, "logistics": 0, "return": 0, "cashback": 0}, "stocks": [{"qty": 5}]},
+        {"optionId": 1003, "name": "48", "stocks": []}
+      ]
+    },
+    {
+      "id": 200,
+      "name": "Кружка",
+      "totalQuantity": 0,
+      "sizes": [
+        {"optionId": 2001, "name": "", "stocks": []}
+      ]
+    }
+  ]
+}
