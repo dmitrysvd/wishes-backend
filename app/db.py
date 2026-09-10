@@ -36,7 +36,13 @@ from sqlalchemy.orm import (
 from sqlalchemy.sql import func
 
 from app.config import settings
-from app.constants import FollowAction, FollowSource, Gender
+from app.constants import (
+    FollowAction,
+    FollowSource,
+    Gender,
+    PriceObservationStatus,
+    Shop,
+)
 
 # Явные имена констрейнтов вместо тех, что придумывает Postgres. Без конвенции
 # безымянные ограничения получают имя от БД, а alembic сличает их по имени —
@@ -351,6 +357,62 @@ class UserActivityDay(Base):
     # Из них — открытий бёрздей-радара (GET /birthday_radar).
     radar_open_count: Mapped[int] = mapped_column(
         Integer(), server_default='0', nullable=False
+    )
+
+
+class WishPriceObservation(Base):
+    """Суточное наблюдение цены и наличия товара по ссылке хотелки — прибор 0010.
+
+    `Wish.price` хранит один снимок на момент добавления, истории нет — по нему
+    нельзя понять, дешевеют ли отложенные вещи и пропадают ли из наличия. Здесь
+    копится append-only ряд: одна строка на хотелку в сутки (UTC), повтор обхода
+    за те же сутки не перетирает первое наблюдение (`ON CONFLICT DO NOTHING`).
+
+    Дырка в ряду (обход упал) — это ОТСУТСТВИЕ строки; «распродано»/«исчез» — это
+    строка со статусом. Два механизма, не путать.
+
+    Идентичность товара `(shop, sku, size_option_id)` лежит в каждой строке, а не
+    на хотелке: юзер может сменить ссылку, и тогда ряд по хотелке распадётся на два
+    товара. История группируется по `(wish_id, shop, sku, size_option_id)`; хук на
+    редактирование хотелки не нужен, прибор не трогает пользовательский код.
+
+    У WB `sku` — это артикул карточки (`nm`: модель в одном цвете), а единица
+    остатка — размер внутри неё (`sizes[].optionId`), даже у безразмерных товаров
+    (один размер с пустым именем). Две трети ссылок несут `?size=` — тогда
+    наблюдаем именно этот размер. Без размера у многоразмерного товара берём
+    минимальную `product`-цену среди размеров в наличии; если в наличии нет ни
+    одного — `sold_out`.
+
+    Обе цены WB: `basic` — до скидки, `product` — со скидкой; какая из них «цена»
+    для продукта — решается на этапе фичи (🟡 Q4 intent'а).
+    """
+
+    __tablename__ = 'wish_price_observation'
+    __table_args__ = (
+        # Цены есть тогда и только тогда, когда товар в наличии. Связка держится
+        # в схеме, а не в коде, чтобы статус и цены не разошлись.
+        CheckConstraint(
+            "(status = 'ok') = (basic_price IS NOT NULL AND product_price IS NOT NULL)",
+            name='prices_iff_ok',
+        ),
+    )
+
+    wish_id: Mapped[UUID] = mapped_column(
+        ForeignKey('wish.id', ondelete='CASCADE'), primary_key=True
+    )
+    observed_date: Mapped[date] = mapped_column(Date(), primary_key=True)
+    shop: Mapped[Shop] = mapped_column(Enum(Shop), nullable=False)
+    sku: Mapped[int] = mapped_column(Integer(), nullable=False)
+    # Размер из `?size=` ссылки; NULL — размер в ссылке не указан.
+    size_option_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    status: Mapped[PriceObservationStatus] = mapped_column(
+        Enum(PriceObservationStatus), nullable=False
+    )
+    basic_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(precision=10, scale=2), nullable=True
+    )
+    product_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(precision=10, scale=2), nullable=True
     )
 
 

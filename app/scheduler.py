@@ -4,7 +4,7 @@ from pathlib import Path
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from app.cron_scripts import at_noon, every_hour, every_minute
+from app.cron_scripts import at_noon, every_hour, every_minute, price_watch
 from app.logging import logger
 
 # Set APScheduler logging to WARNING to keep the output clean
@@ -50,6 +50,15 @@ def start_scheduler():
         CronTrigger(hour=12, minute=0),
         args=[at_noon.main, 'at_noon'],
         id='at_noon_job',
+    )
+
+    # Обход цен WB (фича 0010): раз в сутки ночью по UTC, отдельно от at_noon,
+    # чтобы частоту и время обхода можно было менять независимо от пушей.
+    scheduler.add_job(
+        run_job,
+        CronTrigger(hour=3, minute=0),
+        args=[price_watch.main, 'price_watch'],
+        id='price_watch_job',
     )
 
     logger.info('Scheduler started')
