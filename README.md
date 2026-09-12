@@ -23,8 +23,8 @@
 | app/helpers/browser\_transport.py  |       15 |        0 |     100% |           |
 | app/helpers/og\_helpers.py         |       33 |        0 |     100% |           |
 | app/helpers/pagination.py          |       15 |        0 |     100% |           |
-| app/helpers/price\_watch.py        |      107 |        0 |     100% |           |
-| app/helpers/store\_price.py        |       45 |        0 |     100% |           |
+| app/helpers/price\_watch.py        |      110 |        0 |     100% |           |
+| app/helpers/store\_price.py        |       48 |        0 |     100% |           |
 | app/helpers/uploads.py             |       14 |        0 |     100% |           |
 | app/helpers/user\_helpers.py       |       96 |        0 |     100% |           |
 | app/logging.py                     |        7 |        0 |     100% |           |
@@ -45,7 +45,7 @@
 | app/test\_auth.py                  |       54 |        0 |     100% |           |
 | app/utils.py                       |       40 |        0 |     100% |           |
 | app/vk.py                          |      115 |        0 |     100% |           |
-| **TOTAL**                          | **2254** |    **0** | **100%** |           |
+| **TOTAL**                          | **2260** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
