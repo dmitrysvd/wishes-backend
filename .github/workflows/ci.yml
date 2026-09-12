@@ -17,8 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write        # ветка python-coverage-comment-action-data (бейдж)
-      pull-requests: write   # комментарий с покрытием в PR
+      contents: write   # ветка python-coverage-comment-action-data (данные бейджа)
 
     services:
       postgres:
@@ -97,17 +96,17 @@ jobs:
         run: uv run ty check
 
       - name: Tests + coverage (100%)
-        # Отчёт также в markdown — для сводки джоба и комментария в PR ниже.
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=100
 
       - name: Coverage in job summary
         if: always()
         run: uv run coverage report --format=markdown --show-missing >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Coverage comment in PR
-        # Пишет/обновляет один комментарий с покрытием и его изменением к базе;
-        # в master складывает данные бейджа в ветку python-coverage-comment-action-data.
-        if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master')
+      - name: Coverage badge data
+        # Только push в master (в PR action писал бы комментарий — не нужен):
+        # кладёт endpoint.json/badge.svg в ветку python-coverage-comment-action-data,
+        # откуда бейдж в README берёт цифру.
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: py-cov-action/python-coverage-comment-action@v3
         with:
           GITHUB_TOKEN: ${{ github.token }}
