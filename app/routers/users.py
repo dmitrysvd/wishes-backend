@@ -1,5 +1,6 @@
 from uuid import UUID
 
+import httpx
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -10,6 +11,7 @@ from fastapi import (
 from httpx import HTTPError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 from starlette.status import HTTP_404_NOT_FOUND
 
 from app.config import settings
@@ -26,6 +28,8 @@ from app.helpers import (
     save_profile_image_bytes,
     send_push_about_new_follower,
 )
+from app.helpers.price_watch import get_store_client
+from app.helpers.store_price import attach_store_price
 from app.logging import logger
 from app.parsers import ItemInfoParseError, try_parse_item_by_link
 from app.schemas import (
@@ -287,11 +291,59 @@ def possible_friends(
     return get_annotated_users(db, user, query)
 
 
-@router.post('/item_info_from_page')
+@router.post(
+    '/item_info_from_page',
+    responses={
+        200: {
+            'description': (
+                'Страница товара разобрана: название/описание/картинка есть. '
+                '`price` при этом может быть null и при `shop != null` (распродано/'
+                'исчез/магазин цену не отдал) — это не ошибка, поле цены пустое, '
+                'пометка «с WB» по `shop`.'
+            )
+        },
+        400: {
+            'description': (
+                'Страницу товара разобрать не удалось (домен не поддерживается '
+                'парсером превью, карточка не найдена, магазин/страница недоступны): '
+                'превью нет ЦЕЛИКОМ — ни названия, ни цены (цена не запрашивается), '
+                '`shop` неизвестен. Форма остаётся ручной без пометок; юзер '
+                'заполняет её сам. Это не влияет на источник цены при сохранении: '
+                'WB-ссылка + `price_edited = false` → бэк сам сходит в магазин и '
+                'хотелка станет `shop` (ответ `POST /wishes` покажет `shop` и цену); '
+                'ввёл цену руками → `manual`.'
+            ),
+            'content': {
+                'application/json': {'example': {'detail': 'Ошибка получения данных'}}
+            },
+        },
+        401: {
+            'description': 'Нет или истёк токен авторизации.',
+            'content': {
+                'application/json': {'example': {'detail': 'Not authenticated'}}
+            },
+        },
+    },
+)
 async def get_item_info_from_page(
     request_data: ItemInfoRequestSchema,
     user: User = Depends(get_current_user),
+    store_client: httpx.Client = Depends(get_store_client),
 ) -> ItemInfoResponseSchema:
+    """Превью товара по ссылке для автозаполнения формы хотелки (кнопка «применить»).
+
+    Название, описание, картинка — как раньше. **Цена (фича 0011):** для ссылки на
+    поддерживаемый магазин (`shop != null`) бэк отдельно делает свежий запрос цены
+    со скидкой и наличия; цена best-effort — её отсутствие (`price = null`) не
+    делает превью ошибкой. Для `?size=` — цена этого размера; без размера у
+    многоразмерного товара — минимум среди размеров в наличии (`price_is_minimum`).
+    Два разных сбоя: `400` — не разобралась сама страница (превью нет целиком);
+    `200` с `price = null` — страница есть, цены нет. **Длительность:** разбор
+    страницы может занять до ~30 с (WB: перебор хостов картинок), запрос цены — не
+    дольше 10 с; клиентский таймаут ставьте от 40 с, спиннер на всё это время.
+    Ничего не сохраняет: хотелка создаётся следующим `POST /wishes`, где бэк сам
+    повторно возьмёт магазинную цену при `price_edited = false`.
+    """
     try:
         try:
             result = await try_parse_item_by_link(
@@ -314,7 +366,9 @@ async def get_item_info_from_page(
         result = None
     if result is None:
         raise HTTPException(detail='Ошибка получения данных', status_code=400)
-    return result
+    return await run_in_threadpool(
+        attach_store_price, result, str(request_data.link), store_client
+    )
 
 
 @router.get(

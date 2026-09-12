@@ -40,6 +40,7 @@ def _build_wish(wish: Wish) -> PublicWishSchema:
         name=wish.name,
         description=wish.description,
         price=int(wish.price) if wish.price is not None else None,
+        price_is_minimum=wish.price_is_minimum,
         link=HttpUrl(wish.link) if wish.link else None,
         image_url=f'/media/wish_images/{wish.image}' if wish.image else None,
         is_reserved=wish.is_reserved,

@@ -16,9 +16,11 @@ from app.constants import PRICE_WATCH_BATCH_PAUSE_SECONDS, PRICE_WATCH_BATCH_SIZ
 from app.db import SessionLocal
 from app.helpers.browser_transport import BrowserTransport
 from app.helpers.price_watch import (
+    apply_observations,
     batched,
-    build_observations,
     fetch_wb_cards,
+    observation_row,
+    observe_batch,
     save_observations,
     select_watch_targets,
 )
@@ -40,7 +42,8 @@ def crawl(
     Клиент, дата и пауза параметризованы ради тестируемости без моков
     (`httpx.MockTransport`, фиксированная дата, нулевая пауза).
     """
-    observed_date = observed_date or utc_now().date()
+    observed_at = utc_now()
+    observed_date = observed_date or observed_at.date()
     with SessionLocal() as db:
         targets = select_watch_targets(db)
     logger.info(f'Обход цен: {len(targets)} хотелок, дата {observed_date}')
@@ -51,9 +54,15 @@ def crawl(
             time.sleep(pause_seconds)
         try:
             response = fetch_wb_cards([t.sku for t in batch], client)
-            observations = build_observations(batch, response, observed_date)
+            observed = observe_batch(batch, response)
+            observations = [
+                observation_row(target, observation, observed_date)
+                for target, observation in observed
+            ]
             with SessionLocal() as db:
                 saved += save_observations(db, observations)
+                # Фича 0011: магазинные хотелки получают цену/наличие из обхода.
+                apply_observations(db, observed, observed_at)
         except Exception as error:
             # Пропущенное наблюдение, не ошибка: дырка в истории допустима.
             failed_batches += 1

@@ -65,6 +65,11 @@ class ItemInfoParseError(Exception):
     pass
 
 
+# Парсер страницы отдаёт название/описание/картинку; цену с магазина к превью
+# добавляет роут отдельным свежим запросом (фича 0011), поэтому здесь — пусто.
+NO_STORE_PRICE: dict = {'shop': None, 'price': None, 'price_is_minimum': False}
+
+
 def parse_wildberries_link(link: str) -> tuple[int, int | None] | None:
     """Артикул (`nm`) и размер (`?size=`, `sizes[].optionId` в API) из ссылки WB.
 
@@ -168,6 +173,7 @@ async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
         title=attrs['og:title'],
         image_url=attrs['og:image'],  # type: ignore
         description=attrs.get('og:description', ''),
+        **NO_STORE_PRICE,
     )
 
 
@@ -213,6 +219,7 @@ async def _parse_wildberries(
                 title=api_data['imt_name'],
                 description=api_data.get('description', ''),
                 image_url=f'{base_url}/images/big/1.webp',  # type: ignore
+                **NO_STORE_PRICE,
             )
         # Самый старший хост пачки не существует → basket-ов выше нет, дальше не ищем.
         if isinstance(responses[-1], BaseException):
@@ -254,6 +261,7 @@ def _parse_og_tags(link: str, html: str) -> ItemInfoResponseSchema:
         title=title,
         description=description,
         image_url=image_url,  # type: ignore
+        **NO_STORE_PRICE,
     )
 
 

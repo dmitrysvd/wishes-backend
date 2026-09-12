@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Generic, TypeVar
 from uuid import UUID
 
@@ -11,7 +11,15 @@ from pydantic import (
     field_validator,
 )
 
-from app.constants import BirthdayRadarKind, FollowSource, Gender, TestPersona
+from app.constants import (
+    BirthdayRadarKind,
+    FollowSource,
+    Gender,
+    PriceSource,
+    Shop,
+    StoreAvailability,
+    TestPersona,
+)
 
 ItemT = TypeVar('ItemT', bound=BaseModel)
 
@@ -25,15 +33,128 @@ class PageSchema(BaseModel, Generic[ItemT]):
     has_previous: bool
 
 
+WB_LINK_EXAMPLE = (
+    'https://www.wildberries.ru/catalog/166652374/detail.aspx?size=306473431'
+)
+OZON_LINK_EXAMPLE = 'https://www.ozon.ru/product/123456'
+
+
 class BaseWishSchema(BaseModel):
-    name: str
-    description: str | None
-    price: int | None
-    link: HttpUrl | None
+    name: str = Field(description='Название хотелки.', examples=['Кроссовки'])
+    description: str | None = Field(
+        description='Описание. null — не заполнено.', examples=['Размер 42, чёрные']
+    )
+    link: HttpUrl | None = Field(
+        description=(
+            'Ссылка на товар. null — ссылки нет. Поддерживаемый магазин (живая цена, '
+            'фича 0011) — только Wildberries: `wildberries.ru/catalog/<артикул>/…`, '
+            'опционально `?size=<optionId>`. Любой другой домен — «неподдерживаемый '
+            'магазин»: ссылка хранится и показывается, но цена остаётся ручным полем. '
+            'Распознаёт магазин сервер (см. `shop` в ответе), клиент ссылки не '
+            'разбирает.'
+        ),
+        examples=[WB_LINK_EXAMPLE, OZON_LINK_EXAMPLE],
+    )
 
 
 class WishWriteSchema(BaseWishSchema):
-    recommendation_id: UUID | None = None
+    """Форма хотелки целиком — тело `POST /wishes` и `PUT /wishes/{wish_id}`.
+
+    Клиент всегда шлёт все поля формы (в т.ч. `price`), поэтому бэк НЕ может
+    отличить «юзер поменял цену» от «фронт переслал загруженное» по значению —
+    различение делается только явным флагом `price_edited` (см. его описание).
+    Что произошло с ценой в итоге, видно в ответе: `price`, `price_source`,
+    `store_observation` (`WishReadSchema`) — отдельный GET после сохранения не нужен.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'name': 'Кроссовки',
+                    'description': 'Размер 42, чёрные',
+                    'price': 4990,
+                    'link': WB_LINK_EXAMPLE,
+                    'price_edited': False,
+                },
+                {
+                    'name': 'Кроссовки',
+                    'description': 'Размер 42, чёрные',
+                    'price': 4500,
+                    'link': WB_LINK_EXAMPLE,
+                    'price_edited': True,
+                },
+                {
+                    'name': 'Кроссовки',
+                    'description': None,
+                    'price': None,
+                    'link': WB_LINK_EXAMPLE,
+                    'price_edited': True,
+                },
+                {
+                    'name': 'Кофемолка',
+                    'description': None,
+                    'price': 3500,
+                    'link': OZON_LINK_EXAMPLE,
+                    'recommendation_id': '9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e',
+                },
+            ]
+        }
+    )
+
+    price: int | None = Field(
+        description=(
+            'Цена в рублях, целое, как в поле формы. Как применяется — решает '
+            '`price_edited` и наличие ссылки на поддерживаемый магазин:\n'
+            '- `price_edited = true` — это РУЧНАЯ цена: сохраняется как есть '
+            '(null = юзер стёр цену), источник становится `manual`;\n'
+            '- `price_edited = false` и ссылка на поддерживаемый магазин — цена у '
+            'хотелки магазинная (`shop`), бэк берёт её у магазина сам. Значение из '
+            'тела при этом: в `PUT` ИГНОРИРУЕТСЯ (эхо загруженного, могло устареть); '
+            'в `POST` — фолбэк: если магазин при сохранении не ответил, сохраняется '
+            'это число (цифра превью секунды назад) с `price_source = shop`, '
+            '`store_observation = null`, `price_is_minimum = false` (даже если превью '
+            'показывало «от» — обход поправит); null в теле → '
+            'цены нет до первого наблюдения;\n'
+            '- `price_edited = false` и ссылки на поддерживаемый магазин нет — обычное '
+            'ручное поле: сохраняется как есть (совместимость со старым клиентом, '
+            'который флаг не шлёт).'
+        ),
+        examples=[4990, None],
+    )
+    price_edited: bool = Field(
+        default=False,
+        description=(
+            'Юзер ОСОЗНАННО правил поле цены в этой форме (ввёл, изменил, стёр). '
+            'Единственный сигнал «ручная правка»: сравнение присланного `price` с '
+            'текущим бэк не делает (обход мог обновить цену между загрузкой формы и '
+            'сохранением, и совпадение/несовпадение чисел ничего не значит). '
+            'true → `price` из тела становится ручной ценой, `price_source = manual`, '
+            'магазин с этого момента цену не обновляет и наблюдение не показывается '
+            '(вернуть магазинную — `POST /wishes/{wish_id}/refresh_store_price`). '
+            'false/опущено → поле цены не трогали: у хотелки со ссылкой на '
+            'поддерживаемый магазин источник остаётся/становится `shop`, а `price` '
+            'из тела не считается правкой (в `PUT` игнорируется, в `POST` — фолбэк '
+            'при недоступном магазине, см. `price`); без такой ссылки `price` '
+            'применяется как ручной. '
+            'Флаг относится только к этому запросу и не хранится. Сбрасывайте его в '
+            'false при открытии формы; ставьте true при любом вводе в поле цены, даже '
+            'если юзер вернул прежнюю цифру — это тоже осознанная правка. Это же '
+            'правило и когда превью упало (`400` на `POST /item_info_from_page`) или '
+            'пришло без цены: WB-ссылка + поле цены не трогали → `shop`, бэк сам '
+            'сходит в магазин, а не дождался — цену принесёт обход; юзер ввёл цену '
+            'сам → `manual`, обход её не тронет.'
+        ),
+        examples=[False, True],
+    )
+    recommendation_id: UUID | None = Field(
+        default=None,
+        description=(
+            'Только для `POST /wishes`: хотелка добавляется из рекомендации — бэк '
+            'сам копирует её картинку. В `PUT` игнорируется. null/опущено — обычное '
+            'добавление.'
+        ),
+    )
 
 
 class RecommendationSchema(BaseModel):
@@ -89,13 +210,332 @@ class OtherUserSchema(BaseUserSchema):
         return None
 
 
+class StoreObservationSchema(BaseModel):
+    """Последнее наблюдение товара в магазине — наличие и когда снято.
+
+    Есть только у хотелки с `price_source = shop` и только после того, как магазин
+    хоть раз ответил (превью/сохранение/кнопка — свежий запрос, либо суточный обход).
+    """
+
+    availability: StoreAvailability = Field(
+        description=(
+            'Наличие по последнему наблюдению. `in_stock` — товар есть, `price` '
+            'актуальна. `sold_out` — карточка есть, товар распродан: `price` — '
+            'последняя цена, когда он был в наличии (или null, если такого не было). '
+            '`gone` — артикул исчез из магазина, ссылка мёртвая; `price` — как при '
+            '`sold_out`. Автору показывайте пометку («распродано на WB» / «товара '
+            'больше нет на WB»), чужим — только при `gone` нейтральное «ссылка '
+            'устарела» рядом с переходом по ссылке.'
+        ),
+        examples=['in_stock'],
+    )
+    observed_at: datetime = Field(
+        description=(
+            'Когда снято наблюдение, UTC, ISO 8601. Давность для плашки автора '
+            '(«сегодня»/«вчера»/«3 дня назад») считайте на клиенте. Порога «слишком '
+            'старое» нет: любую давность показываем как есть. У хотелки в архиве '
+            'обход останавливается, давность просто растёт.'
+        ),
+        examples=['2026-09-12T03:10:00Z'],
+    )
+
+
 class WishReadSchema(BaseWishSchema):
-    id: UUID
-    is_archived: bool
-    reserved_by_id: UUID | None
-    image: str | None
-    recommendation_id: UUID | None
-    user: OtherUserSchema
+    """Хотелка во всех списках и карточках приложения.
+
+    Одна и та же форма у автора и у чужих (`GET /users/{user_id}/wishes`, резервы),
+    различие — в том, что UI показывает. Автор: `price` с плашкой магазина и давности
+    (`shop` + `store_observation.observed_at`), пометки наличия
+    (`store_observation.availability`), кнопка «актуальная с WB» при
+    `price_source = manual` и `shop != null`. Чужие: только `price` (последняя
+    известная, в т.ч. у распроданного) с «от» при `price_is_minimum`, без плашек и
+    статусов — исключение: при `availability = gone` нейтральное «ссылка устарела»
+    у кнопки перехода по ссылке. Источник цены и кнопку меняет только автор
+    (`403` у остальных).
+
+    Все поля присутствуют всегда; «нет значения» — это `null`, а не отсутствие
+    ключа. Примеры (по порядку): в наличии; «от» + распродано; сразу после
+    добавления при недоступном WB (цена и наблюдение ещё пусты); ручная цена при
+    WB-ссылке (кнопка «актуальная с WB»); без поддерживаемого магазина; товар исчез
+    (`gone`, цена — последняя известная); распродано, цены не было никогда;
+    существующая хотелка после релиза (цена введена руками при добавлении,
+    источник уже `shop`, обход ещё не прошёл).
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                    'name': 'Кроссовки',
+                    'description': 'Размер 42, чёрные',
+                    'link': WB_LINK_EXAMPLE,
+                    'price': 4990,
+                    'price_source': 'shop',
+                    'price_is_minimum': False,
+                    'shop': 'wildberries',
+                    'store_observation': {
+                        'availability': 'in_stock',
+                        'observed_at': '2026-09-12T03:10:00Z',
+                    },
+                    'is_archived': False,
+                    'reserved_by_id': None,
+                    'image': '/media/wish_images/ab12cd34.jpg',
+                    'recommendation_id': None,
+                    'user': {
+                        'id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                        'display_name': 'Аня',
+                        'photo_url': None,
+                        'gender': None,
+                        'birth_date': None,
+                        'email': None,
+                    },
+                },
+                {
+                    'id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                    'name': 'Платье',
+                    'description': None,
+                    'link': 'https://www.wildberries.ru/catalog/166652374/detail.aspx',
+                    'price': 1990,
+                    'price_source': 'shop',
+                    'price_is_minimum': True,
+                    'shop': 'wildberries',
+                    'store_observation': {
+                        'availability': 'sold_out',
+                        'observed_at': '2026-09-09T03:10:00Z',
+                    },
+                    'is_archived': False,
+                    'reserved_by_id': None,
+                    'image': None,
+                    'recommendation_id': None,
+                    'user': {
+                        'id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                        'display_name': 'Аня',
+                        'photo_url': None,
+                        'gender': None,
+                        'birth_date': None,
+                        'email': None,
+                    },
+                },
+                {
+                    'id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                    'name': 'Кроссовки',
+                    'description': None,
+                    'link': WB_LINK_EXAMPLE,
+                    'price': None,
+                    'price_source': 'shop',
+                    'price_is_minimum': False,
+                    'shop': 'wildberries',
+                    'store_observation': None,
+                    'is_archived': False,
+                    'reserved_by_id': None,
+                    'image': None,
+                    'recommendation_id': None,
+                    'user': {
+                        'id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                        'display_name': 'Аня',
+                        'photo_url': None,
+                        'gender': None,
+                        'birth_date': None,
+                        'email': None,
+                    },
+                },
+                {
+                    'id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                    'name': 'Кроссовки',
+                    'description': None,
+                    'link': WB_LINK_EXAMPLE,
+                    'price': 4500,
+                    'price_source': 'manual',
+                    'price_is_minimum': False,
+                    'shop': 'wildberries',
+                    'store_observation': None,
+                    'is_archived': False,
+                    'reserved_by_id': None,
+                    'image': None,
+                    'recommendation_id': None,
+                    'user': {
+                        'id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                        'display_name': 'Аня',
+                        'photo_url': None,
+                        'gender': None,
+                        'birth_date': None,
+                        'email': None,
+                    },
+                },
+                {
+                    'id': '9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e',
+                    'name': 'Кофемолка',
+                    'description': None,
+                    'link': OZON_LINK_EXAMPLE,
+                    'price': 3500,
+                    'price_source': 'manual',
+                    'price_is_minimum': False,
+                    'shop': None,
+                    'store_observation': None,
+                    'is_archived': False,
+                    'reserved_by_id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                    'image': None,
+                    'recommendation_id': '9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e',
+                    'user': {
+                        'id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                        'display_name': 'Аня',
+                        'photo_url': None,
+                        'gender': None,
+                        'birth_date': None,
+                        'email': None,
+                    },
+                },
+                {
+                    'id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                    'name': 'Наушники',
+                    'description': None,
+                    'link': WB_LINK_EXAMPLE,
+                    'price': 2490,
+                    'price_source': 'shop',
+                    'price_is_minimum': False,
+                    'shop': 'wildberries',
+                    'store_observation': {
+                        'availability': 'gone',
+                        'observed_at': '2026-09-12T03:10:00Z',
+                    },
+                    'is_archived': False,
+                    'reserved_by_id': None,
+                    'image': None,
+                    'recommendation_id': None,
+                    'user': {
+                        'id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                        'display_name': 'Аня',
+                        'photo_url': None,
+                        'gender': None,
+                        'birth_date': None,
+                        'email': None,
+                    },
+                },
+                {
+                    'id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                    'name': 'Куртка',
+                    'description': None,
+                    'link': WB_LINK_EXAMPLE,
+                    'price': None,
+                    'price_source': 'shop',
+                    'price_is_minimum': False,
+                    'shop': 'wildberries',
+                    'store_observation': {
+                        'availability': 'sold_out',
+                        'observed_at': '2026-09-12T03:10:00Z',
+                    },
+                    'is_archived': False,
+                    'reserved_by_id': None,
+                    'image': None,
+                    'recommendation_id': None,
+                    'user': {
+                        'id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                        'display_name': 'Аня',
+                        'photo_url': None,
+                        'gender': None,
+                        'birth_date': None,
+                        'email': None,
+                    },
+                },
+                {
+                    'id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                    'name': 'Рюкзак',
+                    'description': None,
+                    'link': WB_LINK_EXAMPLE,
+                    'price': 3200,
+                    'price_source': 'shop',
+                    'price_is_minimum': False,
+                    'shop': 'wildberries',
+                    'store_observation': None,
+                    'is_archived': False,
+                    'reserved_by_id': None,
+                    'image': None,
+                    'recommendation_id': None,
+                    'user': {
+                        'id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                        'display_name': 'Аня',
+                        'photo_url': None,
+                        'gender': None,
+                        'birth_date': None,
+                        'email': None,
+                    },
+                },
+            ]
+        }
+    )
+
+    id: UUID = Field(description='Идентификатор хотелки.')
+    price: int | None = Field(
+        description=(
+            'Цена в рублях (целое, копейки отбрасываются; со скидкой — та, по '
+            'которой покупают). Чья она — '
+            'в `price_source`. При `shop` — последняя известная цена с магазина: '
+            'магазин её НИКОГДА не обнуляет, при распродано/исчез остаётся последняя '
+            'наблюдённая; null — цены не было никогда (обход/превью ещё не видели '
+            'товар в наличии). При `manual` — введённая юзером; null — не указана. '
+            'Для чужих это ориентир для подарка, показывайте как есть.'
+        ),
+        examples=[4990, None],
+    )
+    price_source: PriceSource = Field(
+        description=(
+            'Откуда цена. `shop` — живая, с магазина (превью при добавлении + '
+            'суточный обход); юзер её не вводил. `manual` — введена/исправлена '
+            'руками (`price_edited = true`) либо ссылки на поддерживаемый магазин '
+            'нет: магазин молчит — ни плашки, ни обновлений. `shop` бывает только '
+            'при `shop != null`. После релиза 0011 все существующие хотелки с '
+            'WB-ссылкой — `shop` (в т.ч. с ценой, введённой руками: та цифра — снимок '
+            'на момент добавления, обход её обновит), остальные — `manual`.'
+        ),
+        examples=['shop', 'manual'],
+    )
+    price_is_minimum: bool = Field(
+        description=(
+            'true — `price` это минимум среди размеров в наличии (ссылка без '
+            '`?size=` у многоразмерного товара): рисуйте «от 1 990 ₽», чтобы цифра '
+            'не врала про другой размер. Во всех UI, включая чужие карточки. '
+            'false — цена конкретного размера/безразмерного товара или ручная. '
+            'Флаг привязан к `price` и меняется только вместе с ним: пришла новая '
+            'магазинная цена → пересчитан; цена стала ручной (`price_edited = true`, '
+            'ссылка на неподдерживаемый магазин/удалена) → false; цена не менялась '
+            '(распродано/исчез, магазин недоступен) → как был.'
+        ),
+        examples=[False, True],
+    )
+    shop: Shop | None = Field(
+        description=(
+            'Магазин, распознанный сервером по `link`. null — ссылки нет или магазин '
+            'не поддерживается (цена — ручное поле, магазинных элементов в UI нет). '
+            'Не null → плашка магазина у автора при `price_source = shop`; кнопка '
+            '«актуальная с WB» у автора при `price_source = manual`.'
+        ),
+        examples=['wildberries', None],
+    )
+    store_observation: StoreObservationSchema | None = Field(
+        description=(
+            'Последнее наблюдение магазина: наличие и давность. null — либо '
+            '`price_source = manual` (магазин молчит), либо магазин ещё ни разу не '
+            'ответил по этой ссылке (магазинная хотелка сразу после релиза до первого '
+            'обхода, или WB был недоступен при добавлении): автору показывайте '
+            'плашку «WB» без давности и без пометок наличия.'
+        ),
+    )
+    is_archived: bool = Field(description='Хотелка в архиве автора.')
+    reserved_by_id: UUID | None = Field(
+        description='Кто зарезервировал. null — свободна.'
+    )
+    image: str | None = Field(
+        description=(
+            'Абсолютный путь картинки от origin API (`/media/wish_images/…`). '
+            'null — картинки нет.'
+        ),
+        examples=['/media/wish_images/ab12cd34.jpg', None],
+    )
+    recommendation_id: UUID | None = Field(
+        description='Рекомендация, из которой добавлена хотелка. null — добавлена сама.'
+    )
+    user: OtherUserSchema = Field(description='Автор хотелки.')
 
     @field_validator('image', mode='before')
     @staticmethod
@@ -158,8 +598,22 @@ class PublicWishSchema(BaseModel):
     )
     price: int | None = Field(
         default=None,
-        description='Ориентировочная цена, целое число рублей. null — цена не указана.',
+        description=(
+            'Ориентировочная цена, целое число рублей. Для хотелки со ссылкой на '
+            'поддерживаемый магазин — последняя известная цена с магазина (и у '
+            'распроданного тоже), иначе введённая владельцем. null — цена не '
+            'указана / магазин её ещё не сообщал. Без плашек магазина и статусов '
+            'наличия — гость видит цену как ориентир.'
+        ),
         examples=[3500],
+    )
+    price_is_minimum: bool = Field(
+        description=(
+            'Всегда присутствует. true — `price` это минимум среди размеров в '
+            'наличии (ссылка без размера у многоразмерного товара): рисуйте '
+            '«от 1 990 ₽». false — обычная цена.'
+        ),
+        examples=[False],
     )
     link: HttpUrl | None = Field(
         default=None,
@@ -205,6 +659,7 @@ class PublicWishlistSchema(BaseModel):
                             'name': 'Кофемолка',
                             'description': 'Ручная, с керамическими жерновами',
                             'price': 3500,
+                            'price_is_minimum': False,
                             'link': 'https://www.ozon.ru/product/123456',
                             'image_url': '/media/wish_images/ab12cd34.jpg',
                             'is_reserved': False,
@@ -214,6 +669,7 @@ class PublicWishlistSchema(BaseModel):
                             'name': 'Книга «Дюна»',
                             'description': None,
                             'price': None,
+                            'price_is_minimum': False,
                             'link': None,
                             'image_url': None,
                             'is_reserved': True,
@@ -739,11 +1195,105 @@ class TestTokenResponseSchema(BaseModel):
 
 
 class ItemInfoRequestSchema(BaseModel):
-    link: HttpUrl
-    html: str | None = None
+    """Запрос превью товара по ссылке (кнопка «применить» на форме хотелки)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {'link': WB_LINK_EXAMPLE},
+                {'link': OZON_LINK_EXAMPLE, 'html': '<html>…страница товара…</html>'},
+            ]
+        }
+    )
+
+    link: HttpUrl = Field(description='Ссылка на товар, как вставил юзер.')
+    html: str | None = Field(
+        default=None,
+        description=(
+            'HTML страницы товара, если клиент уже загрузил её сам (обход защиты '
+            'магазина на устройстве). null/опущено — бэк ходит по ссылке сам.'
+        ),
+    )
 
 
 class ItemInfoResponseSchema(BaseModel):
-    title: str
-    description: str
-    image_url: HttpUrl
+    """Превью товара для автозаполнения формы хотелки.
+
+    Название/описание/картинка — как раньше. Цена (фича 0011) — только для
+    поддерживаемого магазина и best-effort: её отсутствие не делает превью ошибкой.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'title': 'Кроссовки Nike Air',
+                    'description': 'Беговые кроссовки',
+                    'image_url': 'https://basket-10.wbbasket.ru/vol1666/part166652/166652374/images/big/1.webp',
+                    'shop': 'wildberries',
+                    'price': 4990,
+                    'price_is_minimum': False,
+                },
+                {
+                    'title': 'Платье летнее',
+                    'description': 'Хлопок',
+                    'image_url': 'https://basket-10.wbbasket.ru/vol1666/part166652/166652374/images/big/1.webp',
+                    'shop': 'wildberries',
+                    'price': 1990,
+                    'price_is_minimum': True,
+                },
+                {
+                    'title': 'Кроссовки Nike Air',
+                    'description': 'Беговые кроссовки',
+                    'image_url': 'https://basket-10.wbbasket.ru/vol1666/part166652/166652374/images/big/1.webp',
+                    'shop': 'wildberries',
+                    'price': None,
+                    'price_is_minimum': False,
+                },
+                {
+                    'title': 'Кофемолка',
+                    'description': 'Ручная',
+                    'image_url': 'https://cdn1.ozone.ru/s3/multimedia/123.jpg',
+                    'shop': None,
+                    'price': None,
+                    'price_is_minimum': False,
+                },
+            ]
+        }
+    )
+
+    title: str = Field(description='Название товара со страницы.')
+    description: str = Field(
+        description='Описание со страницы; может быть пустой строкой.'
+    )
+    image_url: HttpUrl = Field(description='Картинка товара (внешний URL).')
+    shop: Shop | None = Field(
+        description=(
+            'Всегда присутствует. Магазин, распознанный по ссылке. null — не '
+            'поддерживается: поле цены '
+            'остаётся ручным, магазинных пометок в форме нет. Не null — поле цены '
+            'помечайте как магазинное («с WB»); при сохранении с '
+            '`price_edited = false` бэк возьмёт магазинную цену сам.'
+        ),
+        examples=['wildberries', None],
+    )
+    price: int | None = Field(
+        description=(
+            'Всегда присутствует. Текущая цена со скидкой, свежий запрос к магазину '
+            '(не дольше 10 с), рубли. Подставьте в поле цены формы, чтобы юзер увидел '
+            'её сразу. null — магазин не поддерживается (`shop = null`), товар '
+            'распродан/исчез в этот момент, либо магазин цену не отдал/не ответил '
+            'за 10 с: превью всё равно `200` (тихо), поле цены пустое; при '
+            'сохранении с `price_edited = false` бэк попробует ещё раз, а дальше '
+            'цену принесёт обход.'
+        ),
+        examples=[4990, None],
+    )
+    price_is_minimum: bool = Field(
+        description=(
+            'Всегда присутствует. true — `price` это минимум среди размеров в '
+            'наличии (ссылка без `?size=` у многоразмерного товара): показывайте '
+            'как «от». false — цена конкретного размера или цены нет.'
+        ),
+        examples=[False],
+    )

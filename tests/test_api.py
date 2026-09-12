@@ -1075,6 +1075,9 @@ class TestUsersExtra:
                     'title': 'retry',
                     'description': 'desc',
                     'image_url': 'http://img.com',
+                    'shop': None,
+                    'price': None,
+                    'price_is_minimum': False,
                 },
             ],
         )

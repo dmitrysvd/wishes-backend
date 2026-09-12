@@ -86,6 +86,9 @@ UPLOAD_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 # не выглядел как выкачка каталога.
 PRICE_WATCH_BATCH_SIZE = 100
 PRICE_WATCH_BATCH_PAUSE_SECONDS = 3.0
+# Свежий запрос цены к магазину из пользовательского запроса (превью, сохранение,
+# кнопка «актуальная с WB», фича 0011): бюджет обещан контрактом — не дольше 10 с.
+STORE_REQUEST_TIMEOUT_SECONDS = 10.0
 
 
 class Shop(enum.Enum):
@@ -107,3 +110,45 @@ class PriceObservationStatus(enum.Enum):
     ok = 'ok'
     sold_out = 'sold_out'
     gone = 'gone'
+
+
+class PriceSource(enum.Enum):
+    """Откуда у хотелки цена (фича 0011) — публичный enum контракта.
+
+    shop   — цена живая, с магазина по ссылке: заполняется превью при добавлении
+             и обновляется суточным обходом; юзер её не вводил.
+    manual — цена введена/исправлена руками (или ссылки на поддерживаемый магазин
+             нет): магазин её не трогает и ничего про неё не сообщает.
+    """
+
+    shop = 'shop'
+    manual = 'manual'
+
+
+class StoreAvailability(enum.Enum):
+    """Наличие товара в магазине по последнему наблюдению — публичный enum
+    контракта (фича 0011). Отображение внутреннего `PriceObservationStatus`:
+    ok → in_stock, sold_out → sold_out, gone → gone.
+
+    in_stock — товар есть, цена актуальна.
+    sold_out — карточка есть, товар распродан; цена — последняя наблюдённая.
+    gone     — артикул исчез из магазина, ссылка мёртвая; цена — последняя
+               наблюдённая.
+    """
+
+    in_stock = 'in_stock'
+    sold_out = 'sold_out'
+    gone = 'gone'
+
+
+class PriceRefreshOutcome(enum.Enum):
+    """Исход нажатия «актуальная с WB» (фича 0011) — для счётчика критерия приёмки.
+
+    ok          — магазин ответил, источник стал `shop`.
+    unsupported — у хотелки нет ссылки на поддерживаемый магазин (409).
+    failed      — магазин не ответил/ответил мусором (502), ничего не изменилось.
+    """
+
+    ok = 'ok'
+    unsupported = 'unsupported'
+    failed = 'failed'

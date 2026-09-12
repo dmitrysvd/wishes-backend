@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -10,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from app import schemas
 from app.admin.setup import setup_admin
 from app.config import settings
 from app.db import engine
@@ -150,6 +152,21 @@ async def health_ready(db: Annotated[Session, Depends(get_db)]):
     return {'status': 'ok'}
 
 
+def _restore_null_in_examples(openapi_schema: dict) -> None:
+    """Вернуть `null`-значения в `examples` схем контракта.
+
+    FastAPI кодирует спек с `exclude_none=True`, и ключи со значением `None`
+    выпадают из примеров (`{'price': None}` → ключ исчезает). Для контракта это
+    ложь: поле обязательное и приходит как `null`, а пример показывает, что его нет.
+    Берём примеры заново из `json_schema_extra` моделей `app.schemas`.
+    """
+    for name, component in openapi_schema['components']['schemas'].items():
+        model = getattr(schemas, name, None)
+        extra = getattr(model, 'model_config', {}).get('json_schema_extra')
+        if isinstance(extra, dict) and 'examples' in extra:
+            component['examples'] = jsonable_encoder(extra['examples'])
+
+
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -169,6 +186,7 @@ def custom_openapi():
     finally:
         for route in routes_with_head:
             route.methods = set(route.methods) | {'HEAD'}  # ty: ignore[unresolved-attribute]
+    _restore_null_in_examples(openapi_schema)
     openapi_schema['components']['securitySchemes'] = {
         'ApiKey': {
             'type': 'apiKey',

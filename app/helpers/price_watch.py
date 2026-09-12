@@ -5,16 +5,20 @@
 
   выбор целей (`select_watch_targets`) → батчи (`batched`) →
   запрос (`fetch_wb_cards`, клиент инъецируется) → ответ в Pydantic →
-  наблюдения (`build_observations`, батч + ответ) → запись (`save_observations`).
+  наблюдения (`observe_batch`, батч + ответ) → запись истории
+  (`save_observations`) → обновление магазинных хотелок (`apply_observations`).
 
 Конвертации нужен именно батч, а не только ответ: состояние «артикул исчез» — это
 ОТСУТСТВИЕ товара в ответе, а отсутствие видно лишь зная, что запрашивали.
+
+Та же конвертация обслуживает свежий запрос по одной ссылке из пользовательского
+сценария (фича 0011: превью, сохранение, кнопка) — `fetch_fresh_observation`.
 """
 
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
-from datetime import date
-from decimal import Decimal
+from datetime import date, datetime
+from decimal import ROUND_DOWN, Decimal
 from uuid import UUID
 
 import httpx
@@ -23,8 +27,14 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.constants import PriceObservationStatus, Shop
+from app.constants import (
+    STORE_REQUEST_TIMEOUT_SECONDS,
+    PriceObservationStatus,
+    PriceSource,
+    Shop,
+)
 from app.db import Wish, WishPriceObservation
+from app.helpers.browser_transport import BrowserTransport
 from app.parsers import parse_wildberries_link
 
 # Публичный батчевый эндпоинт карточек WB. `dest` — регион (влияет на наличие и
@@ -104,10 +114,29 @@ def _kopecks_to_rubles(kopecks: int) -> Decimal:
     return Decimal(kopecks) / KOPECKS_IN_RUBLE
 
 
-def _observe_product(
-    target: WatchTarget, product: WbProductSchema | None
-) -> tuple[PriceObservationStatus, WbPriceSchema | None]:
-    """Статус и цена одной хотелки по карточке WB.
+@dataclass(frozen=True)
+class ProductObservation:
+    """Результат одного наблюдения: статус, цена (только при `ok`) и признак
+    «цена — минимум среди размеров» (ссылка без размера у многоразмерного
+    товара; UI рисует «от»)."""
+
+    status: PriceObservationStatus
+    price: WbPriceSchema | None = None
+    is_minimum: bool = False
+
+    @property
+    def product_price(self) -> Decimal | None:
+        return _kopecks_to_rubles(self.price.product) if self.price else None
+
+    @property
+    def basic_price(self) -> Decimal | None:
+        return _kopecks_to_rubles(self.price.basic) if self.price else None
+
+
+def observe_product(
+    size_option_id: int | None, product: WbProductSchema | None
+) -> ProductObservation:
+    """Статус и цена товара по карточке WB.
 
     Размер из ссылки известен → смотрим ровно его; размера в карточке больше
     нет — считаем товар исчезнувшим (то, что юзер откладывал, купить нельзя).
@@ -115,20 +144,49 @@ def _observe_product(
     в наличии ни одного — распродан.
     """
     if product is None:
-        return PriceObservationStatus.gone, None
-    if target.size_option_id is not None:
-        size = next(
-            (s for s in product.sizes if s.option_id == target.size_option_id), None
-        )
+        return ProductObservation(PriceObservationStatus.gone)
+    if size_option_id is not None:
+        size = next((s for s in product.sizes if s.option_id == size_option_id), None)
         if size is None:
-            return PriceObservationStatus.gone, None
+            return ProductObservation(PriceObservationStatus.gone)
         if size.price is None:
-            return PriceObservationStatus.sold_out, None
-        return PriceObservationStatus.ok, size.price
+            return ProductObservation(PriceObservationStatus.sold_out)
+        return ProductObservation(PriceObservationStatus.ok, size.price)
     in_stock = [s.price for s in product.sizes if s.price is not None]
     if not in_stock:
-        return PriceObservationStatus.sold_out, None
-    return PriceObservationStatus.ok, min(in_stock, key=lambda p: p.product)
+        return ProductObservation(PriceObservationStatus.sold_out)
+    return ProductObservation(
+        PriceObservationStatus.ok,
+        min(in_stock, key=lambda p: p.product),
+        is_minimum=len(product.sizes) > 1,
+    )
+
+
+def observe_batch(
+    batch: Sequence[WatchTarget], response: WbCardResponseSchema
+) -> list[tuple[WatchTarget, ProductObservation]]:
+    """Батч + ответ WB → наблюдение по каждой цели (отсутствие в ответе = gone)."""
+    products = {product.id: product for product in response.products}
+    return [
+        (target, observe_product(target.size_option_id, products.get(target.sku)))
+        for target in batch
+    ]
+
+
+def observation_row(
+    target: WatchTarget, observation: ProductObservation, observed_date: date
+) -> dict:
+    """Строка истории наблюдений (значения для INSERT)."""
+    return {
+        'wish_id': target.wish_id,
+        'observed_date': observed_date,
+        'shop': Shop.wildberries,
+        'sku': target.sku,
+        'size_option_id': target.size_option_id,
+        'status': observation.status,
+        'basic_price': observation.basic_price,
+        'product_price': observation.product_price,
+    }
 
 
 def build_observations(
@@ -137,23 +195,85 @@ def build_observations(
     observed_date: date,
 ) -> list[dict]:
     """Батч + ответ WB → строки наблюдений (значения для INSERT)."""
-    products = {product.id: product for product in response.products}
-    observations = []
-    for target in batch:
-        status, price = _observe_product(target, products.get(target.sku))
-        observations.append(
-            {
-                'wish_id': target.wish_id,
-                'observed_date': observed_date,
-                'shop': Shop.wildberries,
-                'sku': target.sku,
-                'size_option_id': target.size_option_id,
-                'status': status,
-                'basic_price': _kopecks_to_rubles(price.basic) if price else None,
-                'product_price': _kopecks_to_rubles(price.product) if price else None,
-            }
+    return [
+        observation_row(target, observation, observed_date)
+        for target, observation in observe_batch(batch, response)
+    ]
+
+
+def sync_wish_with_store(
+    wish: Wish, observation: ProductObservation, observed_at: datetime
+) -> None:
+    """Применить наблюдение к магазинной хотелке.
+
+    Наличие и давность — всегда; цена и «от» — только когда товар в наличии:
+    магазин цену никогда не обнуляет, при распродано/исчез остаётся последняя
+    известная (решение продукта, intent 0011).
+    """
+    wish.store_availability = observation.status
+    wish.store_observed_at = observed_at
+    if observation.status == PriceObservationStatus.ok and observation.product_price:
+        # Контракт отдаёт цену целым числом рублей, копейки отбрасываются; в
+        # истории наблюдений цена остаётся точной.
+        wish.price = observation.product_price.to_integral_value(rounding=ROUND_DOWN)
+        wish.price_is_minimum = observation.is_minimum
+
+
+def apply_observations(
+    db: Session,
+    observed: Sequence[tuple[WatchTarget, ProductObservation]],
+    observed_at: datetime,
+) -> int:
+    """Обновить хотелки батча с магазинной ценой; возвращает число обновлённых.
+
+    Ручные (`manual`) не трогаем — юзер поменял цену, магазин для него молчит;
+    история наблюдений по ним всё равно пишется (прибор 0010).
+    """
+    by_wish_id = {target.wish_id: observation for target, observation in observed}
+    wishes = db.scalars(
+        select(Wish).where(
+            Wish.id.in_(by_wish_id), Wish.price_source == PriceSource.shop
         )
-    return observations
+    ).all()
+    for wish in wishes:
+        sync_wish_with_store(wish, by_wish_id[wish.id], observed_at)
+    db.commit()
+    return len(wishes)
+
+
+def fetch_fresh_observation(
+    link: str, client: httpx.Client
+) -> ProductObservation | None:
+    """Свежий запрос к магазину по одной ссылке (фича 0011).
+
+    None — ссылка не на поддерживаемый магазин (спрашивать нечего). Сетевые
+    ошибки и чужой формат ответа идут наверх (`httpx.HTTPError`,
+    `pydantic.ValidationError`) — вызывающий решает, тихо это или `502`.
+    """
+    parsed = parse_wildberries_link(link)
+    if parsed is None:
+        return None
+    sku, size_option_id = parsed
+    response = fetch_wb_cards([sku], client)
+    products = {product.id: product for product in response.products}
+    return observe_product(size_option_id, products.get(sku))
+
+
+def record_fresh_observation(
+    db: Session, wish: Wish, observation: ProductObservation, observed_at: datetime
+) -> None:
+    """Свежее наблюдение из пользовательского сценария: обновить хотелку и
+    дописать историю (если за эти сутки строки ещё нет — первое наблюдение за
+    сутки остаётся истиной прибора). Коммит — на вызывающем."""
+    sync_wish_with_store(wish, observation, observed_at)
+    parsed = parse_wildberries_link(wish.link or '')
+    assert parsed is not None, 'наблюдение бывает только у WB-ссылки'
+    target = WatchTarget(wish.id, *parsed)
+    db.execute(
+        pg_insert(WishPriceObservation)
+        .values([observation_row(target, observation, observed_at.date())])
+        .on_conflict_do_nothing(index_elements=['wish_id', 'observed_date'])
+    )
 
 
 def save_observations(db: Session, observations: Sequence[dict]) -> int:
@@ -174,3 +294,17 @@ def save_observations(db: Session, observations: Sequence[dict]) -> int:
     inserted = len(result.all())
     db.commit()
     return inserted
+
+
+def get_store_client() -> Iterator[httpx.Client]:
+    """FastAPI-зависимость: клиент для свежего запроса цены к магазину (0011).
+
+    Зависимость, а не глобальный объект: тесты подменяют её клиентом на
+    `httpx.MockTransport` через `app.dependency_overrides` — без моков внутри
+    логики. С отпечатком обычного httpx WB отвечает 403 — см. BrowserTransport.
+    Таймаут — бюджет, обещанный контрактом (не дольше 10 с).
+    """
+    with httpx.Client(
+        transport=BrowserTransport(timeout=STORE_REQUEST_TIMEOUT_SECONDS)
+    ) as client:
+        yield client
