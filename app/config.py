@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,7 +23,11 @@ class Settings(BaseSettings):
     TEST_AUTH_SECRET: str | None = None
     MEDIA_ROOT: Path
     LOGS_DIR: Path
-    URL_ROOT_PATH: str = '/'
+    # Префикс, под которым бэк живёт за прокси (напр. '/api'). Пустая строка —
+    # корень. Значение '/' ломает смонтированные саб-приложения (/admin, /static,
+    # /media): Starlette срезает root_path с начала пути, и у Mount пропадает
+    # ведущий слэш — поэтому завершающий '/' всегда отбрасываем.
+    URL_ROOT_PATH: str = ''
     # Hawk (hawk.so) — трекер ошибок. Интеграционный токен проекта.
     HAWK_TOKEN: str | None = None
     ADMIN_PASSWORD: str | None = None
@@ -35,6 +40,11 @@ class Settings(BaseSettings):
     TEST_DATABASE_URL: str = 'sqlite://'
 
     model_config = SettingsConfigDict(env_file='.env', extra='ignore')
+
+    @field_validator('URL_ROOT_PATH')
+    @classmethod
+    def strip_trailing_slash(cls, value: str) -> str:
+        return value.rstrip('/')
 
 
 settings = Settings()  # type: ignore

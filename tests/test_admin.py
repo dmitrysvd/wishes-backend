@@ -63,3 +63,32 @@ async def test_admin_auth_authenticate(mocker):
     mock_request_fail = mocker.Mock(spec=Request)
     mock_request_fail.session = {}
     assert await auth.authenticate(mock_request_fail) is False
+
+
+def test_url_root_path_trailing_slash_is_stripped():
+    # '/' у root_path ломает Mount-ы (/admin, /static): Starlette срезает его с
+    # начала пути и у саб-приложения пропадает ведущий слэш. Нормализуем в ''.
+    from app.config import Settings
+
+    assert Settings.model_validate({'URL_ROOT_PATH': '/'}).URL_ROOT_PATH == ''
+    assert Settings.model_validate({'URL_ROOT_PATH': '/api/'}).URL_ROOT_PATH == '/api'
+
+
+def test_price_observation_admin_list_renders(test_engine, mocker):
+    # Отдельный app с админкой на тестовом движке: `app.main.app` держит админку
+    # на боевом `engine`, который в тестах закрыт.
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.admin.setup import setup_admin
+
+    mocker.patch('app.admin.setup.settings.ADMIN_PASSWORD', 'pwd')
+    admin_app = FastAPI()
+    setup_admin(admin_app, test_engine)
+    client = TestClient(admin_app)
+    client.post('/admin/login', data={'username': 'admin', 'password': 'pwd'})
+
+    response = client.get('/admin/wish-price-observation/list?search=123')
+
+    assert response.status_code == 200
+    assert 'Price Observations' in response.text

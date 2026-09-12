@@ -3,7 +3,14 @@ from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 
 from app.config import settings
-from app.db import FollowEvent, User, UserAttribution, Wish, WishRecommendation
+from app.db import (
+    FollowEvent,
+    User,
+    UserAttribution,
+    Wish,
+    WishPriceObservation,
+    WishRecommendation,
+)
 
 
 class UserAdmin(ModelView, model=User):
@@ -77,6 +84,30 @@ class UserAttributionAdmin(ModelView, model=UserAttribution):
     can_export = False
 
 
+class WishPriceObservationAdmin(ModelView, model=WishPriceObservation):
+    name = 'Price Observation'
+    name_plural = 'Price Observations'
+    # Append-only ряд суточного обхода цен — только чтение: удалённая руками
+    # строка неотличима от «обход упал» (дырка в ряду), см. докстринг модели.
+    can_create = False
+    can_edit = False
+    can_delete = False
+    column_list = [
+        WishPriceObservation.observed_date,
+        WishPriceObservation.shop,
+        WishPriceObservation.sku,
+        WishPriceObservation.size_option_id,
+        WishPriceObservation.status,
+        WishPriceObservation.product_price,
+        WishPriceObservation.basic_price,
+        WishPriceObservation.wish_id,
+    ]
+    icon = 'fa-solid fa-chart-line'
+    column_searchable_list = [WishPriceObservation.sku, WishPriceObservation.wish_id]
+    column_default_sort = ('observed_date', True)
+    can_export = False
+
+
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
         form = await request.form()
@@ -112,4 +143,5 @@ def setup_admin(app, engine):
     admin.add_view(WishRecommendationAdmin)
     admin.add_view(FollowEventAdmin)
     admin.add_view(UserAttributionAdmin)
+    admin.add_view(WishPriceObservationAdmin)
     return admin
