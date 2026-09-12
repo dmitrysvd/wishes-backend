@@ -74,7 +74,52 @@ def test_url_root_path_trailing_slash_is_stripped():
     assert Settings.model_validate({'URL_ROOT_PATH': '/api/'}).URL_ROOT_PATH == '/api'
 
 
-def test_price_observation_admin_list_renders(test_engine, mocker):
+@pytest.fixture
+def observed_wish(test_engine):
+    """Хотелка с одним наблюдением, закоммиченная в тестовую БД.
+
+    Админка ходит в БД своими соединениями и не видит незакоммиченную транзакцию
+    фикстуры `db`, поэтому пишем через движок и убираем за собой.
+    """
+    from datetime import date
+    from uuid import uuid4
+
+    from sqlalchemy.orm import Session
+
+    from app.constants import PriceObservationStatus, Shop
+    from app.db import User, Wish, WishPriceObservation
+    from app.utils import utc_now
+
+    with Session(test_engine) as session:
+        user = User(
+            firebase_uid=f'uid-{uuid4()}',
+            display_name='Тест',
+            email=f'{uuid4()}@t.ru',
+            registered_at=utc_now(),
+        )
+        session.add(user)
+        session.flush()
+        wish = Wish(user_id=user.id, name='Зонт', link='https://wildberries.ru/1')
+        session.add(wish)
+        session.flush()
+        session.add(
+            WishPriceObservation(
+                wish_id=wish.id,
+                observed_date=date(2026, 9, 12),
+                shop=Shop.wildberries,
+                sku=1,
+                status=PriceObservationStatus.sold_out,
+            )
+        )
+        session.commit()
+        wish_id, user_id = wish.id, user.id
+    yield wish_id
+    with Session(test_engine) as session:
+        session.delete(session.get(User, user_id))  # каскадом уходят wish и наблюдение
+        session.commit()
+
+
+def test_price_observation_admin_list_links_to_wish(test_engine, mocker, observed_wish):
     # Отдельный app с админкой на тестовом движке: `app.main.app` держит админку
     # на боевом `engine`, который в тестах закрыт.
     from fastapi import FastAPI
@@ -88,7 +133,9 @@ def test_price_observation_admin_list_renders(test_engine, mocker):
     client = TestClient(admin_app)
     client.post('/admin/login', data={'username': 'admin', 'password': 'pwd'})
 
-    response = client.get('/admin/wish-price-observation/list?search=123')
+    response = client.get('/admin/wish-price-observation/list?search=1')
 
     assert response.status_code == 200
     assert 'Price Observations' in response.text
+    # Колонка хотелки — ссылка на её карточку в админке, а не голый UUID.
+    assert f'/admin/wish/details/{observed_wish}' in response.text

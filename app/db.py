@@ -414,6 +414,10 @@ class WishPriceObservation(Base):
     product_price: Mapped[Decimal | None] = mapped_column(
         Numeric(precision=10, scale=2), nullable=True
     )
+    # Односторонняя связь для админки (ссылка на хотелку). Обратной коллекции на
+    # Wish нет: обход пишет через pg_insert, а ленивая загрузка тысяч наблюдений
+    # на хотелке никому не нужна.
+    wish: Mapped['Wish'] = relationship()
 
 
 engine = create_engine(
