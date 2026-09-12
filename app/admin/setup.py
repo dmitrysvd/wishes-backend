@@ -100,7 +100,7 @@ class WishPriceObservationAdmin(ModelView, model=WishPriceObservation):
         WishPriceObservation.status,
         WishPriceObservation.product_price,
         WishPriceObservation.basic_price,
-        WishPriceObservation.wish_id,
+        WishPriceObservation.wish,
     ]
     icon = 'fa-solid fa-chart-line'
     column_searchable_list = [WishPriceObservation.sku, WishPriceObservation.wish_id]
