@@ -1,8 +1,22 @@
+# Логи app/scheduler — в journald хоста, а не в json-file по умолчанию.
+# json-file живёт в каталоге контейнера и удаляется при его пересоздании
+# (каждый deploy.sh) — история терялась ровно тогда, когда была нужна
+# (разбор ночного обхода цен после утреннего деплоя). journald переживает
+# пересоздание, ротируется системой; `docker compose logs` продолжает работать.
+# Смотреть историю: journalctl CONTAINER_NAME=wishes-scheduler-1 --since yesterday
+# (нужна группа systemd-journal у пользователя). db намеренно не трогаем: смена
+# logging пересоздаст контейнер Postgres.
+x-journald-logging: &journald-logging
+  driver: journald
+  options:
+    tag: '{{.Name}}'
+
 services:
   app:
     # Тег задаётся деплоем (WISHES_TAG = git SHA из CI); latest — фолбэк для
     # ручного `docker compose up`.
     image: dmitrysvd1/wishes-app:${WISHES_TAG:-latest}
+    logging: *journald-logging
     # --no-control-socket: убирает фоновый поток control-socket gunicorn 25.x.
     # Иначе fork воркера может произойти, пока этот поток держит лок stdout, и
     # воркер навсегда виснет в logging при старте (дедлок fork + lock).
@@ -40,6 +54,7 @@ services:
   scheduler:
     image: dmitrysvd1/wishes-app:${WISHES_TAG:-latest}
     command: uv run python -m app.scheduler
+    logging: *journald-logging
     volumes:
       - /data/media:/media
       - ./firebase-adminsdk.json:/firebase-adminsdk.json:ro
