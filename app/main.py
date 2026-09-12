@@ -6,7 +6,6 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from hawk_python_sdk import Hawk
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -42,11 +41,6 @@ TEMPLATES_DIR = APP_DIR / 'templates'
 
 settings.LOGS_DIR.mkdir(exist_ok=True, parents=True)
 
-# Hawk (hawk.so) — трекер ошибок. Без токена send() — безопасный no-op,
-# поэтому объект создаём всегда. Их FastAPI-мидлварь не используем (она глотает
-# исключение вместо ре-райза) — шлём ошибки вручную из internal_exception_handler.
-# SDK допускает None в рантайме (no-op), но в их сигнатуре тип занижен.
-hawk = Hawk(settings.HAWK_TOKEN)  # ty: ignore[invalid-argument-type]
 
 app = FastAPI(
     title='Хотелки',
@@ -75,13 +69,8 @@ async def internal_exception_handler(request: Request, call_next):
         response = await call_next(request)
     except Exception as exc:
         if not settings.IS_DEBUG:
+            # Уровень ERROR уходит в Hawk стоком loguru (app/hawk.py).
             logger.exception('Exception')
-            # Трейсбек берётся из sys.exc_info() — мы внутри except-блока.
-            # Сбой трекера не должен ломать обработку запроса.
-            try:
-                hawk.send(exc)
-            except Exception:
-                logger.exception('Не удалось отправить ошибку в Hawk')
         raise exc
     return response
 

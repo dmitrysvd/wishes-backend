@@ -1,8 +1,17 @@
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
+from loguru import logger
 
 from app.main import internal_exception_handler
+
+
+@pytest.fixture
+def error_records():
+    records = []
+    handler_id = logger.add(lambda m: records.append(m.record), level='ERROR')
+    yield records
+    logger.remove(handler_id)
 
 
 def test_health(api_client: TestClient):
@@ -32,9 +41,8 @@ async def test_internal_exception_handler_debug_true(mocker):
 
 
 @pytest.mark.anyio
-async def test_internal_exception_handler_debug_false(mocker):
+async def test_internal_exception_handler_debug_false(mocker, error_records):
     mocker.patch('app.main.settings.IS_DEBUG', False)
-    mock_hawk = mocker.patch('app.main.hawk')
     mock_request = mocker.MagicMock(spec=Request)
 
     async def call_next(request):
@@ -43,5 +51,6 @@ async def test_internal_exception_handler_debug_false(mocker):
     with pytest.raises(ValueError, match='Test Exception'):
         await internal_exception_handler(mock_request, call_next)
 
-    mock_hawk.send.assert_called_once()
-    assert isinstance(mock_hawk.send.call_args.args[0], ValueError)
+    # В Hawk уходит всё уровня ERROR (сток в app/logging.py): проверяем запись.
+    (record,) = error_records
+    assert isinstance(record['exception'].value, ValueError)
