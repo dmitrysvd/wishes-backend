@@ -139,3 +139,37 @@ def test_price_observation_admin_list_links_to_wish(test_engine, mocker, observe
     assert 'Price Observations' in response.text
     # Колонка хотелки — ссылка на её карточку в админке, а не голый UUID.
     assert f'/admin/wish/details/{observed_wish}' in response.text
+
+
+@pytest.fixture
+def admin_client(test_engine, mocker):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.admin.setup import setup_admin
+
+    mocker.patch('app.admin.setup.settings.ADMIN_PASSWORD', 'pwd')
+    admin_app = FastAPI()
+    setup_admin(admin_app, test_engine)
+    client = TestClient(admin_app)
+    client.post('/admin/login', data={'username': 'admin', 'password': 'pwd'})
+    return client
+
+
+def test_price_observation_status_filter(admin_client, observed_wish):
+    url = '/admin/wish-price-observation/list'
+    wish_link = f'/admin/wish/details/{observed_wish}'
+
+    assert wish_link in admin_client.get(f'{url}?status=sold_out').text
+    assert wish_link not in admin_client.get(f'{url}?status=ok').text
+    assert wish_link in admin_client.get(f'{url}?status=').text
+
+
+def test_wish_from_recommendation_filter(admin_client, observed_wish):
+    url = '/admin/wish/list'
+    wish_link = f'/admin/wish/details/{observed_wish}'
+
+    # Хотелка из фикстуры создана без рекомендации.
+    assert wish_link in admin_client.get(f'{url}?recommendation_id=false').text
+    assert wish_link not in admin_client.get(f'{url}?recommendation_id=true').text
+    assert wish_link in admin_client.get(f'{url}?recommendation_id=all').text

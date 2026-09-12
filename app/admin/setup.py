@@ -1,8 +1,10 @@
 from fastapi import Request
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
+from sqladmin.filters import BooleanFilter, StaticValuesFilter, get_column_obj
 
 from app.config import settings
+from app.constants import PriceObservationStatus
 from app.db import (
     FollowEvent,
     User,
@@ -11,6 +13,18 @@ from app.db import (
     WishPriceObservation,
     WishRecommendation,
 )
+
+
+class IsSetFilter(BooleanFilter):
+    """Да/Нет по признаку «поле заполнено» (IS NOT NULL / IS NULL)."""
+
+    async def get_filtered_query(self, query, value, model):
+        column = get_column_obj(self.column, model)
+        if value == 'true':
+            return query.filter(column.is_not(None))
+        if value == 'false':
+            return query.filter(column.is_(None))
+        return query
 
 
 class UserAdmin(ModelView, model=User):
@@ -29,6 +43,9 @@ class WishAdmin(ModelView, model=Wish):
     icon = 'fa-solid fa-gift'
     column_searchable_list = [Wish.name, User.id]
     column_default_sort = ('created_at', True)
+    column_filters = [
+        IsSetFilter(Wish.recommendation_id, title='From recommendation'),
+    ]
     can_export = False
 
 
@@ -105,6 +122,13 @@ class WishPriceObservationAdmin(ModelView, model=WishPriceObservation):
     icon = 'fa-solid fa-chart-line'
     column_searchable_list = [WishPriceObservation.sku, WishPriceObservation.wish_id]
     column_default_sort = ('observed_date', True)
+    column_filters = [
+        StaticValuesFilter(
+            WishPriceObservation.status,
+            [(s.value, s.value) for s in PriceObservationStatus],
+            title='Status',
+        ),
+    ]
     can_export = False
 
 
