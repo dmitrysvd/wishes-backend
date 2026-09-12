@@ -1,11 +1,6 @@
-# Логи app/scheduler — в journald хоста, а не в json-file по умолчанию.
-# json-file живёт в каталоге контейнера и удаляется при его пересоздании
-# (каждый deploy.sh) — история терялась ровно тогда, когда была нужна
-# (разбор ночного обхода цен после утреннего деплоя). journald переживает
-# пересоздание, ротируется системой; `docker compose logs` продолжает работать.
-# Смотреть историю: journalctl CONTAINER_NAME=wishes-scheduler-1 --since yesterday
-# (нужна группа systemd-journal у пользователя). db намеренно не трогаем: смена
-# logging пересоздаст контейнер Postgres.
+# journald вместо json-file: json-file удаляется вместе с контейнером при
+# каждом деплое, journald переживает пересоздание и ротируется системой.
+# История: journalctl CONTAINER_NAME=wishes-scheduler-1 --since yesterday
 x-journald-logging: &journald-logging
   driver: journald
   options:
