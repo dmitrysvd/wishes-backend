@@ -52,3 +52,9 @@ ignore = ["B008"]
 quote-style = "single"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.coverage.run]
+# Пути в .coverage — относительные: отчёт читается и из другого корня (бейдж
+# покрытия в CI строится в контейнере action, где репо смонтирован не в
+# /home/runner/...). С абсолютными путями coverage падает «No source for code».
+relative_files = true
