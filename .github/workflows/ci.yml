@@ -16,6 +16,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write        # ветка python-coverage-comment-action-data (бейдж)
+      pull-requests: write   # комментарий с покрытием в PR
+
     services:
       postgres:
         image: postgres:18
@@ -93,7 +97,22 @@ jobs:
         run: uv run ty check
 
       - name: Tests + coverage (100%)
+        # Отчёт также в markdown — для сводки джоба и комментария в PR ниже.
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=100
+
+      - name: Coverage in job summary
+        if: always()
+        run: uv run coverage report --format=markdown --show-missing >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Coverage comment in PR
+        # Пишет/обновляет один комментарий с покрытием и его изменением к базе;
+        # в master складывает данные бейджа в ветку python-coverage-comment-action-data.
+        if: always() && (github.event_name == 'pull_request' || github.ref == 'refs/heads/master')
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: 100
+          MINIMUM_ORANGE: 90
 
   migrations:
     runs-on: ubuntu-latest
