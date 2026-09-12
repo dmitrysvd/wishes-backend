@@ -1,7 +1,9 @@
+from collections.abc import Iterator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, Query, Request
+import httpx
+from fastapi import Depends, HTTPException, Request
 from firebase_admin.auth import (
     ExpiredIdTokenError,
     InvalidIdTokenError,
@@ -16,12 +18,12 @@ from starlette.status import (
 )
 
 from app.config import settings
-from app.constants import (
-    ACTIVITY_STATE_USER_ID,
-    DEFAULT_PAGE_LIMIT,
-    MAX_PAGE_LIMIT,
-)
+from app.constants import ACTIVITY_STATE_USER_ID, STORE_REQUEST_TIMEOUT_SECONDS
 from app.db import SessionLocal, User, Wish
+from app.helpers.browser_transport import BrowserTransport
+
+# Реэкспорт: роутеры берут параметры пагинации из dependencies, как и остальные.
+from app.helpers.pagination import PaginationParams as PaginationParams
 
 # Теги для OpenAPI документации
 AUTH_TAG = 'auth'
@@ -29,18 +31,6 @@ WISHES_TAG = 'wishes'
 USERS_TAG = 'users'
 PUBLIC_TAG = 'public'
 DEV_TAG = 'dev'
-
-
-class PaginationParams:
-    """Общие query-параметры пагинации для списочных эндпоинтов."""
-
-    def __init__(
-        self,
-        limit: Annotated[int, Query(ge=1, le=MAX_PAGE_LIMIT)] = DEFAULT_PAGE_LIMIT,
-        offset: Annotated[int, Query(ge=0)] = 0,
-    ):
-        self.limit = limit
-        self.offset = offset
 
 
 def get_db():
@@ -133,3 +123,17 @@ def get_current_user_wish(
     if wish.user != user:
         raise HTTPException(HTTP_403_FORBIDDEN)
     return wish
+
+
+def get_store_client() -> Iterator[httpx.Client]:
+    """HTTP-клиент для свежего запроса цены к магазину (фича 0011).
+
+    Зависимость, а не глобальный объект: тесты подменяют её клиентом на
+    `httpx.MockTransport` через `app.dependency_overrides` — без моков внутри
+    логики. С отпечатком обычного httpx WB отвечает 403 — см. BrowserTransport.
+    Таймаут — бюджет, обещанный контрактом (не дольше 10 с).
+    """
+    with httpx.Client(
+        transport=BrowserTransport(timeout=STORE_REQUEST_TIMEOUT_SECONDS)
+    ) as client:
+        yield client

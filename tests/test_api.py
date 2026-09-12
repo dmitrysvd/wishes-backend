@@ -1065,17 +1065,19 @@ class TestUsersExtra:
         assert response.status_code == 400
 
     def test_item_info_retry_html(self, auth_client: TestClient, mocker):
-        from app.parsers import ItemInfoParseError
+        from pydantic import HttpUrl
+
+        from app.parsers import ItemInfoParseError, ParsedItemInfo
 
         mocker.patch(
             'app.routers.users.try_parse_item_by_link',
             side_effect=[
                 ItemInfoParseError('fail'),
-                {
-                    'title': 'retry',
-                    'description': 'desc',
-                    'image_url': 'http://img.com',
-                },
+                ParsedItemInfo(
+                    title='retry',
+                    description='desc',
+                    image_url=HttpUrl('http://img.com'),
+                ),
             ],
         )
 

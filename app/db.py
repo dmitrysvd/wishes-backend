@@ -41,8 +41,12 @@ from app.constants import (
     FollowSource,
     Gender,
     PriceObservationStatus,
+    PriceRefreshOutcome,
+    PriceSource,
     Shop,
+    StoreAvailability,
 )
+from app.parsers import parse_wildberries_link
 
 # Явные имена констрейнтов вместо тех, что придумывает Postgres. Без конвенции
 # безымянные ограничения получают имя от БД, а alembic сличает их по имени —
@@ -207,6 +211,14 @@ class WishRecommendation(Base):
     wishes: Mapped[list['Wish']] = relationship(back_populates='recommendation')
 
 
+# Внутренний статус наблюдения → публичный enum наличия (контракт 0011).
+STORE_AVAILABILITY_BY_STATUS = {
+    PriceObservationStatus.ok: StoreAvailability.in_stock,
+    PriceObservationStatus.sold_out: StoreAvailability.sold_out,
+    PriceObservationStatus.gone: StoreAvailability.gone,
+}
+
+
 class Wish(Base):
     __tablename__ = 'wish'
     __table_args__ = (
@@ -250,6 +262,27 @@ class Wish(Base):
         ForeignKey('wish_recommendation.id'), nullable=True
     )
 
+    # Откуда `price` (фича 0011). При `shop` цену пишут превью/сохранение/кнопка
+    # (свежий запрос) и суточный обход; при `manual` магазин её не трогает.
+    price_source: Mapped[PriceSource] = mapped_column(
+        Enum(PriceSource), nullable=False, default=PriceSource.manual
+    )
+    # `price` — минимум среди размеров в наличии (ссылка без `?size=`): UI рисует
+    # «от». Меняется только вместе с `price`; у ручной цены всегда False.
+    price_is_minimum: Mapped[bool] = mapped_column(
+        Boolean(), nullable=False, default=False
+    )
+    # Последнее наблюдение магазина, денормализованное на хотелку, чтобы списки
+    # не ходили в историю наблюдений за каждой строкой. NULL — магазин по этой
+    # ссылке ещё ни разу не отвечал. Обновляется только у `shop`-хотелок; у
+    # `manual` замирает и наружу не отдаётся (см. `store_observation`).
+    store_availability: Mapped[PriceObservationStatus | None] = mapped_column(
+        Enum(PriceObservationStatus), nullable=True
+    )
+    store_observed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
     reserved_by: Mapped['User | None'] = relationship(
         back_populates='reserved_wishes', foreign_keys=[reserved_by_id]
@@ -264,6 +297,28 @@ class Wish(Base):
     @property
     def is_reserved(self) -> bool:
         return bool(self.reserved_by_id)
+
+    @property
+    def shop(self) -> Shop | None:
+        """Магазин по ссылке — правило «что такое WB-ссылка» живёт в парсере."""
+        if self.link and parse_wildberries_link(self.link) is not None:
+            return Shop.wildberries
+        return None
+
+    @property
+    def store_observation(self) -> dict[str, Any] | None:
+        """`StoreObservationSchema` для контракта: только у магазинной цены и
+        только если магазин уже отвечал. У `manual` магазин молчит — None."""
+        if (
+            self.price_source != PriceSource.shop
+            or self.store_availability is None
+            or self.store_observed_at is None
+        ):
+            return None
+        return {
+            'availability': STORE_AVAILABILITY_BY_STATUS[self.store_availability],
+            'observed_at': self.store_observed_at,
+        }
 
     @classmethod
     def get_active_wish_query(cls):
@@ -292,6 +347,31 @@ class PushSendingLog(Base):
     reason: Mapped[PushReason] = mapped_column(Enum(PushReason))
     # Ключ дедупа сезонной кампании вида `mar8-2026`. Для не-сезонных пушей пуст.
     campaign_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class WishPriceRefreshEvent(Base):
+    """Append-only лог нажатий «актуальная с WB» (фича 0011).
+
+    Критерий приёмки фичи — счётчик нажатий как мера того, нужен ли ручной
+    режим вообще. Считаем каждое нажатие, включая неудачные (`outcome`), чтобы
+    отличить «кнопка не нужна» от «кнопка не работает».
+    """
+
+    __tablename__ = 'wish_price_refresh_event'
+
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    wish_id: Mapped[UUID] = mapped_column(
+        ForeignKey('wish.id', ondelete='CASCADE'), nullable=False
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), nullable=False
+    )
+    outcome: Mapped[PriceRefreshOutcome] = mapped_column(
+        Enum(PriceRefreshOutcome), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class FollowEvent(Base):

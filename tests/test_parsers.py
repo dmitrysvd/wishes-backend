@@ -3,12 +3,12 @@ import pytest
 
 from app.parsers import (
     ItemInfoParseError,
+    ParsedItemInfo,
     _assert_public_url,
     _is_public_ip,
     is_absolute_url,
     try_parse_item_by_link,
 )
-from app.schemas import ItemInfoResponseSchema
 
 
 def _client(handler) -> httpx.AsyncClient:
@@ -82,7 +82,7 @@ async def test_generic_og_tags():
     </head></html>
     """
     result = await try_parse_item_by_link('https://example.com/item', html=html)
-    assert isinstance(result, ItemInfoResponseSchema)
+    assert isinstance(result, ParsedItemInfo)
     assert result.title == 'Test Title'
     assert result.description == 'Test Description'
     assert str(result.image_url) == 'https://example.com/image.png'

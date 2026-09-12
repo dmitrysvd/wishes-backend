@@ -8,8 +8,7 @@ import urllib.parse
 import httpx
 from bs4 import BeautifulSoup
 from loguru import logger
-
-from app.schemas import ItemInfoResponseSchema
+from pydantic import BaseModel, HttpUrl
 
 # Таймаут по умолчанию для исходящих запросов парсера.
 DEFAULT_TIMEOUT = 10
@@ -63,6 +62,16 @@ YA_MARKET_META_ANCHOR = 'window.__apiary.deferredMetaGenerator('
 
 class ItemInfoParseError(Exception):
     pass
+
+
+class ParsedItemInfo(BaseModel):
+    """То, что парсер вытаскивает со страницы товара. Цену с магазина к превью
+    добавляет роут отдельным свежим запросом (фича 0011); контрактная схема
+    `ParsedItemInfo` собирается там же."""
+
+    title: str
+    description: str
+    image_url: HttpUrl
 
 
 def parse_wildberries_link(link: str) -> tuple[int, int | None] | None:
@@ -139,7 +148,7 @@ def _extract_og_attrs(meta_items: list[dict]) -> dict[str, str]:
     return attrs
 
 
-async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
+async def _parse_ya_market_page(html: str) -> ParsedItemInfo:
     idx = html.find(YA_MARKET_META_ANCHOR)
     if idx == -1:
         logger.debug(
@@ -164,7 +173,7 @@ async def _parse_ya_market_page(html: str) -> ItemInfoResponseSchema:
     image_parsed = urllib.parse.urlparse(attrs.get('og:image', ''))
     if image_parsed.scheme not in ('http', 'https') or not image_parsed.netloc:
         raise ItemInfoParseError('Не найдена картинка')
-    return ItemInfoResponseSchema(
+    return ParsedItemInfo(
         title=attrs['og:title'],
         image_url=attrs['og:image'],  # type: ignore
         description=attrs.get('og:description', ''),
@@ -189,9 +198,7 @@ async def _request_ya_market_html(link: str, client: httpx.AsyncClient) -> str:
     return response.text
 
 
-async def _parse_wildberries(
-    item_id: int, client: httpx.AsyncClient
-) -> ItemInfoResponseSchema:
+async def _parse_wildberries(item_id: int, client: httpx.AsyncClient) -> ParsedItemInfo:
     vol = item_id // 100000
     part = item_id // 1000
     start = 1
@@ -209,7 +216,7 @@ async def _parse_wildberries(
             if isinstance(response, BaseException) or not response.is_success:
                 continue
             api_data = response.json()
-            return ItemInfoResponseSchema(
+            return ParsedItemInfo(
                 title=api_data['imt_name'],
                 description=api_data.get('description', ''),
                 image_url=f'{base_url}/images/big/1.webp',  # type: ignore
@@ -221,7 +228,7 @@ async def _parse_wildberries(
     raise ItemInfoParseError('Карточка товара Wildberries не найдена')
 
 
-def _parse_og_tags(link: str, html: str) -> ItemInfoResponseSchema:
+def _parse_og_tags(link: str, html: str) -> ParsedItemInfo:
     soup = BeautifulSoup(html, features='html.parser')
     title_tag = soup.select_one('meta[property="og:title"]')
     image_tag = soup.select_one('meta[property="og:image"]')
@@ -250,7 +257,7 @@ def _parse_og_tags(link: str, html: str) -> ItemInfoResponseSchema:
                 '',
             )
         )
-    return ItemInfoResponseSchema(
+    return ParsedItemInfo(
         title=title,
         description=description,
         image_url=image_url,  # type: ignore
@@ -268,7 +275,7 @@ async def try_parse_item_by_link(
     link: str,
     html: str | None = None,
     client: httpx.AsyncClient | None = None,
-) -> ItemInfoResponseSchema:
+) -> ParsedItemInfo:
     logger.info(
         'Парсинг превью {link}, есть html: {has_html}', link=link, has_html=bool(html)
     )
