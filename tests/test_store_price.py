@@ -25,18 +25,17 @@ from app.constants import (
 )
 from app.cron_scripts.price_watch import crawl
 from app.db import User, Wish, WishPriceObservation, WishPriceRefreshEvent
-from app.dependencies import get_current_user, get_db
+from app.dependencies import get_current_user, get_db, get_store_client
 from app.helpers.price_watch import (
     ProductObservation,
     apply_observations,
     fetch_fresh_observation,
-    get_store_client,
     observe_product,
     sync_wish_with_store,
 )
-from app.helpers.store_price import attach_store_price
+from app.helpers.store_price import build_item_info
 from app.main import app
-from app.schemas import ItemInfoResponseSchema
+from app.parsers import ParsedItemInfo
 from app.utils import utc_now
 
 FIXTURE = Path(__file__).parent / 'fixtures' / 'wb_cards_response.json'
@@ -171,26 +170,22 @@ def test_crawl_updates_shop_wishes(db, user, mocker):
 # --- превью ------------------------------------------------------------------
 
 
-def test_attach_store_price_variants():
-    preview = ItemInfoResponseSchema(
-        title='t',
-        description='',
-        image_url=HttpUrl('https://img.test/1.jpg'),
-        shop=None,
-        price=None,
-        price_is_minimum=False,
+def test_build_item_info_variants():
+    parsed = ParsedItemInfo(
+        title='t', description='', image_url=HttpUrl('https://img.test/1.jpg')
     )
     client = store_client(fixture_handler)
-    assert attach_store_price(preview, OZON_LINK, client) == preview
-    with_price = attach_store_price(preview, WB_NO_SIZE_LINK, client)
+    ozon = build_item_info(parsed, OZON_LINK, client)
+    assert (ozon.title, ozon.shop, ozon.price) == ('t', None, None)
+    with_price = build_item_info(parsed, WB_NO_SIZE_LINK, client)
     assert (with_price.shop, with_price.price, with_price.price_is_minimum) == (
         Shop.wildberries,
         550,
         True,
     )
-    sold_out = attach_store_price(preview, WB_SOLD_OUT_LINK, client)
+    sold_out = build_item_info(parsed, WB_SOLD_OUT_LINK, client)
     assert (sold_out.shop, sold_out.price) == (Shop.wildberries, None)
-    failed = attach_store_price(preview, WB_SIZE_LINK, store_client(failing_handler))
+    failed = build_item_info(parsed, WB_SIZE_LINK, store_client(failing_handler))
     assert (failed.shop, failed.price) == (Shop.wildberries, None)
 
 
@@ -361,13 +356,10 @@ def test_refresh_store_down_502_changes_nothing(api, db, user, store):
 def test_item_info_from_page_adds_price(api, mocker):
     mocker.patch(
         'app.routers.users.try_parse_item_by_link',
-        return_value=ItemInfoResponseSchema(
+        return_value=ParsedItemInfo(
             title='Кроссовки',
             description='',
             image_url=HttpUrl('https://img.test/1.jpg'),
-            shop=None,
-            price=None,
-            price_is_minimum=False,
         ),
     )
     data = api.post('/item_info_from_page', json={'link': WB_NO_SIZE_LINK}).json()

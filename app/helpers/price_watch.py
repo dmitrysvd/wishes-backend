@@ -27,14 +27,8 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.constants import (
-    STORE_REQUEST_TIMEOUT_SECONDS,
-    PriceObservationStatus,
-    PriceSource,
-    Shop,
-)
+from app.constants import PriceObservationStatus, PriceSource, Shop
 from app.db import Wish, WishPriceObservation
-from app.helpers.browser_transport import BrowserTransport
 from app.parsers import parse_wildberries_link
 
 # Публичный батчевый эндпоинт карточек WB. `dest` — регион (влияет на наличие и
@@ -294,17 +288,3 @@ def save_observations(db: Session, observations: Sequence[dict]) -> int:
     inserted = len(result.all())
     db.commit()
     return inserted
-
-
-def get_store_client() -> Iterator[httpx.Client]:
-    """FastAPI-зависимость: клиент для свежего запроса цены к магазину (0011).
-
-    Зависимость, а не глобальный объект: тесты подменяют её клиентом на
-    `httpx.MockTransport` через `app.dependency_overrides` — без моков внутри
-    логики. С отпечатком обычного httpx WB отвечает 403 — см. BrowserTransport.
-    Таймаут — бюджет, обещанный контрактом (не дольше 10 с).
-    """
-    with httpx.Client(
-        transport=BrowserTransport(timeout=STORE_REQUEST_TIMEOUT_SECONDS)
-    ) as client:
-        yield client

@@ -20,11 +20,16 @@ from starlette.status import (
 from app.config import settings
 from app.constants import PriceRefreshOutcome, PriceSource
 from app.db import User, Wish, WishPriceRefreshEvent, WishRecommendation
-from app.dependencies import WISHES_TAG, get_current_user, get_current_user_wish, get_db
+from app.dependencies import (
+    WISHES_TAG,
+    get_current_user,
+    get_current_user_wish,
+    get_db,
+    get_store_client,
+)
 from app.helpers import IMAGE_UPLOAD_RESPONSES, read_uploaded_image
 from app.helpers.price_watch import (
     fetch_fresh_observation,
-    get_store_client,
     record_fresh_observation,
 )
 from app.helpers.store_price import (

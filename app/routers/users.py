@@ -17,7 +17,7 @@ from starlette.status import HTTP_404_NOT_FOUND
 from app.config import settings
 from app.constants import FollowAction
 from app.db import FollowEvent, User
-from app.dependencies import USERS_TAG, get_current_user, get_db
+from app.dependencies import USERS_TAG, get_current_user, get_db, get_store_client
 from app.firebase import delete_firebase_user
 from app.helpers import (
     IMAGE_UPLOAD_RESPONSES,
@@ -28,8 +28,7 @@ from app.helpers import (
     save_profile_image_bytes,
     send_push_about_new_follower,
 )
-from app.helpers.price_watch import get_store_client
-from app.helpers.store_price import attach_store_price
+from app.helpers.store_price import build_item_info
 from app.logging import logger
 from app.parsers import ItemInfoParseError, try_parse_item_by_link
 from app.schemas import (
@@ -367,7 +366,7 @@ async def get_item_info_from_page(
     if result is None:
         raise HTTPException(detail='Ошибка получения данных', status_code=400)
     return await run_in_threadpool(
-        attach_store_price, result, str(request_data.link), store_client
+        build_item_info, result, str(request_data.link), store_client
     )
 
 

@@ -1,10 +1,27 @@
-from typing import Any
+from typing import Annotated, Any
 
+from fastapi import Query
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.dependencies import PaginationParams
+from app.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
 from app.schemas import ItemT, PageSchema
+
+
+class PaginationParams:
+    """Общие query-параметры пагинации для списочных эндпоинтов.
+
+    Живёт рядом с `paginate`, а не в `app.dependencies`: иначе helpers зависят от
+    dependencies, а dependencies — от helpers (цикл импортов).
+    """
+
+    def __init__(
+        self,
+        limit: Annotated[int, Query(ge=1, le=MAX_PAGE_LIMIT)] = DEFAULT_PAGE_LIMIT,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ):
+        self.limit = limit
+        self.offset = offset
 
 
 def paginate(

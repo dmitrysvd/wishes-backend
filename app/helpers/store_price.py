@@ -20,7 +20,7 @@ from app.helpers.price_watch import (
     record_fresh_observation,
 )
 from app.logging import logger
-from app.parsers import parse_wildberries_link
+from app.parsers import ParsedItemInfo, parse_wildberries_link
 from app.schemas import ItemInfoResponseSchema
 
 
@@ -75,31 +75,33 @@ def make_store_priced(
     record_fresh_observation(db, wish, observation, observed_at)
 
 
-def attach_store_price(
-    preview: ItemInfoResponseSchema, link: str, client: httpx.Client
+def build_item_info(
+    parsed: ParsedItemInfo, link: str, client: httpx.Client
 ) -> ItemInfoResponseSchema:
-    """Дополнить превью магазином и свежей ценой (фича 0011).
+    """Превью для контракта: разобранная страница + магазин и свежая цена (0011).
 
-    Неподдерживаемый магазин — превью как есть (`shop = null`). WB: цена только
-    когда товар в наличии; распродано/исчез/не ответил — `price = null`, превью
-    всё равно успешно.
+    Неподдерживаемый магазин — `shop = null`, цены нет. WB: цена только когда
+    товар в наличии; распродано/исчез/не ответил — `price = null`, превью всё
+    равно успешно.
     """
-    if parse_wildberries_link(link) is None:
-        return preview
-    observation = fetch_observation_quietly(link, client)
+    shop = None
     price = None
     is_minimum = False
-    if (
-        observation is not None
-        and observation.status == PriceObservationStatus.ok
-        and observation.product_price is not None
-    ):
-        price = int(observation.product_price)
-        is_minimum = observation.is_minimum
-    return preview.model_copy(
-        update={
-            'shop': Shop.wildberries,
-            'price': price,
-            'price_is_minimum': is_minimum,
-        }
+    if parse_wildberries_link(link) is not None:
+        shop = Shop.wildberries
+        observation = fetch_observation_quietly(link, client)
+        if (
+            observation is not None
+            and observation.status == PriceObservationStatus.ok
+            and observation.product_price is not None
+        ):
+            price = int(observation.product_price)
+            is_minimum = observation.is_minimum
+    return ItemInfoResponseSchema(
+        title=parsed.title,
+        description=parsed.description,
+        image_url=parsed.image_url,
+        shop=shop,
+        price=price,
+        price_is_minimum=is_minimum,
     )
