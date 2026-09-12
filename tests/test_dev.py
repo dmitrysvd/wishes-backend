@@ -146,3 +146,31 @@ def test_build_test_token_format(db: Session, mocker):
     mocker.patch('app.config.settings.TEST_AUTH_SECRET', 'dev-secret')
     user = get_or_create_test_user(db, TestPersona.empty)
     assert build_test_token(user) == f'dev-secret:{user.id}'
+
+
+def test_test_token_personas_are_distinct_users(client, _secret):
+    # Баг с прода (0009): rich и empty отдавали один токен, а после запроса
+    # empty любой токен резолвился в Эмпти. Токены персон — разные юзеры, и
+    # каждый резолвится в своего, в любом порядке запросов.
+    rich = client.post(
+        '/dev/test_token', json={'secret': 'dev-secret', 'persona': 'rich'}
+    ).json()
+    empty = client.post(
+        '/dev/test_token', json={'secret': 'dev-secret', 'persona': 'empty'}
+    ).json()
+    rich_again = client.post(
+        '/dev/test_token', json={'secret': 'dev-secret', 'persona': 'rich'}
+    ).json()
+
+    assert rich['user_id'] != empty['user_id']
+    assert rich['token'] != empty['token']
+    assert rich_again == rich
+
+    def me(token: str) -> str:
+        response = client.get('/users/me', headers={'Authorization': token})
+        assert response.is_success, response.text
+        return response.json()['display_name']
+
+    assert me(rich['token']) == 'Рич Тестов'
+    assert me(empty['token']) == 'Эмпти Тестов'
+    assert me(rich['token']) == 'Рич Тестов'
