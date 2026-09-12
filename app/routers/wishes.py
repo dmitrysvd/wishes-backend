@@ -29,6 +29,7 @@ from app.dependencies import (
 )
 from app.helpers import IMAGE_UPLOAD_RESPONSES, read_uploaded_image
 from app.helpers.price_watch import (
+    EmptyStoreResponseError,
     fetch_fresh_observation,
     record_fresh_observation,
 )
@@ -71,9 +72,11 @@ _STORE_PRICE_ON_CREATE = (
     '(`price_source = shop`): бэк делает свежий запрос к магазину и пишет наблюдение '
     '(`store_observation`); `price` из тела игнорируется. Результат запроса: товар в '
     'наличии → `price` = текущая цена со скидкой (`price_is_minimum` = true, если это '
-    'минимум среди размеров при ссылке без `?size=`); распродан/исчез → '
-    '`store_observation.availability` = `sold_out`/`gone`, `price = null` (цены не '
-    'было никогда); магазин не ответил за 10 с → `store_observation = null`, а '
+    'минимум среди размеров при ссылке без `?size=`); распродан → '
+    '`store_observation.availability` = `sold_out`, `price = null` (цены не было '
+    'никогда); магазин не ответил за 10 с или ответил без карточки (одиночный '
+    'запрос «исчез» не ставит — `gone` только из обхода) → `store_observation = '
+    'null`, а '
     '`price` = число из тела как фолбэк (это цифра превью секунды назад; '
     '`price_is_minimum = false`), null в теле → `price = null`. Всё это тихо, '
     'сохранение не падает. '
@@ -270,9 +273,10 @@ def update_wish(
     ссылка не менялась, ничего ниже не происходит):
     - новая ссылка на поддерживаемый магазин и `price_edited = false` → старая цена
       относилась к другому товару: `price_source = shop`, свежий запрос к магазину;
-      в наличии → `price` = текущая; распродан/исчез/магазин недоступен →
-      `price = null` (до первого наблюдения с ценой), `store_observation` — по
-      результату (`sold_out`/`gone` или null при недоступности);
+      в наличии → `price` = текущая; распродан / магазин недоступен или ответил
+      без карточки → `price = null` (до первого наблюдения с ценой),
+      `store_observation` — `sold_out` или null при сбое (`gone` одиночный запрос
+      не ставит — только обход);
     - новая ссылка на поддерживаемый магазин и `price_edited = true` → ручная
       побеждает: `price_source = manual`, `price` из тела;
     - новая ссылка на неподдерживаемый магазин или `link = null` →
@@ -324,10 +328,12 @@ def update_wish(
                 'Магазин ответил: `price_source = shop`, `store_observation` свежее '
                 '(`observed_at` = сейчас). В наличии → `price` = текущая цена со '
                 'скидкой, `price_is_minimum` пересчитан (true — ссылка без `?size=` '
-                'и это минимум среди размеров); распродан/исчез → `availability` = '
-                '`sold_out`/`gone`, `price` и `price_is_minimum` не меняются '
-                '(последняя известная остаётся; у бывшей ручной — ручная цифра с '
-                '`price_is_minimum = false`).'
+                'и это минимум среди размеров); распродан → `availability` = '
+                '`sold_out`, `price` и `price_is_minimum` не меняются (последняя '
+                'известная остаётся; у бывшей ручной — ручная цифра с '
+                '`price_is_minimum = false`). `gone` этим запросом не ставится: '
+                'пустой ответ / нет карточки — это `502`, «товара больше нет» '
+                'появится только из суточного обхода.'
             )
         },
         **_OWNER_RESPONSES,
@@ -344,9 +350,11 @@ def update_wish(
         },
         HTTP_502_BAD_GATEWAY: {
             'description': (
-                'Магазин не ответил за 10 с или ответил мусором: цена, источник и '
-                'наблюдение НЕ изменились. Покажите «не удалось получить цену с WB», '
-                'кнопку оставьте.'
+                'Сбой магазина: не ответил за 10 с, ответил мусором или ответил без '
+                'запрошенной карточки (для одиночного запроса это неотличимо от '
+                '«исчез», поэтому не `gone`). Цена, источник и наблюдение НЕ '
+                'изменились. Покажите «не удалось получить цену с WB», кнопку '
+                'оставьте.'
             ),
             'content': {
                 'application/json': {
@@ -386,7 +394,7 @@ def refresh_store_price(
         raise HTTPException(HTTP_409_CONFLICT, 'Ссылка не на поддерживаемый магазин')
     try:
         observation = fetch_fresh_observation(wish.link or '', store_client)
-    except (httpx.HTTPError, ValidationError) as error:
+    except (httpx.HTTPError, ValidationError, EmptyStoreResponseError) as error:
         logger.warning(f'«Актуальная с WB» {wish.id}: магазин не ответил: {error!r}')
         _record_refresh(db, wish, PriceRefreshOutcome.failed)
         raise HTTPException(
@@ -473,9 +481,8 @@ def user_wishes(user_id: UUID, db: Session = Depends(get_db)):
 
     Форма та же, что у автора (`WishReadSchema`), но UI показывает только `price`
     (последняя известная, в т.ч. у распроданного) с «от» при `price_is_minimum`;
-    плашки магазина и статусы наличия не показываются — исключение: при
-    `store_observation.availability = gone` нейтральное «ссылка устарела» рядом с
-    кнопкой перехода по ссылке. Кнопки «актуальная с WB» у чужих нет.
+    плашки магазина и статусы наличия не показываются — без исключений (хотелка —
+    вещь, а не ссылка). Кнопки «актуальная с WB» у чужих нет.
     """
     user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
     if not user:
