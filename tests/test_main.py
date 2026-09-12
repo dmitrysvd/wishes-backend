@@ -1,5 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
+from loguru import logger
 
 from app.main import app
 
@@ -77,14 +78,20 @@ def test_custom_openapi():
     assert app.openapi() is openapi
 
 
-def test_internal_exception_handler_debug(mocker):
-    # При IS_DEBUG=True ошибка в трекер не отправляется
+@pytest.fixture
+def error_records():
+    records = []
+    handler_id = logger.add(lambda m: records.append(m.record), level='ERROR')
+    yield records
+    logger.remove(handler_id)
+
+
+def test_internal_exception_handler_debug(mocker, error_records):
+    # При IS_DEBUG=True ошибка не логируется как ERROR → в трекер не уходит
     mocker.patch('app.main.settings.IS_DEBUG', True)
-    mock_hawk = mocker.patch('app.main.hawk')
 
     client = TestClient(app)
 
-    # Нужен роут, который кидает исключение
     @app.get('/error-test')
     async def error_test():
         raise ValueError('test error')
@@ -92,13 +99,12 @@ def test_internal_exception_handler_debug(mocker):
     with pytest.raises(ValueError):
         client.get('/error-test')
 
-    mock_hawk.send.assert_not_called()
+    assert error_records == []
 
 
-def test_internal_exception_handler_no_debug(mocker):
-    # При IS_DEBUG=False ошибка уходит в трекер
+def test_internal_exception_handler_no_debug(mocker, error_records):
+    # При IS_DEBUG=False ошибка логируется как ERROR → уходит в трекер стоком
     mocker.patch('app.main.settings.IS_DEBUG', False)
-    mock_hawk = mocker.patch('app.main.hawk')
 
     client = TestClient(app)
 
@@ -109,20 +115,5 @@ def test_internal_exception_handler_no_debug(mocker):
     with pytest.raises(ValueError):
         client.get('/error-test-2')
 
-    mock_hawk.send.assert_called_once()
-
-
-def test_internal_exception_handler_hawk_failure(mocker):
-    # Сбой трекера не должен ломать обработку: исходное исключение долетает
-    mocker.patch('app.main.settings.IS_DEBUG', False)
-    mock_hawk = mocker.patch('app.main.hawk')
-    mock_hawk.send.side_effect = RuntimeError('hawk down')
-
-    client = TestClient(app)
-
-    @app.get('/error-test-3')
-    async def error_test_3():
-        raise ValueError('test error')
-
-    with pytest.raises(ValueError):
-        client.get('/error-test-3')
+    (record,) = error_records
+    assert isinstance(record['exception'].value, ValueError)
