@@ -14,6 +14,7 @@ import httpx
 
 from app.constants import PRICE_WATCH_BATCH_PAUSE_SECONDS, PRICE_WATCH_BATCH_SIZE
 from app.db import SessionLocal
+from app.helpers.browser_transport import BrowserTransport
 from app.helpers.price_watch import (
     batched,
     build_observations,
@@ -66,7 +67,8 @@ def crawl(
 
 
 def main() -> None:
-    with httpx.Client(timeout=WB_REQUEST_TIMEOUT) as client:
+    # С отпечатком обычного httpx WB отвечает 403 на всё — см. BrowserTransport.
+    with httpx.Client(transport=BrowserTransport(timeout=WB_REQUEST_TIMEOUT)) as client:
         crawl(client)
 
 
