@@ -235,14 +235,27 @@ def apply_observations(
     return len(wishes)
 
 
+class EmptyStoreResponseError(Exception):
+    """Магазин ответил 200, но без запрошенной карточки.
+
+    Для одиночного свежего запроса это неотличимо от «артикул исчез», а WB
+    временами отдаёт пустой `products` на живой товар (прод, 2026-09-12:
+    превью без цены при in-stock артикуле, через минуты — цена есть). Считать
+    такое «исчез» нельзя: хотелка получила бы «товара больше нет» до ночного
+    обхода. Поэтому — сбой магазина (тихо/`502`), а «исчез» ставит только обход,
+    где отсутствие в батче — надёжный сигнал.
+    """
+
+
 def fetch_fresh_observation(
     link: str, client: httpx.Client
 ) -> ProductObservation | None:
     """Свежий запрос к магазину по одной ссылке (фича 0011).
 
     None — ссылка не на поддерживаемый магазин (спрашивать нечего). Сетевые
-    ошибки и чужой формат ответа идут наверх (`httpx.HTTPError`,
-    `pydantic.ValidationError`) — вызывающий решает, тихо это или `502`.
+    ошибки, чужой формат и пустой ответ идут наверх (`httpx.HTTPError`,
+    `pydantic.ValidationError`, `EmptyStoreResponseError`) — вызывающий решает,
+    тихо это или `502`.
     """
     parsed = parse_wildberries_link(link)
     if parsed is None:
@@ -250,7 +263,9 @@ def fetch_fresh_observation(
     sku, size_option_id = parsed
     response = fetch_wb_cards([sku], client)
     products = {product.id: product for product in response.products}
-    return observe_product(size_option_id, products.get(sku))
+    if sku not in products:
+        raise EmptyStoreResponseError(f'карточки {sku} нет в ответе магазина')
+    return observe_product(size_option_id, products[sku])
 
 
 def record_fresh_observation(

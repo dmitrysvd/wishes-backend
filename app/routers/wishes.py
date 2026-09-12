@@ -29,6 +29,7 @@ from app.dependencies import (
 )
 from app.helpers import IMAGE_UPLOAD_RESPONSES, read_uploaded_image
 from app.helpers.price_watch import (
+    EmptyStoreResponseError,
     fetch_fresh_observation,
     record_fresh_observation,
 )
@@ -386,7 +387,7 @@ def refresh_store_price(
         raise HTTPException(HTTP_409_CONFLICT, 'Ссылка не на поддерживаемый магазин')
     try:
         observation = fetch_fresh_observation(wish.link or '', store_client)
-    except (httpx.HTTPError, ValidationError) as error:
+    except (httpx.HTTPError, ValidationError, EmptyStoreResponseError) as error:
         logger.warning(f'«Актуальная с WB» {wish.id}: магазин не ответил: {error!r}')
         _record_refresh(db, wish, PriceRefreshOutcome.failed)
         raise HTTPException(

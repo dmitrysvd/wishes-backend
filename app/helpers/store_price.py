@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.constants import PriceObservationStatus, PriceSource, Shop
 from app.db import Wish
 from app.helpers.price_watch import (
+    EmptyStoreResponseError,
     ProductObservation,
     fetch_fresh_observation,
     record_fresh_observation,
@@ -30,10 +31,14 @@ def fetch_observation_quietly(
     """Свежий запрос к магазину, сбои — тихо (`None`): превью и сохранение не
     должны падать из-за магазина, цену принесёт обход."""
     try:
-        return fetch_fresh_observation(link, client)
-    except (httpx.HTTPError, ValidationError) as error:
+        observation = fetch_fresh_observation(link, client)
+    except (httpx.HTTPError, ValidationError, EmptyStoreResponseError) as error:
         logger.warning(f'Магазин не ответил на свежий запрос цены {link}: {error!r}')
         return None
+    if observation is not None and observation.status != PriceObservationStatus.ok:
+        # Не сбой, но цены нет — пусть по логу будет видно, почему.
+        logger.info(f'Свежий запрос цены {link}: {observation.status.value}')
+    return observation
 
 
 def set_manual_price(wish: Wish, price: int | None) -> None:

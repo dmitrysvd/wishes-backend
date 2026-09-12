@@ -27,6 +27,7 @@ from app.cron_scripts.price_watch import crawl
 from app.db import User, Wish, WishPriceObservation, WishPriceRefreshEvent
 from app.dependencies import get_current_user, get_db, get_store_client
 from app.helpers.price_watch import (
+    EmptyStoreResponseError,
     ProductObservation,
     apply_observations,
     fetch_fresh_observation,
@@ -127,6 +128,21 @@ def test_observe_product_minimum_flag():
 
 def test_fetch_fresh_observation_unsupported_link():
     assert fetch_fresh_observation(OZON_LINK, store_client(fixture_handler)) is None
+
+
+def test_fetch_fresh_observation_missing_card_is_store_failure():
+    # Карточки нет в ответе: для одиночного запроса это не «исчез», а сбой —
+    # WB временами отдаёт пустой products на живой товар.
+    with pytest.raises(EmptyStoreResponseError):
+        fetch_fresh_observation(WB_GONE_LINK, store_client(fixture_handler))
+
+
+def test_refresh_missing_card_502(api, db, user):
+    wish = make_wish(db, user, link=WB_GONE_LINK, price=Decimal('100'))
+    response = api.post(f'/wishes/{wish.id}/refresh_store_price')
+    assert response.status_code == 502
+    db.refresh(wish)
+    assert wish.store_availability is None
 
 
 def test_sync_wish_keeps_price_when_not_in_stock(db, user):
