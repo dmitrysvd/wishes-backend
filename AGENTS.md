@@ -93,7 +93,3 @@
 
 ## Git
 - Push в `master` — только с согласия человека. Push в другие ветки этого не требует.
-- Worktree, созданный Claude Code, инициализируется сам (хук `WorktreeCreate` →
-  `scripts/worktree-init.sh`: симлинки `wishes-product` и `.env` на основной чекаут).
-  Worktree, созданный руками `git worktree add`, — запусти скрипт сам, иначе не
-  работают `snapshot.sh` и тесты.
