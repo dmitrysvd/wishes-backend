@@ -21,6 +21,7 @@ dependencies = [
     "hawk-python-sdk>=3.5.2",
     "psycopg2-binary>=2.9.11",
     "apscheduler>=3.11.2",
+    "curl-cffi>=0.16.3",
 ]
 
 [dependency-groups]
