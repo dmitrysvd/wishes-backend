@@ -173,3 +173,23 @@ def test_wish_from_recommendation_filter(admin_client, observed_wish):
     assert wish_link in admin_client.get(f'{url}?recommendation_id=false').text
     assert wish_link not in admin_client.get(f'{url}?recommendation_id=true').text
     assert wish_link in admin_client.get(f'{url}?recommendation_id=all').text
+
+
+def test_new_filters_apply(admin_client, observed_wish):
+    wish_link = f'/admin/wish/details/{observed_wish}'
+    wish_list = '/admin/wish/list'
+    obs_list = '/admin/wish-price-observation/list'
+
+    # Хотелка из фикстуры: не архивная, не зарезервирована, без цены.
+    assert wish_link in admin_client.get(f'{wish_list}?is_archived=false').text
+    assert wish_link not in admin_client.get(f'{wish_list}?is_archived=true').text
+    assert wish_link in admin_client.get(f'{wish_list}?reserved_by_id=false').text
+    assert wish_link not in admin_client.get(f'{wish_list}?price=true').text
+    assert wish_link in admin_client.get(f'{obs_list}?shop=wildberries').text
+
+    # Юзер из фикстуры: не тестовый, без VK и без push-токена.
+    users = admin_client.get('/admin/user/list?is_test=false&vk_id=false').text
+    assert 'Тест' in users
+    assert (
+        'Тест' not in admin_client.get('/admin/user/list?firebase_push_token=true').text
+    )

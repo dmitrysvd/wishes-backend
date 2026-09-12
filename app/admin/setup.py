@@ -4,7 +4,7 @@ from sqladmin.authentication import AuthenticationBackend
 from sqladmin.filters import BooleanFilter, StaticValuesFilter, get_column_obj
 
 from app.config import settings
-from app.constants import PriceObservationStatus
+from app.constants import PriceObservationStatus, Shop
 from app.db import (
     FollowEvent,
     User,
@@ -27,6 +27,12 @@ class IsSetFilter(BooleanFilter):
         return query
 
 
+def enum_filter(column, enum_cls, title: str) -> StaticValuesFilter:
+    return StaticValuesFilter(
+        column, [(e.value, e.value) for e in enum_cls], title=title
+    )
+
+
 class UserAdmin(ModelView, model=User):
     column_list = [User.id, User.display_name, User.registered_at]
     icon = 'fa-solid fa-user'
@@ -34,6 +40,11 @@ class UserAdmin(ModelView, model=User):
     column_default_sort = ('registered_at', True)
     column_details_exclude_list = [User.vk_access_token, User.firebase_push_token]
     form_excluded_columns = [User.vk_access_token, User.firebase_push_token]
+    column_filters = [
+        BooleanFilter(User.is_test, title='Test user'),
+        IsSetFilter(User.vk_id, title='Via VK'),
+        IsSetFilter(User.firebase_push_token, title='Has push token'),
+    ]
     can_export = False
 
 
@@ -45,6 +56,9 @@ class WishAdmin(ModelView, model=Wish):
     column_default_sort = ('created_at', True)
     column_filters = [
         IsSetFilter(Wish.recommendation_id, title='From recommendation'),
+        BooleanFilter(Wish.is_archived, title='Archived'),
+        IsSetFilter(Wish.reserved_by_id, title='Reserved'),
+        IsSetFilter(Wish.price, title='Has price'),
     ]
     can_export = False
 
@@ -123,11 +137,8 @@ class WishPriceObservationAdmin(ModelView, model=WishPriceObservation):
     column_searchable_list = [WishPriceObservation.sku, WishPriceObservation.wish_id]
     column_default_sort = ('observed_date', True)
     column_filters = [
-        StaticValuesFilter(
-            WishPriceObservation.status,
-            [(s.value, s.value) for s in PriceObservationStatus],
-            title='Status',
-        ),
+        enum_filter(WishPriceObservation.status, PriceObservationStatus, 'Status'),
+        enum_filter(WishPriceObservation.shop, Shop, 'Shop'),
     ]
     can_export = False
 
