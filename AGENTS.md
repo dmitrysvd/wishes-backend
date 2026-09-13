@@ -76,8 +76,15 @@
   каждом поле (`Field(description=...)`) и на **каждом** коде ответа (когда он возникает);
   `examples` на успех/ошибки/пусто/край; все `4xx` в `responses={...}` (assert-like `5xx` —
   вне контракта, фронт фолбэчит генериком); полные `enum`;
-  `required` / `nullable` / опущено с явной семантикой; сайд-эффекты и воркфлоу — в
-  `description` / `x-*`.
+  `required` / `nullable` / опущено с явной семантикой; HTTP-сайд-эффекты — в `description`.
+- **Воркфлоу и payload других каналов — структурно в `x-*`**, не прозой (PROTOCOL.md §7):
+  `openapi_extra={'x-workflow': [...правила строками...], 'x-push-payload': {...JSON-пример
+  `data` + `notification`, тексты...}}` на операции; `description` — только про саму ручку
+  плюс строка-указатель на `x-*`.
+- **Тесты формы — на кандидат-стадии** (422/401/форма ошибок/публичность), они остаются
+  после реализации; обработчики — `raise HTTPException(501)` до `agreed`, один тест на роутер
+  проверяет 501 и заменяется при реализации. Так pre-commit (cov=100%) проходит без
+  выбрасываемой работы.
 - **Кандидат-снапшот** (до аудита): `.claude/skills/snapshot-contract/snapshot.sh --candidate
   <NNNN-slug>` → `wishes-product/features/<фича>/openapi.candidate.json`; корневой
   `openapi.snapshot.json` не трогай — он замороженный контракт. Обнови `endpoints` в
