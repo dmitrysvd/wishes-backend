@@ -193,3 +193,11 @@ def test_new_filters_apply(admin_client, observed_wish):
     assert (
         'Тест' not in admin_client.get('/admin/user/list?firebase_push_token=true').text
     )
+
+
+def test_wish_edit_page_renders(admin_client, observed_wish):
+    # Регресс: sqladmin 0.27 + wtforms 3.2.2 — чекбокс-виджет падал на рендере
+    # формы редактирования (AttributeError: validation_attrs).
+    response = admin_client.get(f'/admin/wish/edit/{observed_wish}')
+    assert response.status_code == 200
+    assert 'type="checkbox"' in response.text

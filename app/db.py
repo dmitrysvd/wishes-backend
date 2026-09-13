@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Column,
@@ -482,9 +483,9 @@ class WishPriceObservation(Base):
     )
     observed_date: Mapped[date] = mapped_column(Date(), primary_key=True)
     shop: Mapped[Shop] = mapped_column(Enum(Shop), nullable=False)
-    sku: Mapped[int] = mapped_column(Integer(), nullable=False)
+    sku: Mapped[int] = mapped_column(BigInteger(), nullable=False)
     # Размер из `?size=` ссылки; NULL — размер в ссылке не указан.
-    size_option_id: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    size_option_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     status: Mapped[PriceObservationStatus] = mapped_column(
         Enum(PriceObservationStatus), nullable=False
     )

@@ -77,6 +77,15 @@ wheels = [
 ]
 
 [[package]]
+name = "babel"
+version = "2.18.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/b2/51899539b6ceeeb420d40ed3cd4b7a40519404f9baf3d4ac99dc413a834b/babel-2.18.0.tar.gz", hash = "sha256:b80b99a14bd085fcacfa15c9165f651fbb3406e66cc603abf11c5750937c992d", size = 9959554, upload-time = "2026-02-01T12:30:56.078Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/77/f5/21d2de20e8b8b0408f0681956ca2c69f1320a3848ac50e6e7f39c6159675/babel-2.18.0-py3-none-any.whl", hash = "sha256:e2b422b277c2b9a9630c1d7903c2a00d0830c409c59ac8cae9081c92f1aeba35", size = 10196845, upload-time = "2026-02-01T12:30:53.445Z" },
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2009,7 +2018,7 @@ wheels = [
 
 [[package]]
 name = "sqladmin"
-version = "0.27.2"
+version = "0.31.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
@@ -2018,13 +2027,14 @@ dependencies = [
     { name = "starlette" },
     { name = "wtforms" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a7/f5/68e3e1ad93a3c3258b81f9188790e1be4c9ff378f5eef74c8fc2ea5c3c82/sqladmin-0.27.2.tar.gz", hash = "sha256:43d77311a073bc8d39111486ef7ca211564fecd7db5018d6c344505611798858", size = 1030141, upload-time = "2026-06-08T11:17:55.606Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/74/277739921c1f8d44a9a40fda6efd18046b5f277c4ba544e36c324bfc9ca1/sqladmin-0.31.1.tar.gz", hash = "sha256:27f39dd851645ac3f059cf98e91372898e485c8c63a9e60eb287af2dcc571e3f", size = 1012836, upload-time = "2026-09-01T06:53:12.786Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/9c/b6abad980b558cb47a10834c7fcddafee27bec25f17daade823ece0da921/sqladmin-0.27.2-py3-none-any.whl", hash = "sha256:22866b38b7effa509ea488f397e16ed0e011e390f625527e1b253be6abba093f", size = 1045962, upload-time = "2026-06-08T11:17:57.115Z" },
+    { url = "https://files.pythonhosted.org/packages/13/c7/b0e1edf56b637117527891ec5cbed0ca27b32893ed872f9913d8d9ceb9fb/sqladmin-0.31.1-py3-none-any.whl", hash = "sha256:1b74d40d0585268d71bd7653e9d99442bbc3e6e3112a670bd53e29d225be7659", size = 1045322, upload-time = "2026-09-01T06:53:11.474Z" },
 ]
 
 [package.optional-dependencies]
 full = [
+    { name = "babel" },
     { name = "itsdangerous" },
 ]
 

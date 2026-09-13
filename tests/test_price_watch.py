@@ -216,3 +216,17 @@ def test_script_main_execution(mocker):
     # не пойдёт ни в сеть, ни в БД.
     mocker.patch('app.helpers.price_watch.select_watch_targets', return_value=[])
     runpy.run_path(os.path.abspath(price_watch.__file__), run_name='__main__')
+
+
+def test_save_observations_ids_beyond_int32(db, user, wb_response):
+    # WB-счётчики уже перевалили за int32: optionId 2 220 626 238 на проде валил
+    # вставку с NumericValueOutOfRange. Колонки — BIGINT.
+    wish = make_wish(
+        db, user, 'https://www.wildberries.ru/catalog/100/detail.aspx?size=1001'
+    )
+    rows = build_observations([WatchTarget(wish.id, 100, 1999)], wb_response, TODAY)
+    rows[0]['sku'] = 3_000_000_000
+    rows[0]['size_option_id'] = 2_220_626_238
+    assert save_observations(db, rows) == 1
+    saved = db.scalars(select(WishPriceObservation)).one()
+    assert (saved.sku, saved.size_option_id) == (3_000_000_000, 2_220_626_238)
