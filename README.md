@@ -34,7 +34,7 @@
 | app/parsers.py                        |      143 |        0 |     100% |           |
 | app/price\_alerts.py                  |      170 |        0 |     100% |           |
 | app/routers/\_\_init\_\_.py           |        0 |        0 |     100% |           |
-| app/routers/auth.py                   |       88 |        0 |     100% |           |
+| app/routers/auth.py                   |       82 |        0 |     100% |           |
 | app/routers/birthday\_radar.py        |       83 |        0 |     100% |           |
 | app/routers/dev.py                    |       18 |        0 |     100% |           |
 | app/routers/notification\_settings.py |       32 |        0 |     100% |           |
@@ -45,11 +45,11 @@
 | app/routers/users.py                  |      120 |        0 |     100% |           |
 | app/routers/wishes.py                 |      171 |        0 |     100% |           |
 | app/scheduler.py                      |       28 |        0 |     100% |           |
-| app/schemas.py                        |      161 |        0 |     100% |           |
+| app/schemas.py                        |      158 |        0 |     100% |           |
 | app/test\_auth.py                     |       78 |        0 |     100% |           |
 | app/utils.py                          |       40 |        0 |     100% |           |
 | app/vk.py                             |      115 |        0 |     100% |           |
-| **TOTAL**                             | **2627** |    **0** | **100%** |           |
+| **TOTAL**                             | **2618** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
