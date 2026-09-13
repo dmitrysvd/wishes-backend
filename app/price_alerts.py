@@ -32,6 +32,7 @@ from app.db import (
 from app.firebase import send_push
 from app.helpers.user_helpers import get_user_deep_link
 from app.logging import logger
+from app.notification_settings import disabled_user_ids
 from app.utils import utc_now
 
 UNAVAILABLE = (PriceObservationStatus.sold_out, PriceObservationStatus.gone)
@@ -228,18 +229,28 @@ def already_sent_today(db: Session, user_id: UUID, today: date) -> bool:
     )
 
 
-def send_price_alerts(today: date | None = None) -> int:
-    """Крон в полдень после суточного обхода: дайджест по складу каждому автору.
+@dataclass(frozen=True)
+class UserDigest:
+    """Что ушло бы юзеру сегодня: сработавшие хотелки и собранный текст."""
 
-    База «видел» сдвигается на цену из пуша только если FCM принял сообщение;
-    выключенная группа `prices` отсекается в `send_push` — базу не двигает и
-    события не копит. Возвращает число отправленных пушей.
+    user: User
+    alerts: list[WishAlert]
+    title: str
+    body: str
+    link: str
+    trigger: PriceAlertTrigger
+
+
+def collect_digests(today: date) -> list[UserDigest]:
+    """Чтение без побочных эффектов: кому и что ушло бы за `today`.
+
+    Общая часть крона и dry-run. Дедуп «один в сутки» — здесь (по логу);
+    выключенная группа — нет: её отсекает `send_push`, а dry-run помечает.
     """
-    today = today or utc_now().date()
-    sent_total = 0
     with SessionLocal() as db:
         users = db.scalars(select(User).where(User.firebase_push_token.isnot(None)))
         candidates = [(user, store_wishes(user)) for user in users]
+    digests: list[UserDigest] = []
     for user, wishes in candidates:
         if not wishes:
             continue
@@ -255,13 +266,28 @@ def send_price_alerts(today: date | None = None) -> int:
         if not alerts:
             continue
         title, body, link, trigger = build_message(user, alerts)
+        digests.append(UserDigest(user, alerts, title, body, link, trigger))
+    return digests
+
+
+def send_price_alerts(today: date | None = None) -> int:
+    """Крон в полдень после суточного обхода: дайджест по складу каждому автору.
+
+    База «видел» сдвигается на цену из пуша только если FCM принял сообщение;
+    выключенная группа `prices` отсекается в `send_push` — базу не двигает и
+    события не копит. Возвращает число отправленных пушей.
+    """
+    today = today or utc_now().date()
+    sent_total = 0
+    for digest in collect_digests(today):
+        user = digest.user
         outcome = send_push(
             [user],
-            title,
-            body,
+            digest.title,
+            digest.body,
             reason=PushReason.PRICE_ALERT,
-            link=link,
-            trigger=trigger,
+            link=digest.link,
+            trigger=digest.trigger,
             with_delivery_id=True,
         )
         sent_total += outcome.sent
@@ -269,7 +295,7 @@ def send_price_alerts(today: date | None = None) -> int:
             continue
         now = utc_now()
         with SessionLocal() as db:
-            for alert in alerts:
+            for alert in digest.alerts:
                 wish = db.get(Wish, alert.wish.id)
                 if wish is not None:
                     wish.alert_base_price = alert.price
@@ -277,6 +303,42 @@ def send_price_alerts(today: date | None = None) -> int:
             db.commit()
     logger.info(f'Пуши по складу: отправлено {sent_total}')
     return sent_total
+
+
+def dry_run_report(today: date | None = None) -> str:
+    """Сухой прогон: что ушло бы, без отправки, лога и сдвига базы.
+
+    Персональных данных сверх названий хотелок нет: юзер — только id. Юзеры с
+    выключенной группой показаны с пометкой — реальный крон их пропустит.
+    """
+    today = today or utc_now().date()
+    digests = collect_digests(today)
+    with SessionLocal() as db:
+        opted_out = disabled_user_ids(
+            db, (d.user.id for d in digests), PushReason.PRICE_ALERT
+        )
+    lines = [
+        f'dry-run за {today}: юзеров {len(digests)} '
+        f'(из них с выключенной группой {len(opted_out)}), '
+        f'строк {sum(len(d.alerts) for d in digests)}',
+    ]
+    by_trigger: dict[str, int] = {}
+    for digest in digests:
+        by_trigger[digest.trigger.value] = by_trigger.get(digest.trigger.value, 0) + 1
+    lines.append(
+        'по типу пуша: ' + ', '.join(f'{k}={v}' for k, v in sorted(by_trigger.items()))
+    )
+    for digest in digests:
+        flag = ' [группа выключена]' if digest.user.id in opted_out else ''
+        lines.append(f'--- user {digest.user.id}{flag} → {digest.trigger.value}')
+        for alert in digest.alerts:
+            was = rubles(alert.was_price) if alert.was_price is not None else '—'
+            lines.append(
+                f'  {alert.trigger.value:<12} {alert.wish.name!r}: '
+                f'{was} → {rubles(alert.price)}'
+            )
+        lines.append(f'  push: {digest.title} / {digest.body}')
+    return '\n'.join(lines)
 
 
 def mark_seen(wish: Wish, price: Decimal | None, at: datetime) -> None:
@@ -306,3 +368,18 @@ def register_push_open(db: Session, delivery_id: UUID) -> bool:
         log.opened_at = utc_now()
         db.commit()
     return True
+
+
+if __name__ == '__main__':  # pragma: no cover
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Пуши по складу (фича 0013)')
+    parser.add_argument(
+        '--dry-run', action='store_true', help='посчитать и напечатать, не отправлять'
+    )
+    parser.add_argument('--date', type=date.fromisoformat, default=None)
+    args = parser.parse_args()
+    if args.dry_run:
+        print(dry_run_report(args.date))
+    else:
+        send_price_alerts(args.date)

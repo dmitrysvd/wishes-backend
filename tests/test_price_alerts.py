@@ -438,3 +438,39 @@ def test_push_opened_marks_once(public, db, user, fcm):
 def test_push_opened_unknown_delivery_404(public):
     response = public.post('/push/opened', json={'delivery_id': str(uuid4())})
     assert response.status_code == 404
+
+
+# --- dry-run --------------------------------------------------------------------
+
+
+def test_dry_run_reports_without_side_effects(db, user, fcm):
+    from app.price_alerts import dry_run_report
+
+    wish = make_wish(db, user)
+    observe(db, wish, YESTERDAY, 3000)
+    observe(db, wish, TODAY, 2700)
+    silent = User(
+        display_name='Тихий',
+        firebase_uid='silent-uid',
+        firebase_push_token='token-silent',
+        registered_at=utc_now(),
+    )
+    db.add(silent)
+    db.commit()
+    other = make_wish(db, silent, sku=2)
+    observe(db, other, YESTERDAY, None, PriceObservationStatus.gone)
+    observe(db, other, TODAY, 1490)
+    set_group_enabled(db, silent, NotificationGroup.prices, False)
+
+    report = dry_run_report(TODAY)
+
+    assert 'юзеров 2 (из них с выключенной группой 1), строк 2' in report
+    assert 'availability=1, price=1' in report
+    assert "price        'Вещь 1': 3 000 ₽ → 2 700 ₽" in report
+    assert "availability 'Вещь 2': — → 1 490 ₽" in report
+    assert f'user {silent.id} [группа выключена]' in report
+    assert 'push: „Вещь 1“ подешевела / 2 700 ₽ вместо 3 000 ₽' in report
+    # Ни отправки, ни лога, ни сдвига базы.
+    assert fcm.messages == [] and logs(db) == []
+    db.refresh(wish)
+    assert wish.alert_base_price is None
