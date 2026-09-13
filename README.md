@@ -2,50 +2,52 @@
 
 [Full report](https://htmlpreview.github.io/?https://github.com/dmitrysvd/wishes-backend/blob/python-coverage-comment-action-data/htmlcov/index.html)
 
-| Name                               |    Stmts |     Miss |    Cover |   Missing |
-|----------------------------------- | -------: | -------: | -------: | --------: |
-| app/\_\_init\_\_.py                |        0 |        0 |     100% |           |
-| app/admin/\_\_init\_\_.py          |        0 |        0 |     100% |           |
-| app/admin/setup.py                 |       98 |        0 |     100% |           |
-| app/config.py                      |       17 |        0 |     100% |           |
-| app/constants.py                   |       46 |        0 |     100% |           |
-| app/cron\_scripts/\_\_init\_\_.py  |        0 |        0 |     100% |           |
-| app/cron\_scripts/at\_noon.py      |      104 |        0 |     100% |           |
-| app/cron\_scripts/every\_hour.py   |        9 |        0 |     100% |           |
-| app/cron\_scripts/every\_minute.py |        4 |        0 |     100% |           |
-| app/cron\_scripts/price\_watch.py  |       40 |        0 |     100% |           |
-| app/db.py                          |      176 |        0 |     100% |           |
-| app/dependencies.py                |       67 |        0 |     100% |           |
-| app/firebase.py                    |       64 |        0 |     100% |           |
-| app/hawk.py                        |       16 |        0 |     100% |           |
-| app/helpers/\_\_init\_\_.py        |        5 |        0 |     100% |           |
-| app/helpers/activity.py            |       37 |        0 |     100% |           |
-| app/helpers/browser\_transport.py  |       15 |        0 |     100% |           |
-| app/helpers/og\_helpers.py         |       33 |        0 |     100% |           |
-| app/helpers/pagination.py          |       15 |        0 |     100% |           |
-| app/helpers/price\_watch.py        |      110 |        0 |     100% |           |
-| app/helpers/store\_price.py        |       48 |        0 |     100% |           |
-| app/helpers/uploads.py             |       14 |        0 |     100% |           |
-| app/helpers/user\_helpers.py       |       90 |        0 |     100% |           |
-| app/logging.py                     |        7 |        0 |     100% |           |
-| app/main.py                        |      123 |        0 |     100% |           |
-| app/notifications.py               |       59 |        0 |     100% |           |
-| app/parsers.py                     |      143 |        0 |     100% |           |
-| app/routers/\_\_init\_\_.py        |        0 |        0 |     100% |           |
-| app/routers/auth.py                |       88 |        0 |     100% |           |
-| app/routers/birthday\_radar.py     |       83 |        0 |     100% |           |
-| app/routers/dev.py                 |       18 |        0 |     100% |           |
-| app/routers/og.py                  |       32 |        0 |     100% |           |
-| app/routers/public.py              |       24 |        0 |     100% |           |
-| app/routers/recommendations.py     |       23 |        0 |     100% |           |
-| app/routers/users.py               |      120 |        0 |     100% |           |
-| app/routers/wishes.py              |      168 |        0 |     100% |           |
-| app/scheduler.py                   |       28 |        0 |     100% |           |
-| app/schemas.py                     |      143 |        0 |     100% |           |
-| app/test\_auth.py                  |       54 |        0 |     100% |           |
-| app/utils.py                       |       40 |        0 |     100% |           |
-| app/vk.py                          |      115 |        0 |     100% |           |
-| **TOTAL**                          | **2276** |    **0** | **100%** |           |
+| Name                                  |    Stmts |     Miss |    Cover |   Missing |
+|-------------------------------------- | -------: | -------: | -------: | --------: |
+| app/\_\_init\_\_.py                   |        0 |        0 |     100% |           |
+| app/admin/\_\_init\_\_.py             |        0 |        0 |     100% |           |
+| app/admin/setup.py                    |       98 |        0 |     100% |           |
+| app/config.py                         |       17 |        0 |     100% |           |
+| app/constants.py                      |       51 |        0 |     100% |           |
+| app/cron\_scripts/\_\_init\_\_.py     |        0 |        0 |     100% |           |
+| app/cron\_scripts/at\_noon.py         |      104 |        0 |     100% |           |
+| app/cron\_scripts/every\_hour.py      |        9 |        0 |     100% |           |
+| app/cron\_scripts/every\_minute.py    |        4 |        0 |     100% |           |
+| app/cron\_scripts/price\_watch.py     |       40 |        0 |     100% |           |
+| app/db.py                             |      191 |        0 |     100% |           |
+| app/dependencies.py                   |       68 |        0 |     100% |           |
+| app/firebase.py                       |       72 |        0 |     100% |           |
+| app/hawk.py                           |       16 |        0 |     100% |           |
+| app/helpers/\_\_init\_\_.py           |        5 |        0 |     100% |           |
+| app/helpers/activity.py               |       37 |        0 |     100% |           |
+| app/helpers/browser\_transport.py     |       15 |        0 |     100% |           |
+| app/helpers/og\_helpers.py            |       33 |        0 |     100% |           |
+| app/helpers/pagination.py             |       15 |        0 |     100% |           |
+| app/helpers/price\_watch.py           |      110 |        0 |     100% |           |
+| app/helpers/store\_price.py           |       48 |        0 |     100% |           |
+| app/helpers/uploads.py                |       14 |        0 |     100% |           |
+| app/helpers/user\_helpers.py          |       90 |        0 |     100% |           |
+| app/logging.py                        |        7 |        0 |     100% |           |
+| app/main.py                           |      124 |        0 |     100% |           |
+| app/notification\_settings.py         |       28 |        0 |     100% |           |
+| app/notifications.py                  |       59 |        0 |     100% |           |
+| app/parsers.py                        |      143 |        0 |     100% |           |
+| app/routers/\_\_init\_\_.py           |        0 |        0 |     100% |           |
+| app/routers/auth.py                   |       88 |        0 |     100% |           |
+| app/routers/birthday\_radar.py        |       83 |        0 |     100% |           |
+| app/routers/dev.py                    |       18 |        0 |     100% |           |
+| app/routers/notification\_settings.py |       28 |        0 |     100% |           |
+| app/routers/og.py                     |       32 |        0 |     100% |           |
+| app/routers/public.py                 |       24 |        0 |     100% |           |
+| app/routers/recommendations.py        |       23 |        0 |     100% |           |
+| app/routers/users.py                  |      120 |        0 |     100% |           |
+| app/routers/wishes.py                 |      168 |        0 |     100% |           |
+| app/scheduler.py                      |       28 |        0 |     100% |           |
+| app/schemas.py                        |      158 |        0 |     100% |           |
+| app/test\_auth.py                     |       78 |        0 |     100% |           |
+| app/utils.py                          |       40 |        0 |     100% |           |
+| app/vk.py                             |      115 |        0 |     100% |           |
+| **TOTAL**                             | **2401** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
