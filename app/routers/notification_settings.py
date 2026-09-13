@@ -2,7 +2,11 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
-from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_501_NOT_IMPLEMENTED
+from starlette.status import (
+    HTTP_401_UNAUTHORIZED,
+    HTTP_422_UNPROCESSABLE_ENTITY,
+    HTTP_501_NOT_IMPLEMENTED,
+)
 
 from app.constants import NotificationGroup
 from app.db import User
@@ -15,6 +19,26 @@ from app.schemas import (
 )
 
 router = APIRouter(tags=[NOTIFICATION_SETTINGS_TAG])
+
+
+def parse_notification_group(raw: str) -> NotificationGroup:
+    """Путь `{group}` — строка, а не enum: старый клиент должен уметь переключить
+    группу, появившуюся после его релиза. Проверяем сами и отвечаем в форме
+    `HTTPValidationError`, как отвечал бы FastAPI на enum."""
+    try:
+        return NotificationGroup(raw)
+    except ValueError:
+        raise HTTPException(
+            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=[
+                {
+                    'loc': ['path', 'group'],
+                    'msg': 'Неизвестная группа уведомлений',
+                    'type': 'value_error',
+                }
+            ],
+        ) from None
+
 
 _AUTH_RESPONSE: dict[int | str, dict[str, Any]] = {
     HTTP_401_UNAUTHORIZED: {
@@ -105,8 +129,12 @@ _TOGGLE_DESCRIPTION = f"""\
 не меняются.
 
 Идемпотентно: абсолютное значение, повтор с тем же `enabled` — `200`, состояние
-то же. Гонка двух устройств — побеждает последний пришедший запрос
-(last-write-wins), промежуточные не ошибки. Настройка аккаунта: действует на
+то же. Гонка двух устройств — побеждает последний пришедший на бэк запрос
+(last-write-wins), промежуточные не ошибки. Быстрые переключения с одного
+устройства: ответы двух `PUT` подряд могут прийти в обратном порядке, поэтому
+тело ответа применяйте к экрану, только если после этого запроса не уходил
+более поздний `PUT`; иначе ответ игнорируйте — на экране остаётся последнее
+желаемое состояние. Версий/ETag в ответе нет. Настройка аккаунта: действует на
 всех устройствах и на вебе, переживает переустановку.
 
 Сайд-эффект: при реальной смене положения (было ≠ стало) бэк пишет событие
@@ -145,25 +173,61 @@ _TOGGLE_DESCRIPTION = f"""\
             },
         },
         **_AUTH_RESPONSE,
-        422: {
+        HTTP_422_UNPROCESSABLE_ENTITY: {
             'description': (
-                'Невалидная форма запроса: `group` вне enum `NotificationGroup` '
-                '(в т.ч. группа, которой ещё нет, например `prices` до 0013) либо '
-                '`enabled` не bool / тело пустое. Ничего не сохранено. Клиент, '
-                'рисующий только присланные бэком `key`, сюда не попадает; '
-                'показывайте тост «не удалось сохранить», тумблер верните.'
+                'Невалидная форма запроса: `group` — не группа, которую бэк сейчас '
+                'отдаёт в `GET` (в т.ч. группа, которой ещё нет, например `prices` '
+                'до 0013), либо `enabled` не bool / тело пустое. Ничего не '
+                'сохранено. Клиент, переключающий только присланные бэком `key`, '
+                'сюда не попадает; показывайте тост «не удалось сохранить», '
+                'тумблер верните.'
             ),
+            'content': {
+                'application/json': {
+                    # Тот же $ref, что FastAPI ставит на свои 422: клиент
+                    # разбирает ошибку одной формой.
+                    'schema': {'$ref': '#/components/schemas/HTTPValidationError'},
+                    'examples': {
+                        'unknown_group': {
+                            'summary': '`PUT …/prices` — такой группы бэк не отдаёт',
+                            'value': {
+                                'detail': [
+                                    {
+                                        'loc': ['path', 'group'],
+                                        'msg': 'Неизвестная группа уведомлений',
+                                        'type': 'value_error',
+                                    }
+                                ]
+                            },
+                        },
+                        'bad_body': {
+                            'summary': 'Тело без `enabled`',
+                            'value': {
+                                'detail': [
+                                    {
+                                        'loc': ['body', 'enabled'],
+                                        'msg': 'Field required',
+                                        'type': 'missing',
+                                    }
+                                ]
+                            },
+                        },
+                    },
+                }
+            },
         },
     },
 )
 def toggle_notification_group(
     group: Annotated[
-        NotificationGroup,
+        str,
         Path(
             description=(
-                '`key` группы из ответа `GET /users/me/notification_settings`. '
-                'Значение вне enum — `422`.'
-            )
+                '`key` группы из ответа `GET /users/me/notification_settings` — '
+                'клиент передаёт как есть, не сверяя со своим списком. Значение, '
+                'которого бэк сейчас не отдаёт, — `422`.'
+            ),
+            examples=['friends'],
         ),
     ],
     body: NotificationGroupToggleSchema,
@@ -171,4 +235,5 @@ def toggle_notification_group(
     db: Session = Depends(get_db),
 ) -> NotificationSettingsReadSchema:
     """Переключить одну группу — см. `_TOGGLE_DESCRIPTION`."""
+    parse_notification_group(group)
     raise HTTPException(status_code=HTTP_501_NOT_IMPLEMENTED)

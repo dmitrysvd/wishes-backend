@@ -53,6 +53,8 @@ def test_toggle_unknown_group_is_422(client: TestClient):
         '/users/me/notification_settings/prices', json={'enabled': False}
     )
     assert response.status_code == 422
+    # Форма — как у HTTPValidationError FastAPI: клиент разбирает единообразно.
+    assert response.json()['detail'][0]['loc'] == ['path', 'group']
 
 
 def test_toggle_without_body_is_422(client: TestClient):

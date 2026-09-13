@@ -15,7 +15,6 @@ from app.constants import (
     BirthdayRadarKind,
     FollowSource,
     Gender,
-    NotificationGroup,
     PriceSource,
     Shop,
     StoreAvailability,
@@ -1340,13 +1339,17 @@ class NotificationGroupSchema(BaseModel):
         json_schema_extra={'examples': [NOTIFICATION_GROUPS_EXAMPLE_ALL_ON[1]]}
     )
 
-    key: NotificationGroup = Field(
+    key: str = Field(
         description=(
             'Стабильный идентификатор группы — им клиент адресует переключение '
-            '(`PUT /users/me/notification_settings/{group}`). Полный список — '
-            'enum; клиент НЕ хардкодит состав: рисует то, что пришло, и незнакомый '
-            '`key` из будущей версии бэка показывает как обычную строку.'
-        )
+            '(`PUT /users/me/notification_settings/{group}`). Намеренно `string`, '
+            'а не закрытый enum: состав задаёт бэк, и новая группа (например '
+            '`prices` с фичей 0013) должна рисоваться и переключаться старым '
+            'клиентом без релиза — клиент НЕ валидирует `key` по списку. Сейчас '
+            'бэк отдаёт: `reservation`, `friends`, `birthdays`, `tips` — в этом '
+            'порядке.'
+        ),
+        examples=['friends'],
     )
     title: str = Field(
         description='Название группы для строки экрана, готовый текст на русском.',
