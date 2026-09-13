@@ -1300,6 +1300,9 @@ class ItemInfoResponseSchema(BaseModel):
     )
 
 
+# Ключ группы всегда ASCII: клиент подставляет его в путь PUT без кодирования.
+NOTIFICATION_GROUP_KEY_PATTERN = r'^[a-z_]+$'
+
 NOTIFICATION_GROUPS_EXAMPLE_ALL_ON = [
     {
         'key': 'reservation',
@@ -1347,12 +1350,18 @@ class NotificationGroupSchema(BaseModel):
             '`prices` с фичей 0013) должна рисоваться и переключаться старым '
             'клиентом без релиза — клиент НЕ валидирует `key` по списку. Сейчас '
             'бэк отдаёт: `reservation`, `friends`, `birthdays`, `tips` — в этом '
-            'порядке.'
+            'порядке. Всегда `^[a-z_]+$` — в путь подставляется без кодирования.'
         ),
+        pattern=NOTIFICATION_GROUP_KEY_PATTERN,
         examples=['friends'],
     )
     title: str = Field(
-        description='Название группы для строки экрана, готовый текст на русском.',
+        description=(
+            'Название группы для строки экрана, готовый текст на русском, не '
+            'длиннее 30 символов (одна строка рядом со свитчем на 320px) — за '
+            'длину отвечает бэк.'
+        ),
+        max_length=30,
         examples=['Друзья'],
     )
     subtitle: str = Field(

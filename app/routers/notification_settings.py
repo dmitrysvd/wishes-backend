@@ -12,6 +12,7 @@ from app.constants import NotificationGroup
 from app.db import User
 from app.dependencies import NOTIFICATION_SETTINGS_TAG, get_current_user, get_db
 from app.schemas import (
+    NOTIFICATION_GROUP_KEY_PATTERN,
     NOTIFICATION_GROUPS_EXAMPLE_ALL_ON,
     NOTIFICATION_GROUPS_EXAMPLE_FRIENDS_OFF,
     NotificationGroupToggleSchema,
@@ -227,6 +228,7 @@ def toggle_notification_group(
                 'клиент передаёт как есть, не сверяя со своим списком. Значение, '
                 'которого бэк сейчас не отдаёт, — `422`.'
             ),
+            pattern=NOTIFICATION_GROUP_KEY_PATTERN,
             examples=['friends'],
         ),
     ],
