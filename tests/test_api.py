@@ -592,15 +592,27 @@ class TestAuth:
         ).one()
         assert count == 0
 
-    def test_legacy_vk_mobile_auth_is_gone(self, api_client: TestClient):
+    def test_legacy_vk_mobile_auth_is_gone(self, api_client: TestClient, db: Session):
         """Легаси /auth/vk/mobile принимал access_token и email из тела клиента:
-        токен чужого VK-приложения давал вход под чужим vk_id. Ручки нет — 404,
-        не 401/422 (роут не существует, а не «не авторизован»)."""
-        response = api_client.post(
-            '/auth/vk/mobile',
-            json={'access_token': 'x', 'email': 'x@test.com', 'phone': None},
+        токен чужого VK-приложения давал вход под чужим vk_id. Осталась заглушка
+        410 с сообщением об обновлении (старые сборки показывают `detail`
+        тостом); тело не читается — любой мусор даёт тот же ответ, юзер не
+        создаётся."""
+        for body in (
+            {'access_token': 'x', 'email': 'x@test.com', 'phone': None},
+            None,
+            'not json',
+        ):
+            response = api_client.post('/auth/vk/mobile', json=body)
+            assert response.status_code == 410
+            assert response.json() == {
+                'detail': (
+                    'Обновите приложение: этот способ входа больше не поддерживается'
+                )
+            }
+        assert (
+            db.scalars(select(User).where(User.email == 'x@test.com')).first() is None
         )
-        assert response.status_code == 404
 
     def test_auth_vk_vkid_success(
         self,
