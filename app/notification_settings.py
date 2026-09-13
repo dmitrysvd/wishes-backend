@@ -34,6 +34,9 @@ GROUP_TEXTS: dict[NotificationGroup, GroupTexts] = {
     NotificationGroup.birthdays: GroupTexts(
         'Дни рождения', 'Твой день рождения и дни рождения подписок'
     ),
+    NotificationGroup.prices: GroupTexts(
+        'Цены и наличие', 'Вещь из списка подешевела или снова в наличии'
+    ),
     NotificationGroup.tips: GroupTexts(
         'Советы и подборки', 'Сезонные подборки и подсказки новичку'
     ),
@@ -47,6 +50,7 @@ PUSH_REASON_GROUP: dict[PushReason, NotificationGroup] = {
     PushReason.WISH_CREATION: NotificationGroup.friends,
     PushReason.CURRENT_USER_BIRTHDAY: NotificationGroup.birthdays,
     PushReason.FOLLOWER_BIRTHDAY: NotificationGroup.birthdays,
+    PushReason.PRICE_ALERT: NotificationGroup.prices,
     PushReason.SEASONAL: NotificationGroup.tips,
     PushReason.EMPTY_LIST_REACTIVATION: NotificationGroup.tips,
 }

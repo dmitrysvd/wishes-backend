@@ -31,6 +31,7 @@ from app.routers import (
     notification_settings,
     og,
     public,
+    pushes,
     recommendations,
     users,
     wishes,
@@ -103,6 +104,7 @@ app.include_router(wishes.router)
 app.include_router(users.router)
 app.include_router(birthday_radar.router)
 app.include_router(public.router)
+app.include_router(pushes.router)
 app.include_router(og.router)
 app.include_router(dev.router)
 

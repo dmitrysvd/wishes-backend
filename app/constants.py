@@ -170,5 +170,7 @@ class NotificationGroup(enum.Enum):
     friends = 'friends'
     # Свой ДР; ДР тех, на кого подписан (CURRENT_USER_BIRTHDAY, FOLLOWER_BIRTHDAY).
     birthdays = 'birthdays'
+    # Вещь из списка подешевела / снова в наличии по обходу WB (PRICE_ALERT).
+    prices = 'prices'
     # Сезонные подборки; подсказка «список пуст» (SEASONAL, EMPTY_LIST_REACTIVATION).
     tips = 'tips'

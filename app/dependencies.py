@@ -30,6 +30,7 @@ AUTH_TAG = 'auth'
 WISHES_TAG = 'wishes'
 USERS_TAG = 'users'
 NOTIFICATION_SETTINGS_TAG = 'notification_settings'
+PUSHES_TAG = 'pushes'
 PUBLIC_TAG = 'public'
 DEV_TAG = 'dev'
 

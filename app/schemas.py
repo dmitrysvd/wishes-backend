@@ -1323,6 +1323,12 @@ NOTIFICATION_GROUPS_EXAMPLE_ALL_ON = [
         'enabled': True,
     },
     {
+        'key': 'prices',
+        'title': 'Цены и наличие',
+        'subtitle': 'Вещь из списка подешевела или снова в наличии',
+        'enabled': True,
+    },
+    {
         'key': 'tips',
         'title': 'Советы и подборки',
         'subtitle': 'Сезонные подборки и подсказки новичку',
@@ -1349,8 +1355,9 @@ class NotificationGroupSchema(BaseModel):
             'а не закрытый enum: состав задаёт бэк, и новая группа (например '
             '`prices` с фичей 0013) должна рисоваться и переключаться старым '
             'клиентом без релиза — клиент НЕ валидирует `key` по списку. Сейчас '
-            'бэк отдаёт: `reservation`, `friends`, `birthdays`, `tips` — в этом '
-            'порядке. Всегда `^[a-z_]+$` — в путь подставляется без кодирования.'
+            'бэк отдаёт: `reservation`, `friends`, `birthdays`, `prices`, `tips` — '
+            'в этом порядке. Всегда `^[a-z_]+$` — в путь подставляется без '
+            'кодирования.'
         ),
         pattern=NOTIFICATION_GROUP_KEY_PATTERN,
         examples=['friends'],
@@ -1415,5 +1422,24 @@ class NotificationGroupToggleSchema(BaseModel):
             'Целевое положение переключателя. Абсолютное значение, не '
             '«инвертировать»: повтор того же запроса безвреден, при гонке двух '
             'устройств побеждает последний пришедший на бэк.'
+        )
+    )
+
+
+class PushOpenedSchema(BaseModel):
+    """Факт открытия приложения по пушу (фича 0013: CTR по типу триггера)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [{'delivery_id': '5c1c9a2e-7b1d-4e3a-9f0a-2d6b8c4e1a77'}]
+        }
+    )
+
+    delivery_id: UUID = Field(
+        description=(
+            'Идентификатор доставки из `data.delivery_id` пуша, по которому '
+            'открылось приложение. Клиент переносит как есть. Непредсказуемый '
+            'UUID — он же и авторизация запроса: бэк по нему знает получателя, '
+            'вид пуша, тип триггера и время отправки.'
         )
     )

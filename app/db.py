@@ -339,6 +339,9 @@ class PushReason(enum.Enum):
     RESERVATION = enum.auto()
     WISH_CREATION = enum.auto()
     NEW_FOLLOWER = enum.auto()
+    # Дайджест по складу (фича 0013): подешевело / вернулось в наличие. Один
+    # пуш на юзера в календарные сутки UTC; тип триггера — в `trigger`.
+    PRICE_ALERT = enum.auto()
 
 
 class PushSendingLog(Base):

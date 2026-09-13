@@ -113,6 +113,7 @@ def test_toggle_off_then_on(client: TestClient, db: Session, user: User):
         'reservation': True,
         'friends': False,
         'birthdays': True,
+        'prices': True,
         'tips': True,
     }
     # Повтор того же значения — безвреден и событие не пишет.
@@ -147,8 +148,9 @@ def test_toggle_on_when_never_saved_writes_no_event(client: TestClient, db: Sess
 
 
 def test_toggle_unknown_group_is_422(client: TestClient, db: Session):
-    # Группа «Цены и наличие» появится с 0013 — до неё это невалидный путь.
-    response = client.put(f'{SETTINGS_URL}/prices', json={'enabled': False})
+    # Группы, которой бэк не отдаёт, — невалидный путь (старый клиент с
+    # незнакомым key сюда не попадает: он шлёт только присланные значения).
+    response = client.put(f'{SETTINGS_URL}/digest', json={'enabled': False})
     assert response.status_code == 422
     # Форма — как у HTTPValidationError FastAPI: клиент разбирает единообразно.
     assert response.json()['detail'][0]['loc'] == ['path', 'group']
