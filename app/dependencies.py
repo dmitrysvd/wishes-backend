@@ -29,6 +29,7 @@ from app.helpers.pagination import PaginationParams as PaginationParams
 AUTH_TAG = 'auth'
 WISHES_TAG = 'wishes'
 USERS_TAG = 'users'
+NOTIFICATION_SETTINGS_TAG = 'notification_settings'
 PUBLIC_TAG = 'public'
 DEV_TAG = 'dev'
 

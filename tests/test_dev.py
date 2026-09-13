@@ -1,13 +1,14 @@
 from collections.abc import Iterator
+from datetime import date, timedelta
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.constants import TestPersona
-from app.db import User, Wish, user_following_table
+from app.constants import PriceObservationStatus, PriceSource, TestPersona
+from app.db import User, Wish, WishPriceObservation, user_following_table
 from app.main import app, get_db
 from app.test_auth import build_test_token, get_or_create_test_user
 
@@ -101,10 +102,26 @@ def test_get_or_create_rich_builds_graph(db: Session):
     assert len(user.follows) == 2
     # Один друг подписан на богатого юзера.
     assert len(user.followed_by) == 1
-    # Свои желания + один зарезервированный чужой.
+    # Свои желания (2 обычных + 4 WB во всех состояниях склада) + один
+    # зарезервированный чужой.
     own = db.scalars(select(Wish).where(Wish.user_id == user.id)).all()
-    assert len(own) == 2
+    assert len(own) == 6
     assert len(user.reserved_wishes) == 1
+    store = {w.name: w for w in own if w.link}
+    assert {
+        (w.price_source, w.store_availability, w.price_is_minimum)
+        for w in store.values()
+    } == {
+        (PriceSource.shop, PriceObservationStatus.ok, True),
+        (PriceSource.shop, PriceObservationStatus.sold_out, False),
+        (PriceSource.shop, PriceObservationStatus.gone, False),
+        (PriceSource.manual, None, False),
+    }
+    # Распродано/исчез — последняя известная цена остаётся (0011); история —
+    # по строке на сутки, без похода в магазин.
+    assert store['Рюкзак городской'].price == 2999
+    assert store['Термокружка'].price == 1490
+    assert db.scalar(select(func.count()).select_from(WishPriceObservation)) == 6
     # Все сателлиты — тоже сид-юзеры.
     assert all(friend.is_test for friend in user.follows)
 
@@ -116,10 +133,14 @@ def test_get_or_create_rich_idempotent(db: Session):
         select(func.count()).select_from(user_following_table)
     )
 
+    wishes_after_first = db.scalar(select(func.count()).select_from(Wish))
+
     second = get_or_create_test_user(db, TestPersona.rich)
 
     assert first.id == second.id
     assert db.scalar(select(func.count()).select_from(User)) == users_after_first
+    # WB-хотелки дописываются по ссылке — повтор их не дублирует.
+    assert db.scalar(select(func.count()).select_from(Wish)) == wishes_after_first
     assert (
         db.scalar(select(func.count()).select_from(user_following_table))
         == edges_after_first
@@ -146,3 +167,21 @@ def test_build_test_token_format(db: Session, mocker):
     mocker.patch('app.config.settings.TEST_AUTH_SECRET', 'dev-secret')
     user = get_or_create_test_user(db, TestPersona.empty)
     assert build_test_token(user) == f'dev-secret:{user.id}'
+
+
+def test_rich_store_observations_are_redated_on_each_call(db: Session):
+    # e2e должен видеть «вчера/сегодня» независимо от дня: старый ряд сносится.
+    user = get_or_create_test_user(db, TestPersona.rich)
+    db.execute(
+        update(WishPriceObservation).values(
+            observed_date=WishPriceObservation.observed_date - timedelta(days=10)
+        )
+    )
+    db.commit()
+
+    get_or_create_test_user(db, TestPersona.rich)
+
+    dates = set(db.scalars(select(WishPriceObservation.observed_date)))
+    assert dates == {date.today(), date.today() - timedelta(days=1)}
+    assert db.scalar(select(func.count()).select_from(WishPriceObservation)) == 6
+    assert len([w for w in user.wishes if w.link]) == 4

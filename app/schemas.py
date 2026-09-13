@@ -1298,3 +1298,122 @@ class ItemInfoResponseSchema(BaseModel):
         ),
         examples=[False],
     )
+
+
+# Ключ группы всегда ASCII: клиент подставляет его в путь PUT без кодирования.
+NOTIFICATION_GROUP_KEY_PATTERN = r'^[a-z_]+$'
+
+NOTIFICATION_GROUPS_EXAMPLE_ALL_ON = [
+    {
+        'key': 'reservation',
+        'title': 'Резерв',
+        'subtitle': 'Кто-то зарезервировал твою хотелку',
+        'enabled': True,
+    },
+    {
+        'key': 'friends',
+        'title': 'Друзья',
+        'subtitle': 'Новый подписчик, обновления списков подписок',
+        'enabled': True,
+    },
+    {
+        'key': 'birthdays',
+        'title': 'Дни рождения',
+        'subtitle': 'Твой день рождения и дни рождения подписок',
+        'enabled': True,
+    },
+    {
+        'key': 'tips',
+        'title': 'Советы и подборки',
+        'subtitle': 'Сезонные подборки и подсказки новичку',
+        'enabled': True,
+    },
+]
+NOTIFICATION_GROUPS_EXAMPLE_FRIENDS_OFF = [
+    {**group, 'enabled': group['key'] != 'friends'}
+    for group in NOTIFICATION_GROUPS_EXAMPLE_ALL_ON
+]
+
+
+class NotificationGroupSchema(BaseModel):
+    """Одна строка экрана «Уведомления»: название, подпись, переключатель (0012)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={'examples': [NOTIFICATION_GROUPS_EXAMPLE_ALL_ON[1]]}
+    )
+
+    key: str = Field(
+        description=(
+            'Стабильный идентификатор группы — им клиент адресует переключение '
+            '(`PUT /users/me/notification_settings/{group}`). Намеренно `string`, '
+            'а не закрытый enum: состав задаёт бэк, и новая группа (например '
+            '`prices` с фичей 0013) должна рисоваться и переключаться старым '
+            'клиентом без релиза — клиент НЕ валидирует `key` по списку. Сейчас '
+            'бэк отдаёт: `reservation`, `friends`, `birthdays`, `tips` — в этом '
+            'порядке. Всегда `^[a-z_]+$` — в путь подставляется без кодирования.'
+        ),
+        pattern=NOTIFICATION_GROUP_KEY_PATTERN,
+        examples=['friends'],
+    )
+    title: str = Field(
+        description=(
+            'Название группы для строки экрана, готовый текст на русском, не '
+            'длиннее 30 символов (одна строка рядом со свитчем на 320px) — за '
+            'длину отвечает бэк.'
+        ),
+        max_length=30,
+        examples=['Друзья'],
+    )
+    subtitle: str = Field(
+        description=(
+            'Подпись одной строкой — «что придёт». Готовый текст не длиннее 45 '
+            'символов (одна строка на 320px) — за длину отвечает бэк, клиент не '
+            'усекает и не собирает подпись из типов пушей.'
+        ),
+        max_length=45,
+        examples=['Новый подписчик, обновления списков подписок'],
+    )
+    enabled: bool = Field(
+        description=(
+            'Положение переключателя. `true` — бэк шлёт пуши этой группы; `false` — '
+            'не шлёт ни один пуш группы (отсечка на бэке, не «клиент прячет»). '
+            'Никогда не `null`: у юзера без сохранённой настройки — дефолт `true`.'
+        )
+    )
+
+
+class NotificationSettingsReadSchema(BaseModel):
+    """Экран «Уведомления» целиком: все группы в порядке показа (0012)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {'groups': NOTIFICATION_GROUPS_EXAMPLE_ALL_ON},
+                {'groups': NOTIFICATION_GROUPS_EXAMPLE_FRIENDS_OFF},
+            ]
+        }
+    )
+
+    groups: list[NotificationGroupSchema] = Field(
+        description=(
+            'Все группы уведомлений в порядке показа на экране, каждая ровно один '
+            'раз. Состав задаёт бэк (константа продукта, не зависит от юзера и '
+            'его push-токена); новая группа появляется тут без релиза клиента. '
+            'Пустой список бэк не отдаёт; если клиент всё же получил `[]` — '
+            'заглушка «настроек уведомлений пока нет», не ошибка.'
+        )
+    )
+
+
+class NotificationGroupToggleSchema(BaseModel):
+    """Тело переключения одной группы (0012)."""
+
+    model_config = ConfigDict(json_schema_extra={'examples': [{'enabled': False}]})
+
+    enabled: bool = Field(
+        description=(
+            'Целевое положение переключателя. Абсолютное значение, не '
+            '«инвертировать»: повтор того же запроса безвреден, при гонке двух '
+            'устройств побеждает последний пришедший на бэк.'
+        )
+    )

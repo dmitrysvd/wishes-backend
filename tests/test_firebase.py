@@ -121,7 +121,7 @@ def test_send_push_logs_self_as_reason_user_by_default(fcm, db):
     assert log.campaign_key is None
 
 
-def test_send_push_no_token(mocker):
+def test_send_push_no_token(mocker, db):
     mock_logger = mocker.patch('app.firebase.logger')
     user = User(id=uuid4(), firebase_push_token=None)
 

@@ -152,3 +152,23 @@ class PriceRefreshOutcome(enum.Enum):
     ok = 'ok'
     unsupported = 'unsupported'
     failed = 'failed'
+
+
+class NotificationGroup(enum.Enum):
+    """Группа пуш-уведомлений — единица включения/выключения на экране
+    «Уведомления» (фича 0012).
+
+    Группа = «зачем мне это» с точки зрения юзера, а не тип события на бэке.
+    Каждый `PushReason` жёстко замаплен на ровно одну группу в коде; пуш с
+    типом без группы — ошибка продукта, а не «шлём по умолчанию». Порядок
+    членов = порядок строк на экране.
+    """
+
+    # Кто-то зарезервировал твою хотелку (RESERVATION).
+    reservation = 'reservation'
+    # Новый подписчик; подписка обновила список (NEW_FOLLOWER, WISH_CREATION).
+    friends = 'friends'
+    # Свой ДР; ДР тех, на кого подписан (CURRENT_USER_BIRTHDAY, FOLLOWER_BIRTHDAY).
+    birthdays = 'birthdays'
+    # Сезонные подборки; подсказка «список пуст» (SEASONAL, EMPTY_LIST_REACTIVATION).
+    tips = 'tips'
