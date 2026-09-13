@@ -8,6 +8,7 @@ from app.constants import NotificationGroup
 from app.db import User
 from app.dependencies import NOTIFICATION_SETTINGS_TAG, get_current_user, get_db
 from app.notification_settings import GROUP_TEXTS, group_states, set_group_enabled
+from app.price_alerts import reset_seen_for_user
 from app.schemas import (
     NOTIFICATION_GROUP_KEY_PATTERN,
     NOTIFICATION_GROUPS_EXAMPLE_ALL_ON,
@@ -70,10 +71,10 @@ _GROUP_MAPPING_DOC = """
 | `reservation` | кто-то зарезервировал твою хотелку |
 | `friends` | «у вас новый подписчик» (часовой дайджест), «X обновил список желаний» |
 | `birthdays` | «скоро твой день рождения», «скоро день рождения у X» |
+| `prices` | дайджест по складу: «„X“ подешевела», «„X“ снова в наличии» (фича 0013) |
 | `tips` | сезонные подборки (23 Февраля, 8 Марта, …), «твой список желаний пуст» |
 
-Маппинг тип → группа живёт в коде бэка, у каждого типа ровно одна группа; группы
-«Цены и наличие» пока нет — появится вместе с фичей 0013 как новая строка списка.
+Маппинг тип → группа живёт в коде бэка, у каждого типа ровно одна группа.
 """
 
 
@@ -98,7 +99,7 @@ _READ_DESCRIPTION = f"""\
     responses={
         200: {
             'description': (
-                'Все группы в порядке показа. Всегда полный список (4 группы в '
+                'Все группы в порядке показа. Всегда полный список (5 групп в '
                 'этой версии) — и у юзера, который ничего не менял (все `true`), '
                 'и у юзера без push-токена: настройка принадлежит аккаунту, а не '
                 'устройству, разрешение ОС бэк не знает и в ответе не отражает.'
@@ -153,6 +154,11 @@ _TOGGLE_DESCRIPTION = f"""\
 Сайд-эффект: при реальной смене положения (было ≠ стало) бэк пишет событие
 «группа включена/выключена» для метрики «что раздражает»; повтор без смены
 событие не пишет. Наружу событие не отдаётся.
+
+Сайд-эффект группы `prices` (фича 0013): включение (`false` → `true`) сбрасывает
+базу «видел» у всех активных WB-хотелок юзера на текущую цену карточки —
+выключенная группа события не «копит», после включения придут только новые
+падения цены относительно того, что юзер видит сейчас. На ответ не влияет.
 {_GROUP_MAPPING_DOC}"""
 
 
@@ -189,8 +195,9 @@ _TOGGLE_DESCRIPTION = f"""\
         HTTP_422_UNPROCESSABLE_CONTENT: {
             'description': (
                 'Невалидная форма запроса: `group` — не группа, которую бэк сейчас '
-                'отдаёт в `GET` (в т.ч. группа, которой ещё нет, например `prices` '
-                'до 0013), либо `enabled` не bool / тело пустое. Ничего не '
+                'отдаёт в `GET` (например, группа из будущей версии, о которой '
+                'этот бэк ещё не знает), либо `enabled` не bool / тело пустое. '
+                'Ничего не '
                 'сохранено. Клиент, переключающий только присланные бэком `key`, '
                 'сюда не попадает; показывайте тост «не удалось сохранить», '
                 'тумблер верните.'
@@ -202,7 +209,7 @@ _TOGGLE_DESCRIPTION = f"""\
                     'schema': {'$ref': '#/components/schemas/HTTPValidationError'},
                     'examples': {
                         'unknown_group': {
-                            'summary': '`PUT …/prices` — такой группы бэк не отдаёт',
+                            'summary': '`PUT …/digest` — такой группы бэк не отдаёт',
                             'value': {
                                 'detail': [
                                     {
@@ -249,5 +256,9 @@ def toggle_notification_group(
     db: Session = Depends(get_db),
 ) -> NotificationSettingsReadSchema:
     """Переключить одну группу — см. `_TOGGLE_DESCRIPTION`."""
-    set_group_enabled(db, user, parse_notification_group(group), body.enabled)
+    parsed = parse_notification_group(group)
+    changed = set_group_enabled(db, user, parsed, body.enabled)
+    if changed and body.enabled and parsed == NotificationGroup.prices:
+        # Включил «Цены и наличие» — «видел» = то, что на карточке сейчас.
+        reset_seen_for_user(db, user)
     return build_settings(db, user)

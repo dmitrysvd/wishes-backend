@@ -40,6 +40,7 @@ from app.helpers.store_price import (
 )
 from app.logging import logger
 from app.parsers import parse_wildberries_link
+from app.price_alerts import mark_seen
 from app.schemas import WishReadSchema, WishWriteSchema
 from app.utils import utc_now
 
@@ -377,6 +378,13 @@ def refresh_store_price(
     при уже магазинном источнике (просто обновляет цену и наблюдение); кнопку при
     `price_source = shop` не показывайте, но повтор не ошибка.
 
+    Сайд-эффект для пушей по складу (фича 0013): если ответ магазина принёс цену
+    (товар в наличии), юзер «видел» её — база порога «подешевело» сдвигается на
+    неё, и следующий пуш придёт только при падении ещё на ≥ 10% от этой цены.
+    Ответ `sold_out` базу не двигает (цены нет) и НЕ считается стартом для
+    триггера «снова в наличии»: стартовое «распродано/нет» — только по
+    наблюдению суточного обхода, не по кнопке. `409`/`502` ничего не меняют.
+
     Только автор (`403` у остальных). Тела запроса нет. Архив — не ограничение:
     у архивной хотелки работает так же (`200`), кнопку показывайте по тем же
     правилам (`manual` + `shop != null`); обход архивные не трогает, но явное
@@ -403,7 +411,10 @@ def refresh_store_price(
     # `wish.shop` уже проверил, что ссылка — WB, поэтому наблюдение есть.
     assert observation is not None
     wish.price_source = PriceSource.shop
-    record_fresh_observation(db, wish, observation, utc_now())
+    now = utc_now()
+    record_fresh_observation(db, wish, observation, now)
+    # Юзер увидел свежую цену — порог «подешевело» считаем от неё (0013).
+    mark_seen(wish, observation.product_price, now)
     _record_refresh(db, wish, PriceRefreshOutcome.ok)
     return wish
 

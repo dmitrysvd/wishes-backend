@@ -43,6 +43,7 @@ from app.constants import (
     FollowSource,
     Gender,
     NotificationGroup,
+    PriceAlertTrigger,
     PriceObservationStatus,
     PriceRefreshOutcome,
     PriceSource,
@@ -285,6 +286,17 @@ class Wish(Base):
     store_observed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # База «видел» для пуша «подешевело» (фича 0013): цена, от которой считается
+    # порог, и когда она зафиксирована. Двигают только успешная отправка пуша,
+    # кнопка «актуальная с WB» (если принесла цену) и включение группы `prices`;
+    # NULL — базы нет, берётся наблюдение на последний день активности юзера.
+    # На карточке не показывается — там последнее наблюдение.
+    alert_base_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    alert_base_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
     reserved_by: Mapped['User | None'] = relationship(
@@ -339,6 +351,9 @@ class PushReason(enum.Enum):
     RESERVATION = enum.auto()
     WISH_CREATION = enum.auto()
     NEW_FOLLOWER = enum.auto()
+    # Дайджест по складу (фича 0013): подешевело / вернулось в наличие. Один
+    # пуш на юзера в календарные сутки UTC; тип триггера — в `trigger`.
+    PRICE_ALERT = enum.auto()
 
 
 class PushSendingLog(Base):
@@ -355,6 +370,15 @@ class PushSendingLog(Base):
     reason: Mapped[PushReason] = mapped_column(Enum(PushReason))
     # Ключ дедупа сезонной кампании вида `mar8-2026`. Для не-сезонных пушей пуст.
     campaign_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Пуш по складу (0013): тип триггера и момент открытия по пушу
+    # (`POST /push/opened`, id строки = delivery_id в `data`). У других пушей —
+    # NULL; `opened_at` пишется один раз, повтор открытия не двигает.
+    trigger: Mapped[PriceAlertTrigger | None] = mapped_column(
+        Enum(PriceAlertTrigger), nullable=True
+    )
+    opened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class WishPriceRefreshEvent(Base):

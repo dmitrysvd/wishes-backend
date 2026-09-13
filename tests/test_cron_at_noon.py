@@ -346,7 +346,9 @@ def test_at_noon_main(mocker):
     mock_4 = mocker.patch(
         'app.cron_scripts.at_noon.send_empty_list_reactivation_notifications'
     )
+    mock_5 = mocker.patch('app.cron_scripts.at_noon.send_price_alerts')
     main()
+    mock_5.assert_called_once()
     mock_1.assert_called_once()
     mock_2.assert_called_once()
     mock_3.assert_called_once()
@@ -362,6 +364,7 @@ def test_at_noon_script_execution(mocker):
 
     # Mock dependencies to avoid DB side effects and network calls
     mocker.patch('app.db.SessionLocal')
+    mocker.patch('app.price_alerts.SessionLocal')
     mocker.patch('app.firebase.messaging.send_each')
 
     script_path = os.path.abspath(at_noon.__file__)

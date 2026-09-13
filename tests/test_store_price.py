@@ -338,6 +338,9 @@ def test_refresh_returns_manual_wish_to_store(api, db, user):
     assert (data['price'], data['price_source']) == (600, 'shop')
     assert data['store_observation']['availability'] == 'in_stock'
     assert refresh_outcomes(db) == [PriceRefreshOutcome.ok]
+    # Юзер увидел свежую цену — база «видел» для пушей по складу (0013).
+    db.refresh(wish)
+    assert (wish.alert_base_price, wish.alert_base_at is not None) == (600, True)
     # Повтор при магазинном источнике безвреден.
     assert api.post(f'/wishes/{wish.id}/refresh_store_price').status_code == 200
 
@@ -347,6 +350,9 @@ def test_refresh_sold_out_keeps_manual_number(api, db, user):
     data = api.post(f'/wishes/{wish.id}/refresh_store_price').json()
     assert (data['price'], data['price_source']) == (4500, 'shop')
     assert data['store_observation']['availability'] == 'sold_out'
+    # Цены нет — база «видел» не двигается.
+    db.refresh(wish)
+    assert wish.alert_base_price is None
 
 
 def test_refresh_unsupported_link_409(api, db, user):
