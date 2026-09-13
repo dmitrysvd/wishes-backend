@@ -7,15 +7,56 @@
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.constants import Gender, TestPersona
+from app.constants import Gender, PriceObservationStatus, PriceSource, TestPersona
 from app.db import User, Wish
+from app.helpers.price_watch import (
+    ProductObservation,
+    WbPriceSchema,
+    record_fresh_observation,
+)
+from app.helpers.store_price import set_manual_price
 from app.utils import utc_now
+
+# WB-ссылки сид-хотелок rich: артикулы вымышленные, в магазин сид не ходит —
+# наблюдения пишутся в таблицу прибора напрямую (0010/0011/0013 без сети).
+_WB = 'https://www.wildberries.ru/catalog/{sku}/detail.aspx'
+_RICH_STORE_WISHES = (
+    # (название, ссылка, ручная цена | None, наблюдения (дни назад, статус, ₽, «от»))
+    (
+        'Кроссовки для бега',
+        _WB.format(sku=900000001),
+        None,
+        (
+            (1, PriceObservationStatus.ok, 3000, True),
+            (0, PriceObservationStatus.ok, 2700, True),
+        ),
+    ),
+    (
+        'Рюкзак городской',
+        _WB.format(sku=900000002) + '?size=910000002',
+        None,
+        (
+            (1, PriceObservationStatus.ok, 2999, False),
+            (0, PriceObservationStatus.sold_out, None, False),
+        ),
+    ),
+    (
+        'Термокружка',
+        _WB.format(sku=900000003),
+        None,
+        (
+            (1, PriceObservationStatus.ok, 1490, False),
+            (0, PriceObservationStatus.gone, None, False),
+        ),
+    ),
+    ('Наушники', _WB.format(sku=900000004), 3500, ()),
+)
 
 # Стабильные идентити: firebase_uid — ключ идемпотентного get-or-create.
 _RICH_UID = 'test-persona-rich'
@@ -85,7 +126,9 @@ def get_or_create_test_user(db: Session, persona: TestPersona) -> User:
     мутирует.
     """
     if persona == TestPersona.rich:
-        return _get_or_create_rich(db)
+        user = _get_or_create_rich(db)
+        _ensure_rich_store_wishes(db, user)
+        return user
     return _get_or_create_empty(db)
 
 
@@ -179,3 +222,36 @@ def _get_or_create_rich(db: Session) -> User:
 
     db.commit()
     return user
+
+
+def _ensure_rich_store_wishes(db: Session, user: User) -> None:
+    """WB-хотелки rich во всех состояниях склада (0011): «от» в наличии,
+    распродано, исчез, ручная цена. Дописываются и уже существующему rich —
+    иначе стенд, где rich создан раньше, остался бы без них; идемпотентно по
+    ссылке. Наблюдения датируются относительно «сегодня»: свежее наблюдение
+    и вчерашняя история под триггеры 0013 («видел» / вернулось в наличие)."""
+    existing = {wish.link for wish in user.wishes}
+    now = utc_now()
+    for name, link, manual_price, observations in _RICH_STORE_WISHES:
+        if link in existing:
+            continue
+        wish = Wish(name=name, link=link)
+        user.wishes.append(wish)
+        db.flush()
+        if manual_price is not None:
+            set_manual_price(wish, manual_price)
+            continue
+        wish.price_source = PriceSource.shop
+        for days_ago, status, rubles, is_minimum in observations:
+            price = (
+                WbPriceSchema(basic=rubles * 100, product=rubles * 100)
+                if rubles is not None
+                else None
+            )
+            record_fresh_observation(
+                db,
+                wish,
+                ProductObservation(status=status, price=price, is_minimum=is_minimum),
+                now - timedelta(days=days_ago),
+            )
+    db.commit()
