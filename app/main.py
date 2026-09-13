@@ -28,6 +28,7 @@ from app.routers import (
     auth,
     birthday_radar,
     dev,
+    notification_settings,
     og,
     public,
     recommendations,
@@ -95,6 +96,9 @@ async def track_user_activity(request: Request, call_next):
 # Подключение роутеров
 app.include_router(auth.router)
 app.include_router(recommendations.router)
+# Раньше users: /users/me/notification_settings не должен матчиться в
+# /users/{user_id}/… (порядок регистрации = порядок матчинга).
+app.include_router(notification_settings.router)
 app.include_router(wishes.router)
 app.include_router(users.router)
 app.include_router(birthday_radar.router)

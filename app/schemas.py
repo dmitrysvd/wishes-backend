@@ -15,6 +15,7 @@ from app.constants import (
     BirthdayRadarKind,
     FollowSource,
     Gender,
+    NotificationGroup,
     PriceSource,
     Shop,
     StoreAvailability,
@@ -1297,4 +1298,108 @@ class ItemInfoResponseSchema(BaseModel):
             'как «от». false — цена конкретного размера или цены нет.'
         ),
         examples=[False],
+    )
+
+
+NOTIFICATION_GROUPS_EXAMPLE_ALL_ON = [
+    {
+        'key': 'reservation',
+        'title': 'Резерв',
+        'subtitle': 'Кто-то зарезервировал твою хотелку',
+        'enabled': True,
+    },
+    {
+        'key': 'friends',
+        'title': 'Друзья',
+        'subtitle': 'Новый подписчик и обновления списков тех, на кого ты подписан',
+        'enabled': True,
+    },
+    {
+        'key': 'birthdays',
+        'title': 'Дни рождения',
+        'subtitle': 'Напоминания о твоём дне рождения и о днях рождения подписок',
+        'enabled': True,
+    },
+    {
+        'key': 'tips',
+        'title': 'Советы и подборки',
+        'subtitle': 'Сезонные подборки и подсказки, если список пуст',
+        'enabled': True,
+    },
+]
+NOTIFICATION_GROUPS_EXAMPLE_FRIENDS_OFF = [
+    {**group, 'enabled': group['key'] != 'friends'}
+    for group in NOTIFICATION_GROUPS_EXAMPLE_ALL_ON
+]
+
+
+class NotificationGroupSchema(BaseModel):
+    """Одна строка экрана «Уведомления»: название, подпись, переключатель (0012)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={'examples': [NOTIFICATION_GROUPS_EXAMPLE_ALL_ON[1]]}
+    )
+
+    key: NotificationGroup = Field(
+        description=(
+            'Стабильный идентификатор группы — им клиент адресует переключение '
+            '(`PUT /users/me/notification_settings/{group}`). Полный список — '
+            'enum; клиент НЕ хардкодит состав: рисует то, что пришло, и незнакомый '
+            '`key` из будущей версии бэка показывает как обычную строку.'
+        )
+    )
+    title: str = Field(
+        description='Название группы для строки экрана, готовый текст на русском.',
+        examples=['Друзья'],
+    )
+    subtitle: str = Field(
+        description=(
+            'Подпись одной строкой — «что придёт». Готовый текст; клиент не '
+            'собирает его из типов пушей.'
+        ),
+        examples=['Новый подписчик и обновления списков тех, на кого ты подписан'],
+    )
+    enabled: bool = Field(
+        description=(
+            'Положение переключателя. `true` — бэк шлёт пуши этой группы; `false` — '
+            'не шлёт ни один пуш группы (отсечка на бэке, не «клиент прячет»). '
+            'Никогда не `null`: у юзера без сохранённой настройки — дефолт `true`.'
+        )
+    )
+
+
+class NotificationSettingsReadSchema(BaseModel):
+    """Экран «Уведомления» целиком: все группы в порядке показа (0012)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {'groups': NOTIFICATION_GROUPS_EXAMPLE_ALL_ON},
+                {'groups': NOTIFICATION_GROUPS_EXAMPLE_FRIENDS_OFF},
+            ]
+        }
+    )
+
+    groups: list[NotificationGroupSchema] = Field(
+        description=(
+            'Все группы уведомлений в порядке показа на экране, каждая ровно один '
+            'раз. Состав задаёт бэк (константа продукта, не зависит от юзера и '
+            'его push-токена); новая группа появляется тут без релиза клиента. '
+            'Пустой список бэк не отдаёт; если клиент всё же получил `[]` — '
+            'заглушка «настроек уведомлений пока нет», не ошибка.'
+        )
+    )
+
+
+class NotificationGroupToggleSchema(BaseModel):
+    """Тело переключения одной группы (0012)."""
+
+    model_config = ConfigDict(json_schema_extra={'examples': [{'enabled': False}]})
+
+    enabled: bool = Field(
+        description=(
+            'Целевое положение переключателя. Абсолютное значение, не '
+            '«инвертировать»: повтор того же запроса безвреден, при гонке двух '
+            'устройств побеждает последний пришедший на бэк.'
+        )
     )
