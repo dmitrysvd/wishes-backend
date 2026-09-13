@@ -43,6 +43,13 @@ TODAY = date.today()
 YESTERDAY = TODAY - timedelta(days=1)
 
 
+@pytest.fixture(autouse=True)
+def price_alerts_on(monkeypatch):
+    """Пуши по складу выключены продуктом до выкладки Android с 0011; тесты
+    логики включают флаг явно — это конфигурация системы, не мок."""
+    monkeypatch.setattr('app.price_alerts.PRICE_ALERT_ENABLED', True)
+
+
 @pytest.fixture
 def user(db: Session) -> User:
     user = User(
@@ -321,6 +328,20 @@ def test_send_price_alerts_sends_digest_and_moves_base(db, user, fcm):
     # Тот же день (перезапуск обхода) — второго пуша нет.
     assert send_price_alerts(TODAY) == 0
     assert len(fcm.messages) == 1
+
+
+def test_master_switch_off_does_nothing(db, user, fcm, monkeypatch):
+    # Выключено целиком: не считает, не шлёт, не пишет лог, базу не двигает.
+    monkeypatch.setattr('app.price_alerts.PRICE_ALERT_ENABLED', False)
+    wish = make_wish(db, user)
+    observe(db, wish, YESTERDAY, 3000)
+    observe(db, wish, TODAY, 2700)
+
+    assert send_price_alerts(TODAY) == 0
+
+    assert fcm.calls == [] and logs(db) == []
+    db.refresh(wish)
+    assert wish.alert_base_price is None
 
 
 def test_repeat_push_only_after_another_threshold_drop(db, user, fcm):

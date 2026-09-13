@@ -17,6 +17,7 @@ from app.config import settings
 from app.constants import (
     PRICE_ALERT_AVAILABILITY_ENABLED,
     PRICE_ALERT_DROP_RATIO,
+    PRICE_ALERT_ENABLED,
     PRICE_ALERT_NAME_MAX_LENGTH,
     PriceAlertTrigger,
     PriceObservationStatus,
@@ -290,6 +291,9 @@ def send_price_alerts(today: date | None = None) -> int:
     выключенная группа `prices` отсекается в `send_push` — базу не двигает и
     события не копит. Возвращает число отправленных пушей.
     """
+    if not PRICE_ALERT_ENABLED:
+        logger.info('Пуши по складу выключены (PRICE_ALERT_ENABLED) — пропуск')
+        return 0
     today = today or utc_now().date()
     sent_total = 0
     for digest in collect_digests(today):
