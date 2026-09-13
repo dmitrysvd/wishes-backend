@@ -8,15 +8,15 @@
 | app/admin/\_\_init\_\_.py             |        0 |        0 |     100% |           |
 | app/admin/setup.py                    |       98 |        0 |     100% |           |
 | app/config.py                         |       17 |        0 |     100% |           |
-| app/constants.py                      |       51 |        0 |     100% |           |
+| app/constants.py                      |       61 |        0 |     100% |           |
 | app/cron\_scripts/\_\_init\_\_.py     |        0 |        0 |     100% |           |
-| app/cron\_scripts/at\_noon.py         |      104 |        0 |     100% |           |
+| app/cron\_scripts/at\_noon.py         |      106 |        0 |     100% |           |
 | app/cron\_scripts/every\_hour.py      |        9 |        0 |     100% |           |
 | app/cron\_scripts/every\_minute.py    |        4 |        0 |     100% |           |
 | app/cron\_scripts/price\_watch.py     |       40 |        0 |     100% |           |
-| app/db.py                             |      191 |        0 |     100% |           |
-| app/dependencies.py                   |       68 |        0 |     100% |           |
-| app/firebase.py                       |       72 |        0 |     100% |           |
+| app/db.py                             |      196 |        0 |     100% |           |
+| app/dependencies.py                   |       69 |        0 |     100% |           |
+| app/firebase.py                       |       85 |        0 |     100% |           |
 | app/hawk.py                           |       16 |        0 |     100% |           |
 | app/helpers/\_\_init\_\_.py           |        5 |        0 |     100% |           |
 | app/helpers/activity.py               |       37 |        0 |     100% |           |
@@ -28,26 +28,28 @@
 | app/helpers/uploads.py                |       14 |        0 |     100% |           |
 | app/helpers/user\_helpers.py          |       90 |        0 |     100% |           |
 | app/logging.py                        |        7 |        0 |     100% |           |
-| app/main.py                           |      124 |        0 |     100% |           |
-| app/notification\_settings.py         |       28 |        0 |     100% |           |
+| app/main.py                           |      125 |        0 |     100% |           |
+| app/notification\_settings.py         |       29 |        0 |     100% |           |
 | app/notifications.py                  |       59 |        0 |     100% |           |
 | app/parsers.py                        |      143 |        0 |     100% |           |
+| app/price\_alerts.py                  |      170 |        0 |     100% |           |
 | app/routers/\_\_init\_\_.py           |        0 |        0 |     100% |           |
 | app/routers/auth.py                   |       88 |        0 |     100% |           |
 | app/routers/birthday\_radar.py        |       83 |        0 |     100% |           |
 | app/routers/dev.py                    |       18 |        0 |     100% |           |
-| app/routers/notification\_settings.py |       28 |        0 |     100% |           |
+| app/routers/notification\_settings.py |       32 |        0 |     100% |           |
 | app/routers/og.py                     |       32 |        0 |     100% |           |
 | app/routers/public.py                 |       24 |        0 |     100% |           |
+| app/routers/pushes.py                 |       13 |        0 |     100% |           |
 | app/routers/recommendations.py        |       23 |        0 |     100% |           |
 | app/routers/users.py                  |      120 |        0 |     100% |           |
-| app/routers/wishes.py                 |      168 |        0 |     100% |           |
+| app/routers/wishes.py                 |      171 |        0 |     100% |           |
 | app/scheduler.py                      |       28 |        0 |     100% |           |
-| app/schemas.py                        |      158 |        0 |     100% |           |
+| app/schemas.py                        |      161 |        0 |     100% |           |
 | app/test\_auth.py                     |       78 |        0 |     100% |           |
 | app/utils.py                          |       40 |        0 |     100% |           |
 | app/vk.py                             |      115 |        0 |     100% |           |
-| **TOTAL**                             | **2401** |    **0** | **100%** |           |
+| **TOTAL**                             | **2627** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
