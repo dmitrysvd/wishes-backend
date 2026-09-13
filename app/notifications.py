@@ -3,7 +3,7 @@ from datetime import timedelta
 from sqlalchemy import select, update
 
 from app.constants import Gender
-from app.db import SessionLocal, User, Wish
+from app.db import PushReason, SessionLocal, User, Wish
 from app.firebase import send_push
 from app.logging import logger
 from app.main import get_user_deep_link
@@ -34,10 +34,13 @@ def send_reservation_notifincations():
             .values(is_reservation_notification_sent=True)
         )
         db.commit()
+    # Один пуш на владельца за прогон, сколько бы хотелок ни зарезервировали;
+    # резервировавших может быть несколько — виновник не указывается.
     send_push(
         target_users=users_to_send_pushes,
         title='Кто-то хочет сделать Вам подарок!',
         body='Одно из ваших желаний было зарезервировано',
+        reason=PushReason.RESERVATION,
     )
 
 
@@ -79,5 +82,7 @@ def send_wish_creation_notifications():
                     target_users=followers_to_send_pushes,
                     title=f'{user.display_name} {verb} список желаний',
                     body=f'Узнайте, что {user.display_name} хочет получить в подарок',
+                    reason=PushReason.WISH_CREATION,
+                    reason_user=user,
                     link=get_user_deep_link(user),
                 )

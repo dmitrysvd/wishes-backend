@@ -40,9 +40,8 @@ def user_without_token(db):
 
 @pytest.mark.anyio
 async def test_send_reservation_notifications(
-    db, user_with_token, user_without_token, mocker
+    db, user_with_token, user_without_token, mocker, fcm
 ):
-    mock_send_push = mocker.patch('app.notifications.send_push')
 
     # Wish for user_with_token, reserved by someone
     wish1 = Wish(
@@ -64,12 +63,10 @@ async def test_send_reservation_notifications(
 
     send_reservation_notifincations()
 
-    mock_send_push.assert_called_once()
-    args, kwargs = mock_send_push.call_args
-    assert user_with_token in kwargs['target_users']
-    assert user_without_token not in kwargs['target_users']
-    assert kwargs['title']
-    assert kwargs['body']
+    assert len(fcm.calls) == 1
+    assert fcm.tokens == [user_with_token.firebase_push_token]
+    assert fcm.messages[0].android.notification.title
+    assert fcm.messages[0].android.notification.body
 
     # Flags should be updated for both if they were matched by the query
     # Actually, the code updates only for users_to_send_pushes (those with tokens)
@@ -83,9 +80,8 @@ async def test_send_reservation_notifications(
 
 @pytest.mark.anyio
 async def test_send_wish_creation_notifications(
-    db, user_with_token, user_without_token, mocker
+    db, user_with_token, user_without_token, mocker, fcm
 ):
-    mock_send_push = mocker.patch('app.notifications.send_push')
     mocker.patch('app.notifications.get_user_deep_link', return_value='http://link')
 
     # user_without_token follows user_with_token
@@ -115,7 +111,7 @@ async def test_send_wish_creation_notifications(
 
     send_wish_creation_notifications()
 
-    mock_send_push.assert_not_called()
+    assert fcm.calls == []
 
     # Mark follower with token
     user_without_token.firebase_push_token = 'token2'
@@ -127,11 +123,12 @@ async def test_send_wish_creation_notifications(
 
     send_wish_creation_notifications()
 
-    mock_send_push.assert_called_once()
-    args, kwargs = mock_send_push.call_args
-    assert user_without_token in kwargs['target_users']
-    assert 'обновил' in kwargs['title']  # user_with_token is male
-    assert kwargs['body'] == 'Узнайте, что User with Token хочет получить в подарок'
+    assert len(fcm.calls) == 1
+    (message,) = fcm.messages
+    assert message.token == user_without_token.firebase_push_token
+    notification = message.android.notification
+    assert 'обновил' in notification.title  # user_with_token is male
+    assert notification.body == 'Узнайте, что User with Token хочет получить в подарок'
 
     db.refresh(wish1)
     assert wish1.is_creation_notification_sent is True

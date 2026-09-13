@@ -186,16 +186,8 @@ def send_upcoming_birthday_of_current_user_notification():
                 'друзьями и близкими, чтобы они узнали, что ты хочешь '
                 'получить в подарок! ✨🎁'
             ),
-        )
-        push_log = PushSendingLog(
-            sent_at=datetime.now(),
             reason=PushReason.CURRENT_USER_BIRTHDAY,
-            reason_user_id=user.id,
-            target_user_id=user.id,
         )
-        with SessionLocal() as db:
-            db.add(push_log)
-            db.commit()
 
 
 def followers_push_recently_sent(last_sent: datetime | None) -> bool:
@@ -231,16 +223,9 @@ def send_upcoming_birthday_of_followed_user_notification():
                         f'Загляни в {pronoun} хотелки, чтобы '
                         'выбрать идеальный подарок! 🎈'
                     ),
+                    reason=PushReason.FOLLOWER_BIRTHDAY,
+                    reason_user=user,
                     link=get_user_deep_link(user),
-                )
-                # Пишем факт отправки в лог — наблюдаемость follower-ДР-пуша.
-                db.add(
-                    PushSendingLog(
-                        sent_at=datetime.now(),
-                        reason=PushReason.FOLLOWER_BIRTHDAY,
-                        reason_user_id=user.id,
-                        target_user_id=follower.id,
-                    )
                 )
                 sent_any = True
             # Гвард обновляем только если реально хоть кому-то отправили. Иначе у
@@ -295,19 +280,9 @@ def send_empty_list_reactivation_notifications():
             # Копия деликатная (черновик, продуктовый вопрос Q1 в плане 0004).
             title='Твой список желаний пуст 🎁',
             body=('Заполни его, чтобы близкие знали, что подарить тебе на праздник'),
+            reason=PushReason.EMPTY_LIST_REACTIVATION,
             link=get_user_deep_link(user),
         )
-        # Реактивация без «виновника» — reason_user_id NOT NULL ставим равным
-        # самому получателю (как пуш собственного ДР).
-        push_log = PushSendingLog(
-            sent_at=datetime.now(),
-            reason=PushReason.EMPTY_LIST_REACTIVATION,
-            reason_user_id=user.id,
-            target_user_id=user.id,
-        )
-        with SessionLocal() as db:
-            db.add(push_log)
-            db.commit()
 
 
 def is_in_campaign_window(campaign: SeasonalCampaign, today: date) -> bool:
@@ -354,20 +329,10 @@ def send_seasonal_notifications(today: date | None = None) -> None:
                     target_users=[user],
                     title=segment.title,
                     body=segment.body,
+                    reason=PushReason.SEASONAL,
+                    campaign_key=campaign_key,
                     link=get_user_deep_link(user),
                 )
-                push_log = PushSendingLog(
-                    sent_at=datetime.now(),
-                    reason=PushReason.SEASONAL,
-                    # У сезонного пуша нет «виновника»-юзера — ссылаемся на
-                    # самого получателя ради NOT NULL на reason_user_id.
-                    reason_user_id=user.id,
-                    target_user_id=user.id,
-                    campaign_key=campaign_key,
-                )
-                with SessionLocal() as db:
-                    db.add(push_log)
-                    db.commit()
             logger.info(
                 f'Сезонная кампания {campaign_key}: отправлено {len(users)} пушей'
             )

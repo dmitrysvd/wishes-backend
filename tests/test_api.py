@@ -13,6 +13,8 @@ from app.config import settings
 from app.constants import UPLOAD_IMAGE_MAX_BYTES, FollowAction, FollowSource, Gender
 from app.db import (
     FollowEvent,
+    PushReason,
+    PushSendingLog,
     User,
     UserAttribution,
     Wish,
@@ -842,17 +844,20 @@ class TestFollowUnfollow:
         assert event.source == FollowSource.possible_friends
 
     def test_follow_user_push(
-        self, auth_client: TestClient, db: Session, user: User, other_user: User, mocker
+        self, auth_client: TestClient, db: Session, user: User, other_user: User, fcm
     ):
         other_user.firebase_push_token = 'token'
         db.add(other_user)
         db.commit()
-        mock_send = mocker.patch('app.helpers.user_helpers.send_push')
 
         response = auth_client.post(f'/follow/{other_user.id}')
         assert response.status_code == 200
-        mock_send.assert_called_once()
-        assert mock_send.call_args.kwargs['target_users'] == [other_user]
+        assert fcm.tokens == ['token']
+        log = db.scalars(
+            select(PushSendingLog).where(PushSendingLog.target_user_id == other_user.id)
+        ).one()
+        assert log.reason == PushReason.NEW_FOLLOWER
+        assert log.reason_user_id == user.id
 
     def test_unfollow_user(
         self, auth_client: TestClient, db: Session, user: User, other_user: User

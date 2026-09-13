@@ -2,13 +2,11 @@ from datetime import date
 from unittest.mock import MagicMock
 
 from app.constants import Gender
-from app.db import User
 from app.firebase import (
     create_custom_firebase_token,
     create_firebase_user,
     delete_firebase_user,
     get_firebase_user_data,
-    send_push,
 )
 from app.vk import (
     get_extra_user_data_by_silent_token,
@@ -61,23 +59,6 @@ def test_get_vk_user_friends(mocker):
     friends = get_vk_user_friends('token')
     assert len(friends) == 1
     assert friends[0]['id'] == 1
-
-
-def test_firebase_send_push(mocker):
-    mock_send = mocker.patch('firebase_admin.messaging.send_each')
-    # send_each возвращает BatchResponse с одним успешным ответом
-    ok_response = mocker.Mock(success=True, exception=None)
-    mock_send.return_value = mocker.Mock(
-        responses=[ok_response], success_count=1, failure_count=0
-    )
-    user = User(firebase_push_token='token1', id='uuid1')
-
-    send_push([user], 'Title', 'Body')
-
-    mock_send.assert_called_once()
-    messages = mock_send.call_args[0][0]
-    assert len(messages) == 1
-    assert messages[0].token == 'token1'
 
 
 def test_firebase_create_user(mocker):

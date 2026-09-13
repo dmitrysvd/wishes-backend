@@ -45,8 +45,17 @@ line-length = 88
 target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "UP", "B"]
+select = ["E", "F", "I", "N", "UP", "B", "TID251"]
 ignore = ["B008"]
+
+# FCM доступен только через `app.firebase.send_push`: она пишет `PushSendingLog`,
+# на котором держатся дедуп и метрика пушей. Прямой импорт — путь в обход лога.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"firebase_admin.messaging".msg = "Пуши только через app.firebase.send_push (пишет PushSendingLog)"
+
+[tool.ruff.lint.per-file-ignores]
+"app/firebase.py" = ["TID251"]
+"tests/*" = ["TID251"]
 
 [tool.ruff.format]
 quote-style = "single"
