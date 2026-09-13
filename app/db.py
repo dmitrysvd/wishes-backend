@@ -332,6 +332,11 @@ class PushReason(enum.Enum):
     # Сезонный глобальный повод (НГ/8 марта/…) — не зависит от follow-графа.
     SEASONAL = enum.auto()
     EMPTY_LIST_REACTIVATION = enum.auto()
+    # Событийные пуши: твою хотелку зарезервировали / подписка обновила список /
+    # на тебя подписались. Виновник — резервировавший, автор, подписчик.
+    RESERVATION = enum.auto()
+    WISH_CREATION = enum.auto()
+    NEW_FOLLOWER = enum.auto()
 
 
 class PushSendingLog(Base):

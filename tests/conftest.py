@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import httpx
 import pytest
 from alembic.config import Config
@@ -182,3 +184,42 @@ def test_auth_secret(monkeypatch) -> str:
     secret = 'test-auth-secret'
     monkeypatch.setattr(settings, 'TEST_AUTH_SECRET', secret)
     return secret
+
+
+class FcmRecorder:
+    """Замена `messaging.send_each`: не ходит в FCM, запоминает отправленное.
+
+    Тесты пушей мокают именно эту границу, а не `send_push`: тогда лог
+    `PushSendingLog` пишется по-настоящему, и дедуп по нему проверяется как на
+    проде. `calls` — по одному списку сообщений на вызов `send_push`.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[list] = []
+
+    def __call__(self, messages, dry_run=False):
+        self.calls.append(list(messages))
+        responses = [SimpleNamespace(success=True, exception=None) for _ in messages]
+        return SimpleNamespace(
+            responses=responses,
+            success_count=len(responses),
+            failure_count=0,
+        )
+
+    @property
+    def messages(self) -> list:
+        return [m for call in self.calls for m in call]
+
+    @property
+    def tokens(self) -> list[str]:
+        return [m.token for m in self.messages]
+
+    def clear(self) -> None:
+        self.calls.clear()
+
+
+@pytest.fixture
+def fcm(mocker) -> FcmRecorder:
+    recorder = FcmRecorder()
+    mocker.patch('app.firebase.messaging.send_each', recorder)
+    return recorder

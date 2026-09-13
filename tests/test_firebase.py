@@ -5,7 +5,7 @@ from uuid import uuid4
 from firebase_admin import messaging
 from sqlalchemy import select
 
-from app.db import User
+from app.db import PushReason, PushSendingLog, User
 from app.firebase import (
     create_custom_firebase_token,
     create_firebase_user,
@@ -69,25 +69,63 @@ def test_dead_token_user_ids_empty():
 
 def test_send_push_no_users(mocker):
     mock_logger = mocker.patch('app.firebase.logger')
-    send_push([], 'title', 'body')
+    send_push([], 'title', 'body', reason=PushReason.SEASONAL)
     mock_logger.info.assert_any_call('Пустой список получателей. Пуши не отправлены.')
 
 
-def test_send_push_with_users(mocker):
-    mock_send_each = mocker.patch('app.firebase.messaging.send_each')
-    mock_send_each.return_value = FakeBatchResponse([FakeSendResponse(True)])
-    user = User(id=uuid4(), firebase_push_token='token')
+def _persisted_user(db, token: str | None) -> User:
+    user = User(
+        id=uuid4(),
+        display_name='Push Target',
+        firebase_uid=f'uid-{uuid4()}',
+        firebase_push_token=token,
+        registered_at=datetime(2026, 1, 1),
+    )
+    db.add(user)
+    db.commit()
+    return user
 
-    send_push([user], 'title', 'body', link='http://link')
 
-    mock_send_each.assert_called_once()
+def test_send_push_with_users(fcm, db):
+    user = _persisted_user(db, 'token')
+    culprit = _persisted_user(db, None)
+
+    send_push(
+        [user],
+        'title',
+        'body',
+        reason=PushReason.SEASONAL,
+        reason_user=culprit,
+        campaign_key='ny-2026',
+        link='http://link',
+    )
+
+    (message,) = fcm.messages
+    assert message.token == 'token'
+    assert message.data['link'] == 'http://link'
+    # Лог пишет сама send_push — единственная точка отправки.
+    log = db.scalars(select(PushSendingLog)).one()
+    assert log.target_user_id == user.id
+    assert log.reason == PushReason.SEASONAL
+    assert log.reason_user_id == culprit.id
+    assert log.campaign_key == 'ny-2026'
+
+
+def test_send_push_logs_self_as_reason_user_by_default(fcm, db):
+    user = _persisted_user(db, 'token')
+
+    send_push([user], 'title', 'body', reason=PushReason.RESERVATION)
+
+    log = db.scalars(select(PushSendingLog)).one()
+    assert log.reason_user_id == user.id
+    assert log.campaign_key is None
 
 
 def test_send_push_no_token(mocker):
     mock_logger = mocker.patch('app.firebase.logger')
     user = User(id=uuid4(), firebase_push_token=None)
 
-    send_push([user], 'title', 'body')
+    send_push([user], 'title', 'body', reason=PushReason.SEASONAL)
     mock_logger.warning.assert_called()
 
 
@@ -108,7 +146,7 @@ def test_send_push_clears_dead_token(mocker, db):
         [FakeSendResponse(False, messaging.UnregisteredError('gone'))]
     )
 
-    send_push([user], 'title', 'body')
+    send_push([user], 'title', 'body', reason=PushReason.SEASONAL)
 
     refreshed = db.execute(select(User).where(User.id == user.id)).scalar_one()
     assert refreshed.firebase_push_token is None

@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -8,7 +9,7 @@ from firebase_admin.auth import UserRecord
 from sqlalchemy import update
 
 from app.config import settings
-from app.db import SessionLocal, User
+from app.db import PushReason, PushSendingLog, SessionLocal, User
 from app.logging import logger
 
 cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
@@ -16,7 +17,26 @@ cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
 firebase_admin.initialize_app(cred)
 
 
-def send_push(target_users: list[User], title: str, body: str, link: str | None = None):
+def send_push(
+    target_users: list[User],
+    title: str,
+    body: str,
+    *,
+    reason: PushReason,
+    reason_user: User | None = None,
+    campaign_key: str | None = None,
+    link: str | None = None,
+) -> None:
+    """Единственная точка отправки пушей; сама пишет `PushSendingLog`.
+
+    Лог — источник правды для дедупа (крон-пуши читают его перед отправкой) и
+    для метрики «пушей на юзера в неделю», поэтому обойти его нельзя: `reason`
+    обязателен, а `firebase_admin.messaging` вне этого модуля запрещён линтером
+    (`TID251` в `pyproject.toml`). `reason_user` — «виновник» пуша (именинник,
+    автор хотелок, новый подписчик); у пуша без виновника — сам получатель.
+    Строка лога пишется на каждое построенное сообщение независимо от исхода
+    доставки: неудачная доставка не должна перезапускать дедуп.
+    """
     if not target_users:
         logger.info('Пустой список получателей. Пуши не отправлены.')
         return
@@ -59,6 +79,19 @@ def send_push(target_users: list[User], title: str, body: str, link: str | None 
         success=response.success_count,
         failure=response.failure_count,
     )
+    sent_at = datetime.now()
+    with SessionLocal() as db:
+        db.add_all(
+            PushSendingLog(
+                sent_at=sent_at,
+                reason=reason,
+                reason_user_id=reason_user.id if reason_user else user_id,
+                target_user_id=user_id,
+                campaign_key=campaign_key,
+            )
+            for user_id in users_with_message_ids
+        )
+        db.commit()
     dead = dead_token_user_ids(response.responses, users_with_message_ids)
     if dead:
         # Обнуляем протухшие токены, которые FCM признал недоставляемыми по адресату
