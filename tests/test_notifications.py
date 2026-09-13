@@ -1,9 +1,12 @@
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import select
 
-from app.db import Gender, User, Wish
+from app.constants import FollowAction
+from app.db import FollowEvent, Gender, PushReason, PushSendingLog, User, Wish
 from app.notifications import (
+    send_new_follower_notifications,
     send_reservation_notifincations,
     send_wish_creation_notifications,
 )
@@ -132,3 +135,85 @@ async def test_send_wish_creation_notifications(
 
     db.refresh(wish1)
     assert wish1.is_creation_notification_sent is True
+
+
+def _follow(db, actor: User, target: User) -> FollowEvent:
+    actor.follows.append(target)
+    event = FollowEvent(
+        actor_id=actor.id, target_id=target.id, action=FollowAction.follow
+    )
+    db.add(event)
+    db.commit()
+    return event
+
+
+def _user(db, name: str, token: str | None) -> User:
+    user = User(
+        display_name=name,
+        firebase_uid=f'uid-{name}',
+        firebase_push_token=token,
+        registered_at=utc_now(),
+    )
+    db.add(user)
+    db.commit()
+    return user
+
+
+def test_new_follower_single(db, fcm, mocker):
+    mocker.patch(
+        'app.notifications.get_user_deep_link', side_effect=lambda u: f'link:{u.id}'
+    )
+    target = _user(db, 'Target', 'token-target')
+    follower = _user(db, 'Follower', None)
+    event = _follow(db, follower, target)
+
+    send_new_follower_notifications()
+
+    (message,) = fcm.messages
+    assert message.token == 'token-target'
+    assert message.android.notification.body == 'На вас подписался Follower'
+    assert message.data['link'] == f'link:{follower.id}'
+    db.refresh(event)
+    assert event.is_notification_sent is True
+    log = db.scalars(
+        select(PushSendingLog).where(PushSendingLog.reason == PushReason.NEW_FOLLOWER)
+    ).one()
+    assert log.reason_user_id == follower.id
+
+    # Повторный прогон — событие уже отмечено, пуша нет.
+    fcm.clear()
+    send_new_follower_notifications()
+    assert fcm.calls == []
+
+
+def test_new_follower_many_in_one_push(db, fcm, mocker):
+    mocker.patch(
+        'app.notifications.get_user_deep_link', side_effect=lambda u: f'link:{u.id}'
+    )
+    target = _user(db, 'Target', 'token-target')
+    first = _user(db, 'First', None)
+    second = _user(db, 'Second', None)
+    _follow(db, first, target)
+    _follow(db, second, target)
+
+    send_new_follower_notifications()
+
+    (message,) = fcm.messages
+    assert message.android.notification.body == 'На вас подписались First и ещё 1'
+    assert message.data['link'] == f'link:{target.id}'
+
+
+def test_new_follower_skips_unfollowed_and_no_token(db, fcm):
+    target = _user(db, 'Target', 'token-target')
+    no_token_target = _user(db, 'Silent', None)
+    fickle = _user(db, 'Fickle', None)
+    event = _follow(db, fickle, target)
+    fickle.follows.remove(target)
+    _follow(db, fickle, no_token_target)
+    db.commit()
+
+    send_new_follower_notifications()
+
+    assert fcm.calls == []
+    db.refresh(event)
+    assert event.is_notification_sent is True

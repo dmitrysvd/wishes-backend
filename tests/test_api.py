@@ -13,8 +13,6 @@ from app.config import settings
 from app.constants import UPLOAD_IMAGE_MAX_BYTES, FollowAction, FollowSource, Gender
 from app.db import (
     FollowEvent,
-    PushReason,
-    PushSendingLog,
     User,
     UserAttribution,
     Wish,
@@ -843,21 +841,19 @@ class TestFollowUnfollow:
         assert event.action == FollowAction.follow
         assert event.source == FollowSource.possible_friends
 
-    def test_follow_user_push(
+    def test_follow_user_no_immediate_push(
         self, auth_client: TestClient, db: Session, user: User, other_user: User, fcm
     ):
+        """Пуш о подписчике уходит ежечасным кроном, не на само событие."""
         other_user.firebase_push_token = 'token'
         db.add(other_user)
         db.commit()
 
         response = auth_client.post(f'/follow/{other_user.id}')
         assert response.status_code == 200
-        assert fcm.tokens == ['token']
-        log = db.scalars(
-            select(PushSendingLog).where(PushSendingLog.target_user_id == other_user.id)
-        ).one()
-        assert log.reason == PushReason.NEW_FOLLOWER
-        assert log.reason_user_id == user.id
+        assert fcm.calls == []
+        event = db.scalars(select(FollowEvent)).one()
+        assert event.is_notification_sent is False
 
     def test_unfollow_user(
         self, auth_client: TestClient, db: Session, user: User, other_user: User
