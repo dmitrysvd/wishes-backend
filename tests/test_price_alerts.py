@@ -206,7 +206,23 @@ def test_slow_drift_below_threshold_from_seen_price_triggers(db, user):
     assert detect_alert(db, wish, TODAY, YESTERDAY) is None
 
 
-def test_back_in_stock_triggers_and_wins_over_price(db, user):
+@pytest.fixture
+def availability_on(monkeypatch):
+    """Триггер «снова в наличии» выключен продуктом; тесты его логики
+    включают флаг явно — это конфигурация системы, не мок."""
+    monkeypatch.setattr('app.price_alerts.PRICE_ALERT_AVAILABILITY_ENABLED', True)
+
+
+def test_back_in_stock_disabled_by_default(db, user):
+    wish = make_wish(db, user)
+    observe(db, wish, TODAY - timedelta(days=2), 3000)
+    observe(db, wish, YESTERDAY, None, PriceObservationStatus.sold_out)
+    observe(db, wish, TODAY, 2000)
+    # Возврат в наличие — молчим (и «подешевело» от цены до распродажи не считаем).
+    assert detect_alert(db, wish, TODAY, TODAY - timedelta(days=2)) is None
+
+
+def test_back_in_stock_triggers_and_wins_over_price(db, user, availability_on):
     wish = make_wish(db, user)
     observe(db, wish, TODAY - timedelta(days=2), 3000)
     observe(db, wish, YESTERDAY, None, PriceObservationStatus.sold_out)
@@ -228,13 +244,22 @@ def test_no_observation_today_means_no_alert(db, user):
 # --- Тексты ----------------------------------------------------------------------
 
 
+def test_short_name_truncates_with_ellipsis():
+    from app.price_alerts import short_name
+
+    assert short_name('Кружка для чая') == 'Кружка для чая'
+    long = 'Ободок для макияжа и умывания с нарукавниками махровый'
+    assert short_name(long) == 'Ободок для макияжа и умывания с нарукав…'
+    assert len(short_name(long)) == 40
+
+
 def test_rubles_format():
     assert rubles(Decimal('2700')) == '2 700 ₽'
     assert rubles(Decimal('999.99')) == '999 ₽'
     assert rubles(Decimal('1234567')) == '1 234 567 ₽'
 
 
-def test_message_texts(db, user):
+def test_message_texts(db, user, availability_on):
     a = make_wish(db, user, sku=1)
     a.name = 'Кроссовки для бега'
     b = make_wish(db, user, sku=2)
@@ -443,7 +468,7 @@ def test_push_opened_unknown_delivery_404(public):
 # --- dry-run --------------------------------------------------------------------
 
 
-def test_dry_run_reports_without_side_effects(db, user, fcm):
+def test_dry_run_reports_without_side_effects(db, user, fcm, availability_on):
     from app.price_alerts import dry_run_report
 
     wish = make_wish(db, user)

@@ -15,7 +15,9 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.constants import (
+    PRICE_ALERT_AVAILABILITY_ENABLED,
     PRICE_ALERT_DROP_RATIO,
+    PRICE_ALERT_NAME_MAX_LENGTH,
     PriceAlertTrigger,
     PriceObservationStatus,
     PriceSource,
@@ -154,6 +156,10 @@ def detect_alert(
         return None
     price = latest.product_price
     if previous is not None and previous.status in UNAVAILABLE:
+        # Возврат в наличие: событие само по себе, без сравнения с базой. Пока
+        # триггер выключен — молчим (сравнивать с базой до распродажи не по чему).
+        if not PRICE_ALERT_AVAILABILITY_ENABLED:
+            return None
         return WishAlert(wish, PriceAlertTrigger.availability, price, None)
     # База есть всегда: сегодняшнее наблюдение с ценой — уже кандидат в «первое».
     base = seen_price(db, wish, last_activity)
@@ -181,9 +187,16 @@ def _things(count: int) -> str:
     return f'{count} {word}'
 
 
+def short_name(name: str) -> str:
+    """Название для текста пуша: не длиннее лимита, хвост — многоточие."""
+    if len(name) <= PRICE_ALERT_NAME_MAX_LENGTH:
+        return name
+    return name[: PRICE_ALERT_NAME_MAX_LENGTH - 1].rstrip() + '…'
+
+
 def _one_line(alert: WishAlert) -> tuple[str, str]:
     """(заголовок, тело) одной хотелки — тексты из контракта."""
-    name = f'„{alert.wish.name}“'
+    name = f'„{short_name(alert.wish.name)}“'
     if alert.trigger == PriceAlertTrigger.availability:
         return f'{name} снова в наличии', f'{rubles(alert.price)} на WB'
     assert alert.was_price is not None
@@ -206,7 +219,7 @@ def build_message(
     trigger = triggers.pop() if len(triggers) == 1 else PriceAlertTrigger.mixed
     _, first_body = _one_line(first)
     # Строка первой хотелки: «„Название“: 2 700 ₽ вместо 3 000 ₽».
-    body = f'„{first.wish.name}“: {first_body}'
+    body = f'„{short_name(first.wish.name)}“: {first_body}'
     title = f'{_things(len(alerts))} из списка подешевели или вернулись в наличие'
     return title, body, get_user_deep_link(user), trigger
 
