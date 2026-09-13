@@ -11,6 +11,7 @@ from sqlalchemy import update
 from app.config import settings
 from app.db import PushReason, PushSendingLog, SessionLocal, User
 from app.logging import logger
+from app.notification_settings import disabled_user_ids
 
 cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
 
@@ -26,8 +27,11 @@ def send_push(
     reason_user: User | None = None,
     campaign_key: str | None = None,
     link: str | None = None,
-) -> None:
+) -> int:
     """Единственная точка отправки пушей; сама пишет `PushSendingLog`.
+
+    Возвращает число отправленных сообщений — вызывающий по нему решает,
+    расходовать ли свой гвард (пример: `pre_bday_push_for_followers_last_sent_at`).
 
     Лог — источник правды для дедупа (крон-пуши читают его перед отправкой) и
     для метрики «пушей на юзера в неделю», поэтому обойти его нельзя: `reason`
@@ -36,10 +40,14 @@ def send_push(
     автор хотелок, новый подписчик); у пуша без виновника — сам получатель.
     Строка лога пишется на каждое построенное сообщение независимо от исхода
     доставки: неудачная доставка не должна перезапускать дедуп.
+
+    Настройки уведомлений (фича 0012) применяются здесь же: юзер, выключивший
+    группу `reason`, из адресатов выбывает ДО отправки и ДО записи лога — гварды,
+    читающие лог («раз в 30 дней»), при выключенной группе не расходуются.
     """
     if not target_users:
         logger.info('Пустой список получателей. Пуши не отправлены.')
-        return
+        return 0
     data = {
         'click_action': 'FLUTTER_NOTIFICATION_CLICK',
     }
@@ -54,7 +62,17 @@ def send_push(
     users_with_message_ids = []
 
     target_users = list(set(target_users))
+    with SessionLocal() as db:
+        opted_out = disabled_user_ids(db, (u.id for u in target_users), reason)
+    if opted_out:
+        logger.info(
+            'Группа пуша {reason} выключена у {count} адресатов, пропущены',
+            reason=reason.name,
+            count=len(opted_out),
+        )
     for user in target_users:
+        if user.id in opted_out:
+            continue
         if not user.firebase_push_token:
             logger.warning(
                 'Не отправлено сообщение из-за отсутствия пуш-токена: {user_id}',
@@ -72,7 +90,7 @@ def send_push(
         f'Отправка {len(messages)} собщений пользователям: {users_with_message_ids}'
     )
     if not messages:
-        return
+        return 0
     response = messaging.send_each(messages, dry_run=settings.IS_DEBUG)
     logger.info(
         'Результат отправки пушей: доставлено {success}, провалено {failure}',
@@ -104,6 +122,7 @@ def send_push(
             'Обнулено протухших пуш-токенов: {count}',
             count=len(dead),
         )
+    return len(messages)
 
 
 class SendResponseLike(Protocol):

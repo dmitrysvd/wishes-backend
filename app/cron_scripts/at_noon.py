@@ -216,7 +216,7 @@ def send_upcoming_birthday_of_followed_user_notification():
                 if not follower.firebase_push_token:
                     continue
                 pronoun = 'её' if user.gender == Gender.female else 'его'
-                send_push(
+                sent = send_push(
                     target_users=[follower],
                     title=f'🎉Скоро день рождения у {user.display_name}!🎉',
                     body=(
@@ -227,10 +227,12 @@ def send_upcoming_birthday_of_followed_user_notification():
                     reason_user=user,
                     link=get_user_deep_link(user),
                 )
-                sent_any = True
-            # Гвард обновляем только если реально хоть кому-то отправили. Иначе у
-            # именинника без достижимых подписчиков timestamp сжигался бы вхолостую
-            # и блокировал пуш на 200 дней для тех, кто подпишется позже (ещё в окне).
+                sent_any = sent_any or sent > 0
+            # Гвард обновляем только если реально хоть кому-то отправили (по
+            # возврату send_push — подписчик с выключенной группой «Дни рождения»
+            # отправкой не считается). Иначе у именинника без достижимых
+            # подписчиков timestamp сжигался бы вхолостую и блокировал пуш на 200
+            # дней для тех, кто подпишется позже (ещё в окне).
             if sent_any:
                 user.pre_bday_push_for_followers_last_sent_at = utc_now()
                 db.add(user)

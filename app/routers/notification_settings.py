@@ -2,24 +2,36 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
-from starlette.status import (
-    HTTP_401_UNAUTHORIZED,
-    HTTP_422_UNPROCESSABLE_ENTITY,
-    HTTP_501_NOT_IMPLEMENTED,
-)
+from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_422_UNPROCESSABLE_CONTENT
 
 from app.constants import NotificationGroup
 from app.db import User
 from app.dependencies import NOTIFICATION_SETTINGS_TAG, get_current_user, get_db
+from app.notification_settings import GROUP_TEXTS, group_states, set_group_enabled
 from app.schemas import (
     NOTIFICATION_GROUP_KEY_PATTERN,
     NOTIFICATION_GROUPS_EXAMPLE_ALL_ON,
     NOTIFICATION_GROUPS_EXAMPLE_FRIENDS_OFF,
+    NotificationGroupSchema,
     NotificationGroupToggleSchema,
     NotificationSettingsReadSchema,
 )
 
 router = APIRouter(tags=[NOTIFICATION_SETTINGS_TAG])
+
+
+def build_settings(db: Session, user: User) -> NotificationSettingsReadSchema:
+    return NotificationSettingsReadSchema(
+        groups=[
+            NotificationGroupSchema(
+                key=group.value,
+                title=GROUP_TEXTS[group].title,
+                subtitle=GROUP_TEXTS[group].subtitle,
+                enabled=enabled,
+            )
+            for group, enabled in group_states(db, user)
+        ]
+    )
 
 
 def parse_notification_group(raw: str) -> NotificationGroup:
@@ -30,7 +42,7 @@ def parse_notification_group(raw: str) -> NotificationGroup:
         return NotificationGroup(raw)
     except ValueError:
         raise HTTPException(
-            status_code=HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422_UNPROCESSABLE_CONTENT,
             detail=[
                 {
                     'loc': ['path', 'group'],
@@ -116,7 +128,7 @@ def read_notification_settings(
     db: Session = Depends(get_db),
 ) -> NotificationSettingsReadSchema:
     """Экран «Уведомления» — см. `_READ_DESCRIPTION`."""
-    raise HTTPException(status_code=HTTP_501_NOT_IMPLEMENTED)
+    return build_settings(db, user)
 
 
 _TOGGLE_DESCRIPTION = f"""\
@@ -174,7 +186,7 @@ _TOGGLE_DESCRIPTION = f"""\
             },
         },
         **_AUTH_RESPONSE,
-        HTTP_422_UNPROCESSABLE_ENTITY: {
+        HTTP_422_UNPROCESSABLE_CONTENT: {
             'description': (
                 'Невалидная форма запроса: `group` — не группа, которую бэк сейчас '
                 'отдаёт в `GET` (в т.ч. группа, которой ещё нет, например `prices` '
@@ -237,5 +249,5 @@ def toggle_notification_group(
     db: Session = Depends(get_db),
 ) -> NotificationSettingsReadSchema:
     """Переключить одну группу — см. `_TOGGLE_DESCRIPTION`."""
-    parse_notification_group(group)
-    raise HTTPException(status_code=HTTP_501_NOT_IMPLEMENTED)
+    set_group_enabled(db, user, parse_notification_group(group), body.enabled)
+    return build_settings(db, user)

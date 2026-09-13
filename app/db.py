@@ -21,6 +21,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
     Uuid,
     create_engine,
     event,
@@ -41,6 +42,7 @@ from app.constants import (
     FollowAction,
     FollowSource,
     Gender,
+    NotificationGroup,
     PriceObservationStatus,
     PriceRefreshOutcome,
     PriceSource,
@@ -409,6 +411,57 @@ class FollowEvent(Base):
     # попало в два прогона. У unfollow-событий остаётся False и не читается.
     is_notification_sent: Mapped[bool] = mapped_column(
         default=False, server_default=false(), nullable=False
+    )
+
+
+class NotificationSetting(Base):
+    """Положение переключателя группы уведомлений у юзера (фича 0012).
+
+    Строка есть только у групп, которые юзер хоть раз переключал; нет строки =
+    дефолт «включено». Так существующие юзеры ничего не замечают, а новая
+    группа появляется включённой без бэкфилла.
+    """
+
+    __tablename__ = 'notification_setting'
+    __table_args__ = (
+        UniqueConstraint('user_id', 'group', name='uq_notification_setting_user_group'),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), nullable=False
+    )
+    group: Mapped[NotificationGroup] = mapped_column(
+        Enum(NotificationGroup), nullable=False
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class NotificationSettingEvent(Base):
+    """Append-only лог реальных переключений групп — метрика «что раздражает».
+
+    Пишется только при смене положения (было ≠ стало); повтор того же значения
+    события не даёт, иначе быстрые тапы туда-обратно раздували бы метрику.
+    """
+
+    __tablename__ = 'notification_setting_event'
+
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), nullable=False
+    )
+    group: Mapped[NotificationGroup] = mapped_column(
+        Enum(NotificationGroup), nullable=False
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
