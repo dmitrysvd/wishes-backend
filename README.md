@@ -8,10 +8,11 @@
 ## Локальный запуск для e2e фронта
 
 ```bash
-scripts/dev-server.sh [порт]   # миграции + uvicorn --reload на 0.0.0.0:8000
+scripts/dev-server.sh [порт]   # миграции + uvicorn --reload на 127.0.0.1:8000
 ```
 
-Swagger — `/docs`, спек — `/openapi.json`. Бэк-сессия Claude живёт в сетевом
-namespace: с хоста бэк доступен по IP veth (`10.200.1.2:<порт>`), не по `127.0.0.1`.
-Авторизация в тестах без OAuth — `POST /dev/test_token` с `TEST_AUTH_SECRET` из `.env`
-(фича 0009, персоны `rich` / `empty`).
+Адрес привязки — `DEV_SERVER_HOST` (по умолчанию `127.0.0.1`). Локальный uvicorn
+отдаёт ручки **без префикса `/api/v1`** — его добавляет nginx на проде; Swagger —
+`/docs`, спек — `/openapi.json`. Авторизация в тестах без OAuth —
+`POST /dev/test_token` с `TEST_AUTH_SECRET` из `.env` (фича 0009, персоны
+`rich` / `empty`).

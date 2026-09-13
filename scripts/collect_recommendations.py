@@ -1,9 +1,9 @@
 """Разовый сборщик рекомендаций с «Читай-город».
 
-Запуск (нужен прямой RU-egress; в namespace Claude — через netns хоста):
+Запуск (нужен прямой RU-egress, без прокси — источник режет зарубежные адреса):
 
-    sudo nsenter -t 1 -n env -u http_proxy -u https_proxy -u HTTP_PROXY \
-        -u HTTPS_PROXY -u all_proxy -u ALL_PROXY \
+    env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+        -u all_proxy -u ALL_PROXY \
         uv run python scripts/collect_recommendations.py > scripts/recommendations.json
 
 Логика: для каждой категории берём страницу каталога, вытаскиваем ссылки на

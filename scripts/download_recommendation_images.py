@@ -1,9 +1,9 @@
 """Скачивает картинки рекомендаций с CDN-источника на наш media-том.
 
-Запуск (нужен прямой RU-egress; в namespace Claude — через netns хоста):
+Запуск (нужен прямой RU-egress, без прокси — источник режет зарубежные адреса):
 
-    sudo nsenter -t 1 -n env -u http_proxy -u https_proxy -u HTTP_PROXY \
-        -u HTTPS_PROXY -u all_proxy -u ALL_PROXY \
+    env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+        -u all_proxy -u ALL_PROXY \
         uv run python scripts/download_recommendation_images.py
 
 Берёт scripts/recommendations.json, для каждой записи качает картинку,
