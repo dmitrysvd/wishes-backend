@@ -10,13 +10,13 @@
 | app/config.py                      |       17 |        0 |     100% |           |
 | app/constants.py                   |       46 |        0 |     100% |           |
 | app/cron\_scripts/\_\_init\_\_.py  |        0 |        0 |     100% |           |
-| app/cron\_scripts/at\_noon.py      |      117 |        0 |     100% |           |
+| app/cron\_scripts/at\_noon.py      |      104 |        0 |     100% |           |
 | app/cron\_scripts/every\_hour.py   |        8 |        0 |     100% |           |
 | app/cron\_scripts/every\_minute.py |        4 |        0 |     100% |           |
 | app/cron\_scripts/price\_watch.py  |       40 |        0 |     100% |           |
-| app/db.py                          |      172 |        0 |     100% |           |
+| app/db.py                          |      175 |        0 |     100% |           |
 | app/dependencies.py                |       67 |        0 |     100% |           |
-| app/firebase.py                    |       59 |        0 |     100% |           |
+| app/firebase.py                    |       64 |        0 |     100% |           |
 | app/hawk.py                        |       16 |        0 |     100% |           |
 | app/helpers/\_\_init\_\_.py        |        5 |        0 |     100% |           |
 | app/helpers/activity.py            |       37 |        0 |     100% |           |
@@ -45,7 +45,7 @@
 | app/test\_auth.py                  |       54 |        0 |     100% |           |
 | app/utils.py                       |       40 |        0 |     100% |           |
 | app/vk.py                          |      115 |        0 |     100% |           |
-| **TOTAL**                          | **2260** |    **0** | **100%** |           |
+| **TOTAL**                          | **2255** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
