@@ -462,26 +462,36 @@ class TestAuth:
 
         mocker.patch('app.routers.auth.verify_id_token', _fake_verify_id_token)
 
+    @staticmethod
+    def _vkid_body() -> dict:
+        return {
+            'code': 'auth_code',
+            'code_verifier': 'pkce_verifier',
+            'device_id': 'device_1',
+            'redirect_uri': 'https://hotelki.pro/',
+        }
+
     def test_auth_vk_success(
         self,
         api_client: TestClient,
-        auth_client: TestClient,
         db: Session,
+        mocker,
     ):
-        response = api_client.post(
-            '/auth/vk/mobile',
-            json={
-                'access_token': 'some_token',
-                'email': 'test_vk@test.com',
-                'phone': '+79898041180',
-            },
+        mocker.patch(
+            'app.routers.auth.exchange_vk_code',
+            return_value=(
+                'some_token',
+                VkUserExtraData(email='test_vk@test.com', phone='+79898041180'),
+            ),
         )
+        response = api_client.post('/auth/vk/vkid', json=self._vkid_body())
         assert response.is_success
         user = db.scalars(
             select(User).where(User.vk_access_token == 'some_token')
         ).one_or_none()
         assert user is not None
         assert user.email == 'test_vk@test.com'
+        assert user.phone == '+79898041180'
 
     def test_auth_firebase(
         self,
@@ -497,19 +507,25 @@ class TestAuth:
         user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
         assert user.display_name == 'Иванов Иван'
 
-    def test_auth_vk_mobile_saves_attribution(
+    def test_auth_vk_vkid_saves_attribution(
         self,
         api_client: TestClient,
         third_user: User,
         db: Session,
+        mocker,
     ):
         """Новый юзер + attribution → фиксируем реферера и канал (фича 0003)."""
+        mocker.patch(
+            'app.routers.auth.exchange_vk_code',
+            return_value=(
+                'attr_token',
+                VkUserExtraData(email='attr_vk@test.com', phone=None),
+            ),
+        )
         response = api_client.post(
-            '/auth/vk/mobile',
+            '/auth/vk/vkid',
             json={
-                'access_token': 'attr_token',
-                'email': 'attr_vk@test.com',
-                'phone': None,
+                **self._vkid_body(),
                 'attribution': {
                     'referrer_id': str(third_user.id),
                     'utm_source': 'telegram',
@@ -576,39 +592,15 @@ class TestAuth:
         ).one()
         assert count == 0
 
-    def test_auth_vk_mobile_unverified_email_no_takeover(
-        self,
-        api_client: TestClient,
-        db: Session,
-        mocker,
-    ):
-        """Легаси-mobile НЕ связывает VK-вход с чужим аккаунтом по email из тела
-        (email не подтверждён) — иначе захват аккаунта подстановкой чужого email.
-        По неподтверждённому email не матчим; firebase отвергает дубль email при
-        создании → 409, а НЕ тихий вход в чужой аккаунт."""
-        response = api_client.post('/auth/firebase', json={'id_token': 'id_token'})
-        assert response.is_success
-        firebase_user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
-        assert firebase_user.vk_id is None
-
-        # Реальный firebase отверг бы создание юзера с уже занятым email.
-        mocker.patch(
-            'app.routers.auth.create_firebase_user',
-            side_effect=AlreadyExistsError('email exists'),
-        )
+    def test_legacy_vk_mobile_auth_is_gone(self, api_client: TestClient):
+        """Легаси /auth/vk/mobile принимал access_token и email из тела клиента:
+        токен чужого VK-приложения давал вход под чужим vk_id. Ручки нет — 404,
+        не 401/422 (роут не существует, а не «не авторизован»)."""
         response = api_client.post(
             '/auth/vk/mobile',
-            json={
-                'access_token': 'some_vk_token',
-                'email': self.FIREBASE_USER_EMAIL,  # чужой email в теле клиента
-                'phone': None,
-            },
+            json={'access_token': 'x', 'email': 'x@test.com', 'phone': None},
         )
-        assert response.status_code == 409
-
-        # Firebase-аккаунт НЕ захвачен: vk_id не подставлен.
-        db.refresh(firebase_user)
-        assert firebase_user.vk_id is None
+        assert response.status_code == 404
 
     def test_auth_vk_vkid_success(
         self,

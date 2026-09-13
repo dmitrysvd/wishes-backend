@@ -19,7 +19,6 @@ from app.logging import logger
 from app.schemas import (
     RegistrationAttributionSchema,
     RequestFirebaseAuthSchema,
-    RequestVkAuthMobileSchema,
     RequestVkAuthVkidSchema,
     ResponseVkAuthMobileSchema,
     SavePushTokenSchema,
@@ -80,9 +79,8 @@ def auth_vk_via_code(
         request_data.device_id,
         request_data.redirect_uri,
     )
-    # email из серверного обмена VK ID — подтверждён VK (не из тела клиента).
     firebase_uid, firebase_token, is_new_user = auth_vk(
-        access_token, vk_extra_data, db, request_data.attribution, email_verified=True
+        access_token, vk_extra_data, db, request_data.attribution
     )
     return ResponseVkAuthMobileSchema(
         firebase_uid=firebase_uid,
@@ -96,17 +94,22 @@ def auth_vk(
     vk_extra_data: VkUserExtraData,
     db: Session,
     attribution: RegistrationAttributionSchema | None = None,
-    email_verified: bool = False,
 ) -> tuple[str, str, bool]:
+    """Завести/найти юзера по VK-профилю и выдать firebase custom token.
+
+    `access_token` и `vk_extra_data` — только из серверного обмена VK ID
+    (`exchange_vk_code`): токен выпущен под наше приложение, email подтверждён VK.
+    Принимать сюда токен/email из тела клиента нельзя — токен чужого VK-приложения
+    даёт вход под чужим vk_id, а неподтверждённый email — вход в чужой аккаунт.
+    """
     vk_basic_data = get_vk_user_data_by_access_token(access_token)
 
     user = db.scalars(
         select(User).where(User.vk_id == str(vk_basic_data.id))
     ).one_or_none()
-    # Связывать VK-вход с существующим аккаунтом по email можно ТОЛЬКО если email
-    # подтверждён VK (серверный обмен). Иначе (легаси-mobile: email из тела клиента)
-    # подстановка чужого email дала бы вход в чужой аккаунт — по email не матчим.
-    if not user and email_verified and vk_extra_data.email:
+    # Email подтверждён VK (серверный обмен) — можно связать с существующим
+    # аккаунтом, заведённым через Google/Firebase.
+    if not user and vk_extra_data.email:
         user = db.scalars(
             select(User).where(User.email == vk_extra_data.email)
         ).one_or_none()
@@ -168,41 +171,6 @@ def auth_vk(
 
     firebase_token = create_custom_firebase_token(firebase_uid)
     return firebase_uid, firebase_token, is_new_user
-
-
-@router.post('/auth/vk/mobile', deprecated=True)
-def auth_vk_mobile(
-    auth_data: RequestVkAuthMobileSchema, db: Session = Depends(get_db)
-) -> ResponseVkAuthMobileSchema:
-    """
-    **DEPRECATED — используйте `POST /auth/vk/vkid`.**
-
-    Легаси-вход через ВК на мобильных устройствах (Public Flow): клиент присылает
-    готовый `access_token`, а email/phone — в теле запроса (не подтверждены VK,
-    поэтому вход по email с существующим аккаунтом не связывается). Оставлен ради
-    уже зашипленных старых мобильных клиентов; новые интеграции — на `/auth/vk/vkid`
-    (Confidential Flow, подтверждённый профиль из `id_token`). Снимется, когда старые
-    клиенты переедут.
-
-    Создаст пользователя в firebase и на сервере, если не существовал.
-    Возвращает данные для аутентификации в firebase.
-
-    Сайд-эффект (атрибуция): если передан `attribution` и юзер создаётся впервые
-    (`user_created=true`), бэк фиксирует реферера и канал установки (см.
-    `RegistrationAttributionSchema`). Best-effort: невалидная атрибуция тихо
-    игнорируется, регистрацию не валит. Для существующего юзера атрибуция
-    игнорируется (first-touch).
-    """
-    access_token = auth_data.access_token
-    vk_extra_data = VkUserExtraData(email=auth_data.email, phone=auth_data.phone)
-    firebase_uid, firebase_token, is_new_user = auth_vk(
-        access_token, vk_extra_data, db, auth_data.attribution
-    )
-    return ResponseVkAuthMobileSchema(
-        firebase_uid=firebase_uid,
-        firebase_token=firebase_token,
-        user_created=is_new_user,
-    )
 
 
 @router.post(

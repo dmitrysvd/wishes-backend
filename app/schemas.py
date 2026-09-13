@@ -985,40 +985,6 @@ class FollowActionSchema(BaseModel):
     )
 
 
-class RequestVkAuthMobileSchema(BaseModel):
-    model_config = ConfigDict(
-        json_schema_extra={
-            'examples': [
-                {
-                    'access_token': 'vk-access-token',
-                    'email': 'user@example.com',
-                    'phone': '+70000000000',
-                    'attribution': {
-                        'referrer_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
-                        'utm_source': 'whatsapp',
-                    },
-                },
-                {
-                    'access_token': 'vk-access-token',
-                    'email': None,
-                    'phone': None,
-                },
-            ]
-        }
-    )
-
-    access_token: str
-    email: str | None
-    phone: str | None
-    attribution: RegistrationAttributionSchema | None = Field(
-        default=None,
-        description=(
-            'Атрибуция установки/реферала, учитывается только при создании нового '
-            'юзера. Опущено/`null` = без атрибуции.'
-        ),
-    )
-
-
 class RequestVkAuthVkidSchema(BaseModel):
     """Вход через VK ID (Confidential Flow, OAuth 2.1) — единый для web и мобилок.
 
