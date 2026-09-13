@@ -6,6 +6,7 @@ from firebase_admin.auth import verify_id_token
 from firebase_admin.exceptions import AlreadyExistsError, FirebaseError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.status import HTTP_410_GONE
 
 from app.db import User
 from app.dependencies import AUTH_TAG, get_current_user, get_db
@@ -171,6 +172,38 @@ def auth_vk(
 
     firebase_token = create_custom_firebase_token(firebase_uid)
     return firebase_uid, firebase_token, is_new_user
+
+
+LEGACY_VK_MOBILE_GONE_DETAIL = (
+    'Обновите приложение: этот способ входа больше не поддерживается'
+)
+
+
+@router.post(
+    '/auth/vk/mobile',
+    deprecated=True,
+    # Публичный путь: у старого клиента токена нет — иначе он получил бы 401 до 410.
+    openapi_extra={'security': []},
+    status_code=HTTP_410_GONE,
+    responses={
+        HTTP_410_GONE: {
+            'description': (
+                'Всегда. Легаси-вход (Public Flow, access_token и email из тела) '
+                'удалён как уязвимый; заглушка отдаёт только сообщение об '
+                'обновлении — старые сборки (≤ 1.1.14) показывают `detail` тостом. '
+                'Тело запроса не читается и не валидируется.'
+            ),
+            'content': {
+                'application/json': {
+                    'example': {'detail': LEGACY_VK_MOBILE_GONE_DETAIL}
+                }
+            },
+        },
+    },
+)
+def auth_vk_mobile_gone() -> None:
+    """Легаси, только сообщение об обновлении. Живой VK-вход — `POST /auth/vk/vkid`."""
+    raise HTTPException(HTTP_410_GONE, LEGACY_VK_MOBILE_GONE_DETAIL)
 
 
 @router.post(
