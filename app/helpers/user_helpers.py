@@ -8,8 +8,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.db import PushReason, User
-from app.firebase import send_push
+from app.db import User
 from app.logging import logger
 from app.schemas import AnnotatedOtherUserSchema
 
@@ -153,20 +152,6 @@ def get_user_deep_link(user: User, ref: User | None = None) -> str:
     if ref is not None:
         link += f'&ref={ref.id}'
     return f'{link}#'
-
-
-def send_push_about_new_follower(target: User, follower: User):
-    if not target.firebase_push_token:
-        return
-    send_push(
-        target_users=[target],
-        title='У вас новый подписчик',
-        body=f'На вас подписался {follower.display_name}',
-        reason=PushReason.NEW_FOLLOWER,
-        reason_user=follower,
-        link=get_user_deep_link(follower),
-    )
-    logger.info(f'Отправлен пуш при подписании {follower.id} на {target.id}')
 
 
 def delete_user_image(user: User, db: Session):

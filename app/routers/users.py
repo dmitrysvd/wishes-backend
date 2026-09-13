@@ -3,7 +3,6 @@ from uuid import UUID
 import httpx
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     HTTPException,
     UploadFile,
@@ -26,7 +25,6 @@ from app.helpers import (
     get_user_deep_link,
     read_uploaded_image,
     save_profile_image_bytes,
-    send_push_about_new_follower,
 )
 from app.helpers.store_price import build_item_info
 from app.logging import logger
@@ -186,7 +184,6 @@ def users_followed_by_this_user(
 )
 def follow_user(
     follow_user_id: UUID,
-    background_tasks: BackgroundTasks,
     body: FollowActionSchema | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -198,7 +195,8 @@ def follow_user(
     на результат действия не влияет; при пустом теле/старом клиенте пишется
     `source = null`. Событие и ребро создаются в одной транзакции. Существование
     таргета предполагается (валидный id из приложения); несуществующий — `5xx`
-    (вне контракта). Побочно ставит пуш подписанному о новом подписчике.
+    (вне контракта). Побочно: подписанному придёт пуш о новом подписчике
+    ежечасным кроном, одним сообщением за все подписки за час.
     """
     follow_user = db.execute(select(User).where(User.id == follow_user_id)).scalar_one()
     if follow_user in user.follows:
@@ -215,11 +213,6 @@ def follow_user(
         )
     )
     db.commit()
-    background_tasks.add_task(
-        send_push_about_new_follower,
-        target=follow_user,
-        follower=user,
-    )
 
 
 @router.post(

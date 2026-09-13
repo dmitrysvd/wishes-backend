@@ -12,13 +12,11 @@ from app.helpers.user_helpers import (
     get_user_deep_link,
     refresh_avatar_on_login,
     save_profile_image_bytes,
-    send_push_about_new_follower,
 )
 
 __all__ = [
     'get_annotated_users',
     'get_user_deep_link',
-    'send_push_about_new_follower',
     'delete_user_image',
     'save_profile_image_bytes',
     'download_avatar_bytes',
