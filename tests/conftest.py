@@ -120,6 +120,7 @@ def db(test_engine, mocker):
         'app.notifications',
         'app.cron_scripts.at_noon',
         'app.cron_scripts.price_watch',
+        'app.price_alerts',
         'scripts.backfill_profile_images',
         'scripts.backfill_vk_friends',
     ]

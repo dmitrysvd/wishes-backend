@@ -85,8 +85,9 @@ def group_states(db: Session, user: User) -> list[tuple[NotificationGroup, bool]
 
 def set_group_enabled(
     db: Session, user: User, group: NotificationGroup, enabled: bool
-) -> None:
+) -> bool:
     """Переключить группу; событие пишется только при реальной смене положения.
+    Возвращает, изменилось ли положение.
 
     Абсолютное значение и одна строка на (юзер, группа) — повтор запроса и гонка
     устройств сводятся к «последняя запись побеждает» без версий. Коммит — здесь:
@@ -113,3 +114,4 @@ def set_group_enabled(
             user_id=user.id,
         )
     db.commit()
+    return was_enabled != enabled

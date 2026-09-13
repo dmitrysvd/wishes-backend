@@ -171,7 +171,8 @@ def test_send_push_skips_opted_out_and_keeps_others(db: Session, fcm):
 
     sent = send_push([opted_out, listener], 'title', 'body', reason=PushReason.SEASONAL)
 
-    assert sent == 1
+    assert sent.sent == 1
+    assert sent.accepted_user_ids == {listener.id}
     assert fcm.tokens == ['token-on']
     # Лог — только по реально отправленному: гварды по логу не расходуются.
     assert [log.target_user_id for log in db.scalars(select(PushSendingLog))] == [
@@ -184,7 +185,7 @@ def test_send_push_other_group_still_delivered(db: Session, fcm):
     user = _user(db, 'Partial', token='token')
     set_group_enabled(db, user, NotificationGroup.tips, False)
 
-    assert send_push([user], 't', 'b', reason=PushReason.RESERVATION) == 1
+    assert send_push([user], 't', 'b', reason=PushReason.RESERVATION).sent == 1
     assert fcm.tokens == ['token']
 
 
@@ -192,7 +193,7 @@ def test_send_push_all_opted_out_returns_zero(db: Session, fcm):
     user = _user(db, 'Off', token='token')
     set_group_enabled(db, user, NotificationGroup.birthdays, False)
 
-    assert send_push([user], 't', 'b', reason=PushReason.FOLLOWER_BIRTHDAY) == 0
+    assert send_push([user], 't', 'b', reason=PushReason.FOLLOWER_BIRTHDAY).sent == 0
     assert fcm.calls == []
 
 

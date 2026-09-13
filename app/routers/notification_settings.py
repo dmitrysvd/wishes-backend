@@ -8,6 +8,7 @@ from app.constants import NotificationGroup
 from app.db import User
 from app.dependencies import NOTIFICATION_SETTINGS_TAG, get_current_user, get_db
 from app.notification_settings import GROUP_TEXTS, group_states, set_group_enabled
+from app.price_alerts import reset_seen_for_user
 from app.schemas import (
     NOTIFICATION_GROUP_KEY_PATTERN,
     NOTIFICATION_GROUPS_EXAMPLE_ALL_ON,
@@ -255,5 +256,9 @@ def toggle_notification_group(
     db: Session = Depends(get_db),
 ) -> NotificationSettingsReadSchema:
     """Переключить одну группу — см. `_TOGGLE_DESCRIPTION`."""
-    set_group_enabled(db, user, parse_notification_group(group), body.enabled)
+    parsed = parse_notification_group(group)
+    changed = set_group_enabled(db, user, parsed, body.enabled)
+    if changed and body.enabled and parsed == NotificationGroup.prices:
+        # Включил «Цены и наличие» — «видел» = то, что на карточке сейчас.
+        reset_seen_for_user(db, user)
     return build_settings(db, user)

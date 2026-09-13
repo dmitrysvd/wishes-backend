@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
-from starlette.status import HTTP_404_NOT_FOUND, HTTP_501_NOT_IMPLEMENTED
+from starlette.status import HTTP_404_NOT_FOUND
 
 from app.dependencies import PUSHES_TAG, get_db
+from app.price_alerts import register_push_open
 from app.schemas import PushOpenedSchema
 
 router = APIRouter(tags=[PUSHES_TAG])
@@ -125,4 +126,6 @@ def push_opened(
     db: Session = Depends(get_db),
 ) -> Response:
     """Открытие по пушу — см. `_OPENED_DESCRIPTION`."""
-    raise HTTPException(status_code=HTTP_501_NOT_IMPLEMENTED)
+    if not register_push_open(db, body.delivery_id):
+        raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail='Not Found')
+    return Response()

@@ -1,7 +1,8 @@
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import firebase_admin
 from firebase_admin import auth, messaging
@@ -9,6 +10,7 @@ from firebase_admin.auth import UserRecord
 from sqlalchemy import update
 
 from app.config import settings
+from app.constants import PriceAlertTrigger
 from app.db import PushReason, PushSendingLog, SessionLocal, User
 from app.logging import logger
 from app.notification_settings import disabled_user_ids
@@ -16,6 +18,21 @@ from app.notification_settings import disabled_user_ids
 cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
 
 firebase_admin.initialize_app(cred)
+
+
+@dataclass(frozen=True)
+class PushSendOutcome:
+    """Итог `send_push`: сколько сообщений ушло и кого FCM принял.
+
+    `sent` — число построенных и отправленных сообщений (по нему вызывающий
+    решает, расходовать ли свой гвард, напр.
+    `pre_bday_push_for_followers_last_sent_at`);
+    `accepted_user_ids` — адресаты, чьё сообщение FCM принял (не «доставлено» —
+    доставку FCM не подтверждает). Мёртвый токен и сбой сюда не попадают.
+    """
+
+    sent: int = 0
+    accepted_user_ids: frozenset[UUID] = field(default_factory=frozenset)
 
 
 def send_push(
@@ -27,11 +44,16 @@ def send_push(
     reason_user: User | None = None,
     campaign_key: str | None = None,
     link: str | None = None,
-) -> int:
+    trigger: PriceAlertTrigger | None = None,
+    with_delivery_id: bool = False,
+) -> PushSendOutcome:
     """Единственная точка отправки пушей; сама пишет `PushSendingLog`.
 
-    Возвращает число отправленных сообщений — вызывающий по нему решает,
-    расходовать ли свой гвард (пример: `pre_bday_push_for_followers_last_sent_at`).
+    `trigger` — тип триггера пуша по складу (0013), уходит в лог и в
+    `data.trigger`. `with_delivery_id` — положить в `data.delivery_id` id
+    будущей строки лога: по нему клиент сообщает об открытии
+    (`POST /push/opened`), поэтому id генерится ДО отправки. `title`/`body`
+    дублируются в `data` для тоста в foreground.
 
     Лог — источник правды для дедупа (крон-пуши читают его перед отправкой) и
     для метрики «пушей на юзера в неделю», поэтому обойти его нельзя: `reason`
@@ -47,12 +69,17 @@ def send_push(
     """
     if not target_users:
         logger.info('Пустой список получателей. Пуши не отправлены.')
-        return 0
+        return PushSendOutcome()
     data = {
         'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+        'title': title,
+        'body': body,
     }
     if link:
         data['link'] = link
+    if trigger is not None:
+        data['type'] = 'price_alert'
+        data['trigger'] = trigger.value
     android_notification = messaging.AndroidNotification(
         title=title,
         body=body,
@@ -60,6 +87,7 @@ def send_push(
     android_config = messaging.AndroidConfig(notification=android_notification)
     messages = []
     users_with_message_ids = []
+    delivery_ids: list[UUID] = []
 
     target_users = list(set(target_users))
     with SessionLocal() as db:
@@ -79,18 +107,22 @@ def send_push(
                 user_id=user.id,
             )
             continue
+        delivery_id = uuid4()
         message = messaging.Message(
             android=android_config,
             token=user.firebase_push_token,
-            data=data,
+            data=(
+                {**data, 'delivery_id': str(delivery_id)} if with_delivery_id else data
+            ),
         )
         messages.append(message)
         users_with_message_ids.append(user.id)
+        delivery_ids.append(delivery_id)
     logger.info(
         f'Отправка {len(messages)} собщений пользователям: {users_with_message_ids}'
     )
     if not messages:
-        return 0
+        return PushSendOutcome()
     response = messaging.send_each(messages, dry_run=settings.IS_DEBUG)
     logger.info(
         'Результат отправки пушей: доставлено {success}, провалено {failure}',
@@ -101,15 +133,26 @@ def send_push(
     with SessionLocal() as db:
         db.add_all(
             PushSendingLog(
+                id=delivery_id,
                 sent_at=sent_at,
                 reason=reason,
                 reason_user_id=reason_user.id if reason_user else user_id,
                 target_user_id=user_id,
                 campaign_key=campaign_key,
+                trigger=trigger,
             )
-            for user_id in users_with_message_ids
+            for user_id, delivery_id in zip(
+                users_with_message_ids, delivery_ids, strict=True
+            )
         )
         db.commit()
+    accepted = frozenset(
+        user_id
+        for resp, user_id in zip(
+            response.responses, users_with_message_ids, strict=True
+        )
+        if resp.success
+    )
     dead = dead_token_user_ids(response.responses, users_with_message_ids)
     if dead:
         # Обнуляем протухшие токены, которые FCM признал недоставляемыми по адресату
@@ -122,7 +165,7 @@ def send_push(
             'Обнулено протухших пуш-токенов: {count}',
             count=len(dead),
         )
-    return len(messages)
+    return PushSendOutcome(sent=len(messages), accepted_user_ids=accepted)
 
 
 class SendResponseLike(Protocol):

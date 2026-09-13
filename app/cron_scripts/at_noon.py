@@ -7,6 +7,7 @@ from app.db import Gender, PushReason, PushSendingLog, SessionLocal, User, Wish
 from app.firebase import send_push
 from app.logging import logger
 from app.main import get_user_deep_link
+from app.price_alerts import send_price_alerts
 from app.utils import utc_now
 
 # Подписчикам сообщаем, когда до ДР осталось от 3 до 14 дней.
@@ -227,7 +228,7 @@ def send_upcoming_birthday_of_followed_user_notification():
                     reason_user=user,
                     link=get_user_deep_link(user),
                 )
-                sent_any = sent_any or sent > 0
+                sent_any = sent_any or sent.sent > 0
             # Гвард обновляем только если реально хоть кому-то отправили (по
             # возврату send_push — подписчик с выключенной группой «Дни рождения»
             # отправкой не считается). Иначе у именинника без достижимых
@@ -345,6 +346,8 @@ def main():
     send_upcoming_birthday_of_current_user_notification()
     send_upcoming_birthday_of_followed_user_notification()
     send_seasonal_notifications()
+    # После ночного обхода цен (03:00 UTC) — дайджест по складу (фича 0013).
+    send_price_alerts()
     send_empty_list_reactivation_notifications()
 
 

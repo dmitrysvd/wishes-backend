@@ -1,4 +1,5 @@
 import enum
+from decimal import Decimal
 
 
 class Gender(enum.Enum):
@@ -152,6 +153,23 @@ class PriceRefreshOutcome(enum.Enum):
     ok = 'ok'
     unsupported = 'unsupported'
     failed = 'failed'
+
+
+class PriceAlertTrigger(enum.Enum):
+    """Тип триггера пуша по складу (фича 0013) — в логе отправок и в `data.trigger`.
+
+    price — подешевело относительно базы «видел»; availability — снова в наличии
+    после «распродано/нет» по обходу; mixed — дайджест из нескольких хотелок с
+    разными триггерами.
+    """
+
+    price = 'price'
+    availability = 'availability'
+    mixed = 'mixed'
+
+
+# Порог триггера «подешевело» (0013): доля от базы «видел». 🟡 дефолт продукта.
+PRICE_ALERT_DROP_RATIO = Decimal('0.10')
 
 
 class NotificationGroup(enum.Enum):

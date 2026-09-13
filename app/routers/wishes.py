@@ -40,6 +40,7 @@ from app.helpers.store_price import (
 )
 from app.logging import logger
 from app.parsers import parse_wildberries_link
+from app.price_alerts import mark_seen
 from app.schemas import WishReadSchema, WishWriteSchema
 from app.utils import utc_now
 
@@ -410,7 +411,10 @@ def refresh_store_price(
     # `wish.shop` уже проверил, что ссылка — WB, поэтому наблюдение есть.
     assert observation is not None
     wish.price_source = PriceSource.shop
-    record_fresh_observation(db, wish, observation, utc_now())
+    now = utc_now()
+    record_fresh_observation(db, wish, observation, now)
+    # Юзер увидел свежую цену — порог «подешевело» считаем от неё (0013).
+    mark_seen(wish, observation.product_price, now)
     _record_refresh(db, wish, PriceRefreshOutcome.ok)
     return wish
 
