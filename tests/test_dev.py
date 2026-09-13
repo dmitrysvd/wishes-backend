@@ -1,9 +1,10 @@
 from collections.abc import Iterator
+from datetime import date, timedelta
 from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.constants import PriceObservationStatus, PriceSource, TestPersona
@@ -166,3 +167,21 @@ def test_build_test_token_format(db: Session, mocker):
     mocker.patch('app.config.settings.TEST_AUTH_SECRET', 'dev-secret')
     user = get_or_create_test_user(db, TestPersona.empty)
     assert build_test_token(user) == f'dev-secret:{user.id}'
+
+
+def test_rich_store_observations_are_redated_on_each_call(db: Session):
+    # e2e должен видеть «вчера/сегодня» независимо от дня: старый ряд сносится.
+    user = get_or_create_test_user(db, TestPersona.rich)
+    db.execute(
+        update(WishPriceObservation).values(
+            observed_date=WishPriceObservation.observed_date - timedelta(days=10)
+        )
+    )
+    db.commit()
+
+    get_or_create_test_user(db, TestPersona.rich)
+
+    dates = set(db.scalars(select(WishPriceObservation.observed_date)))
+    assert dates == {date.today(), date.today() - timedelta(days=1)}
+    assert db.scalar(select(func.count()).select_from(WishPriceObservation)) == 6
+    assert len([w for w in user.wishes if w.link]) == 4

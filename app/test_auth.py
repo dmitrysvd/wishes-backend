@@ -9,12 +9,12 @@
 from dataclasses import dataclass
 from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.constants import Gender, PriceObservationStatus, PriceSource, TestPersona
-from app.db import User, Wish
+from app.db import User, Wish, WishPriceObservation
 from app.helpers.price_watch import (
     ProductObservation,
     WbPriceSchema,
@@ -226,22 +226,26 @@ def _get_or_create_rich(db: Session) -> User:
 
 def _ensure_rich_store_wishes(db: Session, user: User) -> None:
     """WB-хотелки rich во всех состояниях склада (0011): «от» в наличии,
-    распродано, исчез, ручная цена. Дописываются и уже существующему rich —
-    иначе стенд, где rich создан раньше, остался бы без них; идемпотентно по
-    ссылке. Наблюдения датируются относительно «сегодня»: свежее наблюдение
-    и вчерашняя история под триггеры 0013 («видел» / вернулось в наличие)."""
-    existing = {wish.link for wish in user.wishes}
+    распродано, исчез, ручная цена. Наблюдения датируются относительно «сегодня»
+    (свежее + вчерашняя история под триггеры 0013) и ПЕРЕСЧИТЫВАЮТСЯ при каждом
+    вызове: e2e видит одну и ту же картину независимо от дня. Хотелки
+    дописываются и уже существующему rich (стенд), идемпотентно по ссылке."""
+    by_link = {wish.link: wish for wish in user.wishes}
     now = utc_now()
     for name, link, manual_price, observations in _RICH_STORE_WISHES:
-        if link in existing:
-            continue
-        wish = Wish(name=name, link=link)
-        user.wishes.append(wish)
-        db.flush()
+        wish = by_link.get(link)
+        if wish is None:
+            wish = Wish(name=name, link=link)
+            user.wishes.append(wish)
+            db.flush()
         if manual_price is not None:
             set_manual_price(wish, manual_price)
             continue
         wish.price_source = PriceSource.shop
+        # Старый ряд — под снос: даты «вчера/сегодня» должны быть свежими.
+        db.execute(
+            delete(WishPriceObservation).where(WishPriceObservation.wish_id == wish.id)
+        )
         for days_ago, status, rubles, is_minimum in observations:
             price = (
                 WbPriceSchema(basic=rubles * 100, product=rubles * 100)
