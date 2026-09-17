@@ -43,13 +43,6 @@ TODAY = date.today()
 YESTERDAY = TODAY - timedelta(days=1)
 
 
-@pytest.fixture(autouse=True)
-def price_alerts_on(monkeypatch):
-    """Пуши по складу выключены продуктом до выкладки Android с 0011; тесты
-    логики включают флаг явно — это конфигурация системы, не мок."""
-    monkeypatch.setattr('app.price_alerts.PRICE_ALERT_ENABLED', True)
-
-
 @pytest.fixture
 def user(db: Session) -> User:
     user = User(
