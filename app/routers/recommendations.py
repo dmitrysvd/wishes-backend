@@ -4,20 +4,18 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
-from starlette.status import (
-    HTTP_401_UNAUTHORIZED,
-    HTTP_404_NOT_FOUND,
-    HTTP_501_NOT_IMPLEMENTED,
-)
+from starlette.status import HTTP_401_UNAUTHORIZED, HTTP_404_NOT_FOUND
 
-from app.constants import RecommendationCategory
+from app.constants import RECOMMENDATION_CATEGORY_TITLES, RecommendationCategory
 from app.db import User, Wish, WishRecommendation
 from app.dependencies import WISHES_TAG, PaginationParams, get_current_user, get_db
 from app.helpers.pagination import paginate
+from app.helpers.recommendations import ordered_categories
 from app.schemas import (
     RECOMMENDATION_EXAMPLE,
     PageSchema,
     RecommendationCategoryListSchema,
+    RecommendationCategorySchema,
     RecommendationFullReadSchema,
     RecommendationSchema,
 )
@@ -82,8 +80,14 @@ def list_recommendation_categories(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RecommendationCategoryListSchema:
-    # Заглушка до заморозки контракта (PROTOCOL.md §5).
-    raise HTTPException(HTTP_501_NOT_IMPLEMENTED)
+    return RecommendationCategoryListSchema(
+        items=[
+            RecommendationCategorySchema(
+                code=category, title=RECOMMENDATION_CATEGORY_TITLES[category]
+            )
+            for category in ordered_categories(db, user)
+        ]
+    )
 
 
 @router.get(

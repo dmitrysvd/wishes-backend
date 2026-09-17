@@ -123,6 +123,7 @@ def db(test_engine, mocker):
         'app.price_alerts',
         'scripts.backfill_profile_images',
         'scripts.backfill_vk_friends',
+        'scripts.load_recommendations',
     ]
     for module in modules:
         try:

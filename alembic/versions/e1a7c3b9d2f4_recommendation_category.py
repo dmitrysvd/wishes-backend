@@ -7,7 +7,7 @@
 проде — бэкап (`backup_postgres.sh`).
 
 Revision ID: e1a7c3b9d2f4
-Revises: d8f5b2e0a3c4
+Revises: adef22e9beb9
 Create Date: 2026-09-17 12:00:00.000000
 
 """
@@ -20,7 +20,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'e1a7c3b9d2f4'
-down_revision: str | None = 'd8f5b2e0a3c4'
+down_revision: str | None = 'adef22e9beb9'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

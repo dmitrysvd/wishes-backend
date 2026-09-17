@@ -190,7 +190,7 @@ RECOMMENDATION_EXAMPLE = {
     'description': 'Объясняй слова, не называя их. От 4 игроков.',
     'price': 739,
     'link': 'https://www.wildberries.ru/catalog/173825315/detail.aspx',
-    'image_url': 'https://basket-10.wbbasket.ru/vol1738/part173825/173825315/images/big/1.webp',
+    'image_url': '/media/recommendation_images/3f2a9c1e7b5d4a6c8e0f1b2a3c4d5e6f.webp',
     'category': 'hobby',
 }
 
@@ -225,9 +225,9 @@ class RecommendationSchema(BaseModel):
     )
     image_url: str | None = Field(
         description=(
-            'Картинка товара — абсолютный http(s)-URL магазина, грузить как есть '
-            '(base URL не дописывать, в отличие от `WishReadSchema.image`); `null` — '
-            'нет. При `POST /wishes` бэк копирует её сам.'
+            'Картинка товара — абсолютный путь от origin API '
+            '(`/media/recommendation_images/…`), ровно как `WishReadSchema.image`; '
+            '`null` — нет. При `POST /wishes` бэк копирует её в хотелку сам.'
         )
     )
     category: RecommendationCategory = Field(

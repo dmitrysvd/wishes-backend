@@ -33,6 +33,7 @@ from app.helpers.price_watch import (
     fetch_fresh_observation,
     record_fresh_observation,
 )
+from app.helpers.recommendations import copy_recommendation_image
 from app.helpers.store_price import (
     make_store_priced,
     reset_store_state,
@@ -169,6 +170,7 @@ def add_wish(
     store_client: httpx.Client = Depends(get_store_client),
 ):
     recommendation_id = None
+    rec = None
     if wish_data.recommendation_id:
         rec = db.scalars(
             select(WishRecommendation).where(
@@ -186,6 +188,9 @@ def add_wish(
         description=wish_data.description,
         link=link,
         recommendation_id=recommendation_id,
+        image=copy_recommendation_image(
+            rec.image_url if rec else None, settings.MEDIA_ROOT, WISH_IMAGES_DIR
+        ),
     )
     db.add(wish)
     if _is_store_link(link) and not wish_data.price_edited:
