@@ -128,9 +128,36 @@ _ADD_WISH_DESCRIPTION = f"""Добавить хотелку.
         },
         **_AUTH_RESPONSE,
         HTTP_404_NOT_FOUND: {
-            'description': '`recommendation_id` указан, но такой рекомендации нет.',
+            'description': (
+                '`recommendation_id` указан, но такой рекомендации нет (контент '
+                'обновили, пока форма была открыта). Ничего не создано; клиент '
+                'повторяет тот же запрос без `recommendation_id` — форма не '
+                'теряется, картинка при этом не копируется.'
+            ),
             'content': {
                 'application/json': {'example': {'detail': 'Recommendation not found'}}
+            },
+        },
+        422: {
+            'description': (
+                'Тело не прошло валидацию формы: нет `name` (пустая строка — '
+                'валидна, бэк не триммит), `link` не абсолютный http(s)-URL или '
+                'длиннее лимита, `price` не целое, `recommendation_id` не UUID. '
+                'Ничего не создано; `loc` указывает поле — подсвечивай его в форме.'
+            ),
+            'content': {
+                'application/json': {
+                    'example': {
+                        'detail': [
+                            {
+                                'type': 'url_parsing',
+                                'loc': ['body', 'link'],
+                                'msg': 'Input should be a valid URL',
+                                'input': 'wildberries',
+                            }
+                        ]
+                    }
+                }
             },
         },
     },

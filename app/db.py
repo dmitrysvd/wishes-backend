@@ -47,6 +47,7 @@ from app.constants import (
     PriceObservationStatus,
     PriceRefreshOutcome,
     PriceSource,
+    RecommendationCategory,
     Shop,
     StoreAvailability,
 )
@@ -208,6 +209,11 @@ class WishRecommendation(Base):
     )
     link: Mapped[str] = mapped_column(String(500))
     image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Категория обязательна: экран рекомендаций — это список категорий, вне
+    # категории товар не показывается нигде (фича 0015).
+    category: Mapped[RecommendationCategory] = mapped_column(
+        Enum(RecommendationCategory), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

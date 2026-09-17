@@ -16,6 +16,7 @@ from app.constants import (
     FollowSource,
     Gender,
     PriceSource,
+    RecommendationCategory,
     Shop,
     StoreAvailability,
     TestPersona,
@@ -27,10 +28,19 @@ ItemT = TypeVar('ItemT', bound=BaseModel)
 class PageSchema(BaseModel, Generic[ItemT]):
     """Универсальная схема-страница для offset/limit-пагинации."""
 
-    items: list[ItemT]
-    total: int
-    has_next: bool
-    has_previous: bool
+    items: list[ItemT] = Field(description='Элементы страницы; `[]` — пусто.')
+    total: int = Field(
+        description=(
+            'Сколько элементов всего под текущим фильтром (напр. в одной '
+            'категории при `?category=`), не глобально.'
+        )
+    )
+    has_next: bool = Field(
+        description=(
+            'Есть ли ещё после этой страницы: `true` → догружай с `offset+limit`.'
+        )
+    )
+    has_previous: bool = Field(description='`offset > 0`.')
 
 
 WB_LINK_EXAMPLE = (
@@ -98,6 +108,14 @@ class WishWriteSchema(BaseWishSchema):
                     'link': OZON_LINK_EXAMPLE,
                     'recommendation_id': '9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e',
                 },
+                {
+                    'name': 'Настольная игра Alias original',
+                    'description': 'Объясняй слова, не называя их. От 4 игроков.',
+                    'price': 739,
+                    'link': 'https://www.wildberries.ru/catalog/173825315/detail.aspx',
+                    'price_edited': False,
+                    'recommendation_id': '9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e',
+                },
             ]
         }
     )
@@ -152,20 +170,112 @@ class WishWriteSchema(BaseWishSchema):
         description=(
             'Только для `POST /wishes`: хотелка добавляется из рекомендации — бэк '
             'сам копирует её картинку. В `PUT` игнорируется. null/опущено — обычное '
-            'добавление.'
+            'добавление.\n\n'
+            'Форма из рекомендации (фича 0015): поля предзаполнены из '
+            '`RecommendationSchema` (`title`→`name`, `description`, `link`, '
+            '`price`); дальше — обычные правила `price`/`price_edited`: цену не '
+            'трогал → `price_edited=false`, `price` — эхо `RecommendationSchema.price` '
+            '(в т.ч. `null`), бэк возьмёт свежую цену у магазина сам; поправил → '
+            '`price_edited=true`. Ничего специального для рекомендации слать не нужно. '
+            'Картинку юзер правит уже у созданной хотелки: `recommendation_id` '
+            'шлётся всегда (связь остаётся), затем `POST /wishes/{id}/image` заменяет '
+            'скопированную картинку, `DELETE /wishes/{id}/image` — убирает.'
         ),
     )
 
 
+RECOMMENDATION_EXAMPLE = {
+    'id': '9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e',
+    'title': 'Настольная игра Alias original',
+    'description': 'Объясняй слова, не называя их. От 4 игроков.',
+    'price': 739,
+    'link': 'https://www.wildberries.ru/catalog/173825315/detail.aspx',
+    'image_url': 'https://basket-10.wbbasket.ru/vol1738/part173825/173825315/images/big/1.webp',
+    'category': 'hobby',
+}
+
+
 class RecommendationSchema(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+    """Товар-рекомендация для экрана «не знаю, что хочу». Тап по нему открывает
+    форму создания хотелки, предзаполненную этими полями; `id` кладётся в
+    `recommendation_id` при `POST /wishes`."""
+
+    model_config = ConfigDict(
+        from_attributes=True, json_schema_extra={'examples': [RECOMMENDATION_EXAMPLE]}
+    )
 
     id: UUID
-    title: str
-    description: str | None
-    price: int | None
-    link: str
-    image_url: str | None
+    title: str = Field(description='Название товара — предзаполняет `name` хотелки.')
+    description: str | None = Field(
+        description='Описание из карточки магазина; `null` — магазин не отдал.'
+    )
+    price: int | None = Field(
+        description=(
+            'Цена в рублях на момент загрузки контента; `null` — неизвестна. '
+            'После сохранения хотелки цену ведёт обычный обход магазина (0011).'
+        )
+    )
+    link: str = Field(
+        description=(
+            'Ссылка на товар в магазине. Всегда есть и всегда валидна для '
+            '`WishWriteSchema.link` (абсолютный http(s)-URL в его лимите длины): '
+            '`422` у `POST /wishes` из-за нетронутых полей рекомендации не бывает — '
+            'только из-за правок юзера.'
+        )
+    )
+    image_url: str | None = Field(
+        description=(
+            'Картинка товара — абсолютный http(s)-URL магазина, грузить как есть '
+            '(base URL не дописывать, в отличие от `WishReadSchema.image`); `null` — '
+            'нет. При `POST /wishes` бэк копирует её сам.'
+        )
+    )
+    category: RecommendationCategory = Field(
+        description=(
+            'Категория (фича 0015). Полный список — '
+            '`GET /wish_recommendations/categories`.'
+        )
+    )
+
+
+class RecommendationCategorySchema(BaseModel):
+    """Одна категория на экране «не знаю, что хочу»."""
+
+    model_config = ConfigDict(
+        json_schema_extra={'examples': [{'code': 'hobby', 'title': 'Игры и хобби'}]}
+    )
+
+    code: RecommendationCategory = Field(
+        description='Код для фильтра `?category=` списка рекомендаций.'
+    )
+    title: str = Field(description='Заголовок для показа, уже на русском.')
+
+
+class RecommendationCategoryListSchema(BaseModel):
+    """Категории в порядке показа. Без пагинации: категорий единицы."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'items': [
+                        {'code': 'jewelry', 'title': 'Украшения'},
+                        {'code': 'beauty', 'title': 'Уход и косметика'},
+                        {'code': 'hobby', 'title': 'Игры и хобби'},
+                    ]
+                },
+                {'items': []},
+            ]
+        }
+    )
+
+    items: list[RecommendationCategorySchema] = Field(
+        description=(
+            'Только категории, в которых есть товары; порядок — порядок показа '
+            '(подстроен под юзера: пол, возраст). Пустой список — контент не '
+            'залит вовсе: показывай «пока нечего предложить».'
+        )
+    )
 
 
 class RecommendationCreateSchema(BaseModel):
@@ -177,9 +287,15 @@ class RecommendationCreateSchema(BaseModel):
 
 
 class RecommendationFullReadSchema(RecommendationSchema):
+    """Рекомендация с счётчиком — для админки/аналитики, экранам клиента
+    не нужна: перед формой достаточно элемента списка."""
+
     model_config = ConfigDict(from_attributes=True)
 
-    wishes_count: int = 0
+    wishes_count: int = Field(
+        default=0,
+        description='Сколько хотелок (всех юзеров) добавлено из этой рекомендации.',
+    )
 
 
 class BaseUserSchema(BaseModel):
