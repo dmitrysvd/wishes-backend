@@ -205,3 +205,31 @@ class NotificationGroup(enum.Enum):
     prices = 'prices'
     # Сезонные подборки; подсказка «список пуст» (SEASONAL, EMPTY_LIST_REACTIVATION).
     tips = 'tips'
+
+
+class RecommendationCategory(enum.Enum):
+    """Категория рекомендации (фича 0015). Плоский фиксированный список: контент
+    кладётся руками, категория без товаров наружу не отдаётся."""
+
+    beauty = 'beauty'
+    jewelry = 'jewelry'
+    gadgets = 'gadgets'
+    home = 'home'
+    books = 'books'
+    hobby = 'hobby'
+    clothes = 'clothes'
+    kids = 'kids'
+
+
+# Заголовки категорий для экрана «не знаю, что хочу». Порядок словаря — дефолтный
+# порядок показа; таргетинг (пол/возраст) переставляет его на бэке.
+RECOMMENDATION_CATEGORY_TITLES: dict[RecommendationCategory, str] = {
+    RecommendationCategory.beauty: 'Уход и косметика',
+    RecommendationCategory.jewelry: 'Украшения',
+    RecommendationCategory.gadgets: 'Гаджеты',
+    RecommendationCategory.home: 'Для дома и кухни',
+    RecommendationCategory.books: 'Книги',
+    RecommendationCategory.hobby: 'Игры и хобби',
+    RecommendationCategory.clothes: 'Одежда и аксессуары',
+    RecommendationCategory.kids: 'Детям',
+}

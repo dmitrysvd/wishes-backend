@@ -33,6 +33,7 @@ from app.helpers.price_watch import (
     fetch_fresh_observation,
     record_fresh_observation,
 )
+from app.helpers.recommendations import copy_recommendation_image
 from app.helpers.store_price import (
     make_store_priced,
     reset_store_state,
@@ -128,9 +129,36 @@ _ADD_WISH_DESCRIPTION = f"""Добавить хотелку.
         },
         **_AUTH_RESPONSE,
         HTTP_404_NOT_FOUND: {
-            'description': '`recommendation_id` указан, но такой рекомендации нет.',
+            'description': (
+                '`recommendation_id` указан, но такой рекомендации нет (контент '
+                'обновили, пока форма была открыта). Ничего не создано; клиент '
+                'повторяет тот же запрос без `recommendation_id` — форма не '
+                'теряется, картинка при этом не копируется.'
+            ),
             'content': {
                 'application/json': {'example': {'detail': 'Recommendation not found'}}
+            },
+        },
+        422: {
+            'description': (
+                'Тело не прошло валидацию формы: нет `name` (пустая строка — '
+                'валидна, бэк не триммит), `link` не абсолютный http(s)-URL или '
+                'длиннее лимита, `price` не целое, `recommendation_id` не UUID. '
+                'Ничего не создано; `loc` указывает поле — подсвечивай его в форме.'
+            ),
+            'content': {
+                'application/json': {
+                    'example': {
+                        'detail': [
+                            {
+                                'type': 'url_parsing',
+                                'loc': ['body', 'link'],
+                                'msg': 'Input should be a valid URL',
+                                'input': 'wildberries',
+                            }
+                        ]
+                    }
+                }
             },
         },
     },
@@ -142,6 +170,7 @@ def add_wish(
     store_client: httpx.Client = Depends(get_store_client),
 ):
     recommendation_id = None
+    rec = None
     if wish_data.recommendation_id:
         rec = db.scalars(
             select(WishRecommendation).where(
@@ -159,6 +188,9 @@ def add_wish(
         description=wish_data.description,
         link=link,
         recommendation_id=recommendation_id,
+        image=copy_recommendation_image(
+            rec.image_url if rec else None, settings.MEDIA_ROOT, WISH_IMAGES_DIR
+        ),
     )
     db.add(wish)
     if _is_store_link(link) and not wish_data.price_edited:

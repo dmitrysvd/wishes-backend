@@ -69,6 +69,7 @@ class WishRecommendationAdmin(ModelView, model=WishRecommendation):
     column_list = [
         WishRecommendation.id,
         WishRecommendation.title,
+        WishRecommendation.category,
         WishRecommendation.link,
     ]
     icon = 'fa-solid fa-bullhorn'

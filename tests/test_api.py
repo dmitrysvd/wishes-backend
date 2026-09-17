@@ -10,7 +10,13 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.constants import UPLOAD_IMAGE_MAX_BYTES, FollowAction, FollowSource, Gender
+from app.constants import (
+    UPLOAD_IMAGE_MAX_BYTES,
+    FollowAction,
+    FollowSource,
+    Gender,
+    RecommendationCategory,
+)
 from app.db import (
     FollowEvent,
     User,
@@ -1234,6 +1240,7 @@ class TestRecommendations:
             price=500,
             link='https://partner-shop.com/item',
             image_url='https://partner-shop.com/img.jpg',
+            category=RecommendationCategory.hobby,
         )
         db.add(rec)
         db.commit()
@@ -1270,6 +1277,7 @@ class TestRecommendations:
                 WishRecommendation(
                     title=f'Item {i}',
                     link=f'https://partner-shop.com/item/{i}',
+                    category=RecommendationCategory.books,
                 )
             )
         db.commit()

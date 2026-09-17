@@ -13,8 +13,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.constants import Gender, PriceObservationStatus, PriceSource, TestPersona
-from app.db import User, Wish, WishPriceObservation
+from app.constants import (
+    Gender,
+    PriceObservationStatus,
+    PriceSource,
+    RecommendationCategory,
+    TestPersona,
+)
+from app.db import User, Wish, WishPriceObservation, WishRecommendation
 from app.helpers.price_watch import (
     ProductObservation,
     WbPriceSchema,
@@ -128,6 +134,7 @@ def get_or_create_test_user(db: Session, persona: TestPersona) -> User:
     if persona == TestPersona.rich:
         user = _get_or_create_rich(db)
         _ensure_rich_store_wishes(db, user)
+        _ensure_recommendations(db)
         return user
     return _get_or_create_empty(db)
 
@@ -257,5 +264,42 @@ def _ensure_rich_store_wishes(db: Session, user: User) -> None:
                 wish,
                 ProductObservation(status=status, price=price, is_minimum=is_minimum),
                 now - timedelta(days=days_ago),
+            )
+    db.commit()
+
+
+# Рекомендации стенда (0015): три категории, одна — с картинкой-заглушкой, чтобы
+# e2e видел и порядок под пол rich (male → hobby первой), и товар без картинки.
+_SEED_RECOMMENDATIONS = (
+    (
+        RecommendationCategory.hobby,
+        'Настольная игра Alias original',
+        'https://www.wildberries.ru/catalog/173825315/detail.aspx',
+        739,
+    ),
+    (
+        RecommendationCategory.jewelry,
+        'Серьги пусеты серебро 925',
+        'https://www.wildberries.ru/catalog/149285080/detail.aspx',
+        3811,
+    ),
+    (
+        RecommendationCategory.beauty,
+        'Крем для лица ночной 50 мл',
+        'https://www.wildberries.ru/catalog/154859675/detail.aspx',
+        None,
+    ),
+)
+
+
+def _ensure_recommendations(db: Session) -> None:
+    """Рекомендации по категориям для стенда, идемпотентно по ссылке."""
+    existing = set(db.scalars(select(WishRecommendation.link)).all())
+    for category, title, link, price in _SEED_RECOMMENDATIONS:
+        if link not in existing:
+            db.add(
+                WishRecommendation(
+                    title=title, link=link, price=price, category=category
+                )
             )
     db.commit()
