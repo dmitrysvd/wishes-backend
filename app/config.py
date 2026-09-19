@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # Разрешённые CORS-origin. Задаётся в .env JSON-списком, напр.
     # CORS_ALLOW_ORIGINS=["https://hotelki.pro","https://app.hotelki.pro"]
     CORS_ALLOW_ORIGINS: list[str] = ['https://hotelki.pro']
+    # myTracker Export API (scripts/mytracker_export.py): API User ID и Secret Key
+    # из кабинета трекера. Не заданы — скрипт выгрузки не запускается, приложению
+    # они не нужны.
+    MYTRACKER_API_USER_ID: str | None = None
+    MYTRACKER_API_SECRET: str | None = None
     # DATABASE_URL: str = 'sqlite:///db.sqlite'
     DATABASE_URL: str
     TEST_DATABASE_URL: str = 'sqlite://'
