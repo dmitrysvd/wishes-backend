@@ -135,7 +135,7 @@ def delete_own_account(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    logger.info('Удаление аккаунта: {user_id} {firebase_udi}')
+    logger.info('Удаление аккаунта: {} {}', user.id, user.firebase_uid)
     delete_firebase_user(user.firebase_uid)
     db.delete(user)
     db.commit()
