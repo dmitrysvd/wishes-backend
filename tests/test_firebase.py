@@ -5,6 +5,7 @@ from uuid import uuid4
 from firebase_admin import messaging
 from sqlalchemy import select
 
+from app.config import settings
 from app.db import PushInstallation, PushReason, PushSendingLog, User
 from app.firebase import (
     create_custom_firebase_token,
@@ -211,3 +212,37 @@ def test_get_firebase_user_data(mocker):
     mock_auth = mocker.patch('app.firebase.auth')
     get_firebase_user_data('uid')
     mock_auth.get_user.assert_called_once_with('uid')
+
+
+def test_send_push_webpush_config_with_link(fcm, db):
+    # Web-установка (PWA) получает системное уведомление и ссылку для клика;
+    # `data` для SW фронта остаётся нетронутым.
+    user = _persisted_user(db, 'token')
+
+    send_push(
+        [user],
+        'title',
+        'body',
+        reason=PushReason.PRICE_ALERT,
+        link='https://hotelki.pro/wish?wishId=1',
+        with_delivery_id=True,
+    )
+
+    (message,) = fcm.messages
+    webpush = message.webpush
+    assert webpush.notification.title == 'title'
+    assert webpush.notification.body == 'body'
+    assert webpush.notification.icon == f'{settings.FRONTEND_URL}/icons/Icon-192.png'
+    assert webpush.fcm_options.link == 'https://hotelki.pro/wish?wishId=1'
+    assert message.data['link'] == 'https://hotelki.pro/wish?wishId=1'
+    assert message.data['delivery_id']
+
+
+def test_send_push_webpush_link_defaults_to_frontend_root(fcm, db):
+    user = _persisted_user(db, 'token')
+
+    send_push([user], 'title', 'body', reason=PushReason.SEASONAL)
+
+    (message,) = fcm.messages
+    assert message.webpush.fcm_options.link == settings.FRONTEND_URL
+    assert 'link' not in message.data

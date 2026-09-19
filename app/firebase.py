@@ -68,6 +68,10 @@ def send_push(
     Настройки уведомлений (фича 0012) применяются здесь же: юзер, выключивший
     группу `reason`, из адресатов выбывает ДО отправки и ДО записи лога — гварды,
     читающие лог («раз в 30 дней»), при выключенной группе не расходуются.
+
+    `webpush` обязателен (фича 0020): без него web-установка (PWA) получает
+    data-only сообщение, которое iOS Safari считает silent push и после
+    нескольких таких отзывает подписку.
     """
     if not target_users:
         logger.info('Пустой список получателей. Пуши не отправлены.')
@@ -87,6 +91,7 @@ def send_push(
         body=body,
     )
     android_config = messaging.AndroidConfig(notification=android_notification)
+    webpush_config = build_webpush_config(title, body, link)
     messages = []
     # Параллельно `messages`: чья установка и какой юзер за каждым сообщением.
     message_installations: list[PushInstallation] = []
@@ -136,6 +141,7 @@ def send_push(
             messages.append(
                 messaging.Message(
                     android=android_config,
+                    webpush=webpush_config,
                     data=message_data,
                     **installation_target(installation),
                 )
@@ -204,6 +210,30 @@ class SendResponseLike(Protocol):
 
     @property
     def exception(self) -> Exception | None: ...
+
+
+# Иконка web-уведомления: путь фронта из 0019 (иконки меняются, путь — нет).
+WEBPUSH_ICON_PATH = '/icons/Icon-192.png'
+
+
+def build_webpush_config(
+    title: str, body: str, link: str | None
+) -> messaging.WebpushConfig:
+    """Web-часть сообщения: системное уведомление в PWA и куда открыть по клику.
+
+    `fcm_options.link` — экран, который откроет стандартный обработчик клика
+    FCM JS SDK; без него клик по уведомлению ничего не открывает. Пуш без
+    `link` (напр. seasonal) ведёт на корень фронта. `data` для SW фронта
+    (`delivery_id`, `link`) остаётся top-level и сюда не дублируется.
+    """
+    return messaging.WebpushConfig(
+        notification=messaging.WebpushNotification(
+            title=title,
+            body=body,
+            icon=f'{settings.FRONTEND_URL}{WEBPUSH_ICON_PATH}',
+        ),
+        fcm_options=messaging.WebpushFCMOptions(link=link or settings.FRONTEND_URL),
+    )
 
 
 def installation_target(installation: PushInstallation) -> dict[str, str]:
