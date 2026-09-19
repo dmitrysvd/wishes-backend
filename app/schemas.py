@@ -396,6 +396,7 @@ class WishReadSchema(BaseWishSchema):
                         'observed_at': '2026-09-12T03:10:00Z',
                     },
                     'is_archived': False,
+                    'is_reserved': False,
                     'reserved_by_id': None,
                     'image': '/media/wish_images/ab12cd34.jpg',
                     'recommendation_id': None,
@@ -422,6 +423,7 @@ class WishReadSchema(BaseWishSchema):
                         'observed_at': '2026-09-09T03:10:00Z',
                     },
                     'is_archived': False,
+                    'is_reserved': False,
                     'reserved_by_id': None,
                     'image': None,
                     'recommendation_id': None,
@@ -445,6 +447,7 @@ class WishReadSchema(BaseWishSchema):
                     'shop': 'wildberries',
                     'store_observation': None,
                     'is_archived': False,
+                    'is_reserved': False,
                     'reserved_by_id': None,
                     'image': None,
                     'recommendation_id': None,
@@ -468,6 +471,7 @@ class WishReadSchema(BaseWishSchema):
                     'shop': 'wildberries',
                     'store_observation': None,
                     'is_archived': False,
+                    'is_reserved': False,
                     'reserved_by_id': None,
                     'image': None,
                     'recommendation_id': None,
@@ -491,6 +495,7 @@ class WishReadSchema(BaseWishSchema):
                     'shop': None,
                     'store_observation': None,
                     'is_archived': False,
+                    'is_reserved': True,
                     'reserved_by_id': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
                     'image': None,
                     'recommendation_id': '9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e',
@@ -517,6 +522,7 @@ class WishReadSchema(BaseWishSchema):
                         'observed_at': '2026-09-12T03:10:00Z',
                     },
                     'is_archived': False,
+                    'is_reserved': False,
                     'reserved_by_id': None,
                     'image': None,
                     'recommendation_id': None,
@@ -543,6 +549,7 @@ class WishReadSchema(BaseWishSchema):
                         'observed_at': '2026-09-12T03:10:00Z',
                     },
                     'is_archived': False,
+                    'is_reserved': False,
                     'reserved_by_id': None,
                     'image': None,
                     'recommendation_id': None,
@@ -566,6 +573,7 @@ class WishReadSchema(BaseWishSchema):
                     'shop': 'wildberries',
                     'store_observation': None,
                     'is_archived': False,
+                    'is_reserved': False,
                     'reserved_by_id': None,
                     'image': None,
                     'recommendation_id': None,
@@ -639,8 +647,24 @@ class WishReadSchema(BaseWishSchema):
         ),
     )
     is_archived: bool = Field(description='Хотелка в архиве автора.')
+    is_reserved: bool = Field(
+        description=(
+            'Хотелка кем-то зарезервирована. Личность дарителя при этом скрыта — '
+            'см. `reserved_by_id`. Новым клиентам состояние резерва брать отсюда.'
+        )
+    )
     reserved_by_id: UUID | None = Field(
-        description='Кто зарезервировал. null — свободна.'
+        description=(
+            'Кто зарезервировал; личность раскрывается ТОЛЬКО самому дарителю. '
+            'Три состояния: `null` — свободна; id запрашивающего — зарезервировал '
+            'он сам (по нему клиент считает «зарезервировано мной» и даёт отмену); '
+            '`00000000-0000-0000-0000-000000000000` — зарезервировал кто-то другой, '
+            'личность скрыта. Владельцу списка имя дарителя — спойлер сюрприза, '
+            'остальным — чужая PII, поэтому реальный чужой id не отдаётся никогда. '
+            'Заглушка вместо `null` — чтобы клиент, считающий непустое поле '
+            'признаком резерва, не показал чужой резерв свободным; по заглушке '
+            '`GET /users/{id}` отдаст 404 — профиль по ней не резолвить.'
+        )
     )
     image: str | None = Field(
         description=(

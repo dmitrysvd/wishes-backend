@@ -39,6 +39,7 @@ from app.helpers.store_price import (
     reset_store_state,
     set_manual_price,
 )
+from app.helpers.wish_read import build_wish_read, build_wish_reads
 from app.logging import logger
 from app.parsers import parse_wildberries_link
 from app.price_alerts import mark_seen
@@ -201,7 +202,7 @@ def add_wish(
     else:
         set_manual_price(wish, wish_data.price)
     db.commit()
-    return wish
+    return build_wish_read(wish, user)
 
 
 def _is_store_link(link: str | None) -> bool:
@@ -225,7 +226,7 @@ def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_
     """Мои активные хотелки — список автора (плашки магазина/наличия показываются
     здесь и в карточке; см. `WishReadSchema`)."""
     query = Wish.get_active_wish_query().where(Wish.user == user)
-    return db.scalars(query)
+    return build_wish_reads(db.scalars(query), user)
 
 
 @router.get('/reserved_wishes', response_model=list[WishReadSchema])
@@ -233,7 +234,7 @@ def my_reserved_wishes(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
     query = Wish.get_active_wish_query().where(Wish.reserved_by == user)
-    return db.scalars(query)
+    return build_wish_reads(db.scalars(query), user)
 
 
 @router.get(
@@ -260,7 +261,7 @@ def get_wish(
     wish = db.scalars(select(Wish).where(Wish.id == wish_id)).one_or_none()
     if not wish or (wish.is_archived and wish.user != user):
         raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
-    return wish
+    return build_wish_read(wish, user)
 
 
 @router.put(
@@ -349,7 +350,7 @@ def update_wish(
         set_manual_price(wish, wish_data.price)
     db.add(wish)
     db.commit()
-    return wish
+    return build_wish_read(wish, wish.user)
 
 
 @router.post(
@@ -448,7 +449,7 @@ def refresh_store_price(
     # Юзер увидел свежую цену — порог «подешевело» считаем от неё (0013).
     mark_seen(wish, observation.product_price, now)
     _record_refresh(db, wish, PriceRefreshOutcome.ok)
-    return wish
+    return build_wish_read(wish, wish.user)
 
 
 def _record_refresh(db: Session, wish: Wish, outcome: PriceRefreshOutcome) -> None:
@@ -511,6 +512,15 @@ def delete_wish_image(
                 'желаний нет (не ошибка).'
             )
         },
+        HTTP_401_UNAUTHORIZED: {
+            'description': (
+                'Нет или истёк токен. Список в приложении — только авторизованному; '
+                'гостю по расшаренной ссылке — `GET /public/users/{user_id}/wishlist`.'
+            ),
+            'content': {
+                'application/json': {'example': {'detail': 'Not authenticated'}}
+            },
+        },
         HTTP_404_NOT_FOUND: {
             'description': 'Юзера с таким `user_id` нет.',
             'content': {
@@ -519,19 +529,26 @@ def delete_wish_image(
         },
     },
 )
-def user_wishes(user_id: UUID, db: Session = Depends(get_db)):
+def user_wishes(
+    user_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     """Хотелки другого юзера — список «чтобы подарить».
 
     Форма та же, что у автора (`WishReadSchema`), но UI показывает только `price`
     (последняя известная, в т.ч. у распроданного) с «от» при `price_is_minimum`;
     плашки магазина и статусы наличия не показываются — без исключений (хотелка —
     вещь, а не ссылка). Кнопки «актуальная с WB» у чужих нет.
+
+    Только авторизованным: вместе с `reserved_by_id` список раскрывает, кто что
+    зарезервировал. Гостю по ссылке — `GET /public/users/{user_id}/wishlist`.
     """
-    user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
-    if not user:
+    owner = db.scalars(select(User).where(User.id == user_id)).one_or_none()
+    if not owner:
         raise HTTPException(404, 'Пользователь не найден')
-    query = Wish.get_active_wish_query().where(Wish.user == user)
-    return db.scalars(query)
+    query = Wish.get_active_wish_query().where(Wish.user == owner)
+    return build_wish_reads(db.scalars(query), user)
 
 
 @router.post('/wishes/{wish_id}/reserve', response_class=Response)
@@ -596,4 +613,5 @@ def unarchive_wish(
 def archived_wishes(
     db: Session = Depends(get_db), user: User = Depends(get_current_user)
 ):
-    return db.scalars(select(Wish).where(Wish.user == user, Wish.is_archived))
+    query = select(Wish).where(Wish.user == user, Wish.is_archived)
+    return build_wish_reads(db.scalars(query), user)
