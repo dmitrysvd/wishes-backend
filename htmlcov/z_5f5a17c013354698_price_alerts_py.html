@@ -62,10 +62,10 @@
         <p class="text">
             <a id="prevFileLink" class="nav" href="z_5f5a17c013354698_parsers_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a id="indexLink" class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
-            <a id="nextFileLink" class="nav" href="z_6549c0330f733809_auth_py.html">&#xbb; next</a>
+            <a id="nextFileLink" class="nav" href="z_5f5a17c013354698_push_installations_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-19 08:55 +0000
+            created at 2026-09-19 10:31 +0000
         </p>
         <aside class="hidden">
             <button type="button" class="button_next_chunk" data-shortcut="j"></button>
@@ -346,7 +346,7 @@
     <p class="pln"><span class="n"><a id="t264" href="#t264">264</a></span><span class="t"><span class="str">    &#1074;&#1099;&#1082;&#1083;&#1102;&#1095;&#1077;&#1085;&#1085;&#1072;&#1103; &#1075;&#1088;&#1091;&#1087;&#1087;&#1072; &#8212; &#1085;&#1077;&#1090;: &#1077;&#1105; &#1086;&#1090;&#1089;&#1077;&#1082;&#1072;&#1077;&#1090; `send_push`, &#1072; dry-run &#1087;&#1086;&#1084;&#1077;&#1095;&#1072;&#1077;&#1090;.</span>&nbsp;</span><span class="r"></span></p>
     <p class="pln"><span class="n"><a id="t265" href="#t265">265</a></span><span class="t"><span class="str">    &quot;&quot;&quot;</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t266" href="#t266">266</a></span><span class="t">    <span class="key">with</span> <span class="nam">SessionLocal</span><span class="op">(</span><span class="op">)</span> <span class="key">as</span> <span class="nam">db</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t267" href="#t267">267</a></span><span class="t">        <span class="nam">users</span> <span class="op">=</span> <span class="nam">db</span><span class="op">.</span><span class="nam">scalars</span><span class="op">(</span><span class="nam">select</span><span class="op">(</span><span class="nam">User</span><span class="op">)</span><span class="op">.</span><span class="nam">where</span><span class="op">(</span><span class="nam">User</span><span class="op">.</span><span class="nam">firebase_push_token</span><span class="op">.</span><span class="nam">isnot</span><span class="op">(</span><span class="key">None</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t267" href="#t267">267</a></span><span class="t">        <span class="nam">users</span> <span class="op">=</span> <span class="nam">db</span><span class="op">.</span><span class="nam">scalars</span><span class="op">(</span><span class="nam">select</span><span class="op">(</span><span class="nam">User</span><span class="op">)</span><span class="op">.</span><span class="nam">where</span><span class="op">(</span><span class="nam">User</span><span class="op">.</span><span class="nam">can_receive_push</span><span class="op">)</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t268" href="#t268">268</a></span><span class="t">        <span class="nam">candidates</span> <span class="op">=</span> <span class="op">[</span><span class="op">(</span><span class="nam">user</span><span class="op">,</span> <span class="nam">store_wishes</span><span class="op">(</span><span class="nam">user</span><span class="op">)</span><span class="op">)</span> <span class="key">for</span> <span class="nam">user</span> <span class="key">in</span> <span class="nam">users</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t269" href="#t269">269</a></span><span class="t">    <span class="nam">digests</span><span class="op">:</span> <span class="nam">list</span><span class="op">[</span><span class="nam">UserDigest</span><span class="op">]</span> <span class="op">=</span> <span class="op">[</span><span class="op">]</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t270" href="#t270">270</a></span><span class="t">    <span class="key">for</span> <span class="nam">user</span><span class="op">,</span> <span class="nam">wishes</span> <span class="key">in</span> <span class="nam">candidates</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
@@ -391,7 +391,7 @@
     <p class="run run2"><span class="n"><a id="t309" href="#t309">309</a></span><span class="t">            <span class="nam">trigger</span><span class="op">=</span><span class="nam">digest</span><span class="op">.</span><span class="nam">trigger</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t310" href="#t310">310</a></span><span class="t">            <span class="nam">with_delivery_id</span><span class="op">=</span><span class="key">True</span><span class="op">,</span>&nbsp;</span><span class="r"></span></p>
     <p class="run run2"><span class="n"><a id="t311" href="#t311">311</a></span><span class="t">        <span class="op">)</span>&nbsp;</span><span class="r"></span></p>
-    <p class="run"><span class="n"><a id="t312" href="#t312">312</a></span><span class="t">        <span class="nam">sent_total</span> <span class="op">+=</span> <span class="nam">outcome</span><span class="op">.</span><span class="nam">sent</span>&nbsp;</span><span class="r"></span></p>
+    <p class="run"><span class="n"><a id="t312" href="#t312">312</a></span><span class="t">        <span class="nam">sent_total</span> <span class="op">+=</span> <span class="nam">len</span><span class="op">(</span><span class="nam">outcome</span><span class="op">.</span><span class="nam">sent_user_ids</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t313" href="#t313">313</a></span><span class="t">        <span class="key">if</span> <span class="nam">user</span><span class="op">.</span><span class="nam">id</span> <span class="key">not</span> <span class="key">in</span> <span class="nam">outcome</span><span class="op">.</span><span class="nam">accepted_user_ids</span><span class="op">:</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t314" href="#t314">314</a></span><span class="t">            <span class="key">continue</span>&nbsp;</span><span class="r"></span></p>
     <p class="run"><span class="n"><a id="t315" href="#t315">315</a></span><span class="t">        <span class="nam">now</span> <span class="op">=</span> <span class="nam">utc_now</span><span class="op">(</span><span class="op">)</span>&nbsp;</span><span class="r"></span></p>
@@ -490,10 +490,10 @@
         <p>
             <a class="nav" href="z_5f5a17c013354698_parsers_py.html">&#xab; prev</a> &nbsp; &nbsp;
             <a class="nav" href="index.html">&Hat; index</a> &nbsp; &nbsp;
-            <a class="nav" href="z_6549c0330f733809_auth_py.html">&#xbb; next</a>
+            <a class="nav" href="z_5f5a17c013354698_push_installations_py.html">&#xbb; next</a>
             &nbsp; &nbsp; &nbsp;
             <a class="nav" href="https://coverage.readthedocs.io/en/7.15.4">coverage.py v7.15.4</a>,
-            created at 2026-09-19 08:55 +0000
+            created at 2026-09-19 10:31 +0000
         </p>
     </div>
 </footer>
