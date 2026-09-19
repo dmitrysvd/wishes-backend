@@ -9,6 +9,7 @@ from pydantic import (
     Field,
     HttpUrl,
     field_validator,
+    model_validator,
 )
 
 from app.constants import (
@@ -1072,10 +1073,50 @@ class RequestFirebaseAuthSchema(BaseModel):
 
 
 class SavePushTokenSchema(BaseModel):
-    # Пустой токен бессмыслен: пуш по нему не уйдёт, а «нет токена» кодируется
+    """Адреса для пушей (фича 0016). Хотя бы одно из полей обязательно.
+
+    Опущенное поле бэк **не трогает**: `{"fid": ...}` оставляет сохранённый ранее
+    `push_token` как есть, и наоборот. Присланное поле перезаписывает своё
+    значение у пользователя.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {'fid': 'dQw4w9WgXcQ-eYb3tR1LmA'},
+                {'push_token': 'dQw4w9WgXcQ:APA91bH…'},
+                {'fid': 'dQw4w9WgXcQ-eYb3tR1LmA', 'push_token': 'dQw4w9WgXcQ:APA91bH…'},
+            ]
+        }
+    )
+
+    # Пустая строка бессмысленна: пуш по ней не уйдёт, а «нет адреса» кодируется
     # как NULL в БД. min_length=1 не пускает '' в колонку (см. CHECK-констрейнт
     # push_token_not_empty на модели User).
-    push_token: str = Field(min_length=1)
+    fid: str | None = Field(
+        None,
+        min_length=1,
+        description=(
+            'Firebase Installation ID (`FirebaseInstallations.getId()`) — основной '
+            'адрес пуша: если сохранён, бэк шлёт по нему. Новый клиент присылает '
+            'только его.'
+        ),
+    )
+    push_token: str | None = Field(
+        None,
+        min_length=1,
+        description=(
+            'FCM registration token (`FirebaseMessaging.getToken()`) — запасной '
+            'адрес: используется только когда у пользователя нет FID. Шлют клиенты '
+            'до 0016.'
+        ),
+    )
+
+    @model_validator(mode='after')
+    def at_least_one_address(self) -> 'SavePushTokenSchema':
+        if self.fid is None and self.push_token is None:
+            raise ValueError('Нужен хотя бы один адрес: fid или push_token')
+        return self
 
 
 class FollowActionSchema(BaseModel):

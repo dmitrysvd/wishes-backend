@@ -6,7 +6,7 @@ from firebase_admin.auth import verify_id_token
 from firebase_admin.exceptions import AlreadyExistsError, FirebaseError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from starlette.status import HTTP_410_GONE
+from starlette.status import HTTP_410_GONE, HTTP_501_NOT_IMPLEMENTED
 
 from app.db import User
 from app.dependencies import AUTH_TAG, get_current_user, get_db
@@ -294,17 +294,52 @@ def auth_firebase(
         save_registration_attribution(db, user, firebase_auth_schema.attribution)
 
 
-@router.post('/save_push_token', response_class=Response)
+@router.post(
+    '/save_push_token',
+    response_class=Response,
+    responses={
+        200: {'description': 'Адреса сохранены. Тело пустое.'},
+        401: {'description': 'Нет или истёк Firebase-токен авторизации.'},
+        422: {
+            'description': (
+                'Не передано ни `fid`, ни `push_token`, либо переданное поле — '
+                'пустая строка.'
+            ),
+            'content': {
+                'application/json': {
+                    'schema': {'$ref': '#/components/schemas/HTTPValidationError'},
+                    'example': {
+                        'detail': [
+                            {
+                                'type': 'value_error',
+                                'loc': ['body'],
+                                'msg': (
+                                    'Value error, Нужен хотя бы один адрес: '
+                                    'fid или push_token'
+                                ),
+                            }
+                        ]
+                    },
+                }
+            },
+        },
+    },
+)
 def save_push_token(
     schema: SavePushTokenSchema,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+) -> None:
     """
-    Сохранить токен для отправки пушей на мобилки.
+    Сохранить адреса для пушей: FID и/или FCM-токен (фича 0016).
 
-    Вызывается после аутентификации через vk или firebase.
+    Вызывается после аутентификации и при рефреше адреса на foreground (0008).
+    Идемпотентно: повтор с теми же значениями только обновляет отметку времени.
+    Опущенное поле не трогается — см. `SavePushTokenSchema`.
     """
+    if schema.fid is not None:
+        # Контракт 0016 не заморожен — FID пока не принимаем.
+        raise HTTPException(HTTP_501_NOT_IMPLEMENTED)
     user.firebase_push_token = schema.push_token
     user.firebase_push_token_saved_at = utc_now()
     db.add(user)
