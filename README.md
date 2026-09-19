@@ -5,7 +5,7 @@
 | Name                                  |    Stmts |     Miss |    Cover |   Missing |
 |-------------------------------------- | -------: | -------: | -------: | --------: |
 | app/\_\_init\_\_.py                   |        0 |        0 |     100% |           |
-| app/config.py                         |       17 |        0 |     100% |           |
+| app/config.py                         |       18 |        0 |     100% |           |
 | app/constants.py                      |       71 |        0 |     100% |           |
 | app/cron\_scripts/\_\_init\_\_.py     |        0 |        0 |     100% |           |
 | app/cron\_scripts/at\_noon.py         |      104 |        0 |     100% |           |
@@ -16,6 +16,7 @@
 | app/dependencies.py                   |       69 |        0 |     100% |           |
 | app/firebase.py                       |       97 |        0 |     100% |           |
 | app/hawk.py                           |       16 |        0 |     100% |           |
+| app/heartbeat.py                      |       10 |        0 |     100% |           |
 | app/helpers/\_\_init\_\_.py           |        5 |        0 |     100% |           |
 | app/helpers/activity.py               |       37 |        0 |     100% |           |
 | app/helpers/browser\_transport.py     |       15 |        0 |     100% |           |
@@ -27,7 +28,7 @@
 | app/helpers/uploads.py                |       14 |        0 |     100% |           |
 | app/helpers/user\_helpers.py          |       90 |        0 |     100% |           |
 | app/logging.py                        |        7 |        0 |     100% |           |
-| app/main.py                           |      126 |        0 |     100% |           |
+| app/main.py                           |      144 |        0 |     100% |           |
 | app/notification\_settings.py         |       29 |        0 |     100% |           |
 | app/notifications.py                  |       58 |        0 |     100% |           |
 | app/parsers.py                        |      143 |        0 |     100% |           |
@@ -44,12 +45,12 @@
 | app/routers/recommendations.py        |       32 |        0 |     100% |           |
 | app/routers/users.py                  |      120 |        0 |     100% |           |
 | app/routers/wishes.py                 |      173 |        0 |     100% |           |
-| app/scheduler.py                      |       28 |        0 |     100% |           |
+| app/scheduler.py                      |       29 |        0 |     100% |           |
 | app/schemas.py                        |      178 |        0 |     100% |           |
 | app/test\_auth.py                     |       88 |        0 |     100% |           |
 | app/utils.py                          |       40 |        0 |     100% |           |
 | app/vk.py                             |      115 |        0 |     100% |           |
-| **TOTAL**                             | **2668** |    **0** | **100%** |           |
+| **TOTAL**                             | **2698** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
