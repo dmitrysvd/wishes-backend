@@ -7,8 +7,16 @@
 set -euo pipefail
 
 input=$(cat)
-base_path=$(jq -r '.base_path' <<<"$input")
-worktree_path=$(jq -r '.worktree_path' <<<"$input")
+# Поля входа зависят от версии Claude Code: без base_path берём каталог проекта
+# из окружения, без worktree_path — стандартное место `.claude/worktrees/<name>`.
+base_path=$(jq -r '.base_path // empty' <<<"$input")
+base_path="${base_path:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}}"
+worktree_path=$(jq -r '.worktree_path // empty' <<<"$input")
+if [ -z "$worktree_path" ]; then
+  name=$(jq -r '.name // empty' <<<"$input")
+  [ -n "$name" ] || { echo "WorktreeCreate: во входе нет ни worktree_path, ни name: $input" >&2; exit 1; }
+  worktree_path="$base_path/.claude/worktrees/$name"
+fi
 branch=$(basename "$worktree_path")
 
 mkdir -p "$(dirname "$worktree_path")"
