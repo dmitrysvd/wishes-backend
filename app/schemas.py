@@ -9,7 +9,6 @@ from pydantic import (
     Field,
     HttpUrl,
     field_validator,
-    model_validator,
 )
 
 from app.constants import (
@@ -1073,53 +1072,49 @@ class RequestFirebaseAuthSchema(BaseModel):
 
 
 class SavePushTokenSchema(BaseModel):
-    """Адреса для пушей (фича 0016). Хотя бы одно из полей обязательно.
+    """Адреса одной установки приложения (фича 0016).
 
-    Опущенное поле или явный `null` бэк **не трогает**: `{"fid": ...}` и
-    `{"fid": ..., "push_token": null}` одинаково оставляют сохранённый ранее
-    `push_token` как есть, и наоборот. Присланная строка перезаписывает своё
-    значение у пользователя. Обнулить адрес через эту ручку нельзя — адреса
-    обнуляет только бэк по ответу FCM «unregistered».
+    Бэк хранит список установок юзера и шлёт пуш на каждую. Запрос — upsert
+    установки. Поиск — **глобальный, не только среди установок текущего юзера**
+    (FID и токен уникальны на установку): сначала по `fid`, нет — по
+    `push_token`; не найдена — создаётся. У найденной установки присланные
+    адреса **перезаписывают** сохранённые (`push_token` — всегда; `fid` — если
+    прислан), а владелец становится текущий юзер: установка, привязанная к
+    другому аккаунту (A вышел, B вошёл на том же устройстве), **переезжает** к
+    нему — у A исчезает. Поэтому клиент шлёт адреса на каждом логине. Повтор с
+    теми же адресами идемпотентен (обновляется только отметка времени). Явный
+    `null` в `fid` = опущен. Удалить установку через эту ручку нельзя —
+    установки удаляет только бэк по ответу FCM «unregistered».
     """
 
     model_config = ConfigDict(
         json_schema_extra={
             'examples': [
-                {'fid': 'dQw4w9WgXcQ-eYb3tR1LmA'},
-                {'fid': 'dQw4w9WgXcQ-eYb3tR1LmA', 'push_token': None},
-                {'push_token': 'dQw4w9WgXcQ:APA91bH…'},
                 {'fid': 'dQw4w9WgXcQ-eYb3tR1LmA', 'push_token': 'dQw4w9WgXcQ:APA91bH…'},
+                {'push_token': 'dQw4w9WgXcQ:APA91bH…'},
             ]
         }
     )
 
     # Пустая строка бессмысленна: пуш по ней не уйдёт, а «нет адреса» кодируется
-    # как NULL в БД. min_length=1 не пускает '' в колонку (см. CHECK-констрейнт
-    # push_token_not_empty на модели User).
+    # как NULL в БД. min_length=1 не пускает '' в колонку.
+    push_token: str = Field(
+        min_length=1,
+        description=(
+            'FCM registration token (`FirebaseMessaging.getToken()`) этой '
+            'установки. Обязателен всегда: по нему находится установка старого '
+            'клиента, и он — запасной адрес отправки, если у установки нет FID.'
+        ),
+    )
     fid: str | None = Field(
         None,
         min_length=1,
         description=(
-            'Firebase Installation ID (`FirebaseInstallations.getId()`) — основной '
-            'адрес пуша: если сохранён, бэк шлёт по нему. Новый клиент присылает '
-            'только его.'
+            'Firebase Installation ID (`FirebaseInstallations.getId()`) этой '
+            'установки — основной адрес: если есть, бэк шлёт по нему. Новый '
+            'клиент присылает всегда вместе с токеном; старый — не присылает.'
         ),
     )
-    push_token: str | None = Field(
-        None,
-        min_length=1,
-        description=(
-            'FCM registration token (`FirebaseMessaging.getToken()`) — запасной '
-            'адрес: используется только когда у пользователя нет FID. Шлют клиенты '
-            'до 0016.'
-        ),
-    )
-
-    @model_validator(mode='after')
-    def at_least_one_address(self) -> 'SavePushTokenSchema':
-        if self.fid is None and self.push_token is None:
-            raise ValueError('Нужен хотя бы один адрес: fid или push_token')
-        return self
 
 
 class FollowActionSchema(BaseModel):

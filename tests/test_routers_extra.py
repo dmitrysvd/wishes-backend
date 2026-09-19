@@ -119,27 +119,27 @@ def test_delete_own_account(auth_client, mocker, db, user):
 # --- 0016: форма save_push_token (остаётся после реализации) ---
 
 
-def test_save_push_token_requires_an_address(auth_client):
-    assert auth_client.post('/save_push_token', json={}).status_code == 422
-    # Явный null = опущено, а не «обнулить»: два null — тоже нет адреса.
-    assert (
-        auth_client.post(
-            '/save_push_token', json={'fid': None, 'push_token': None}
-        ).status_code
-        == 422
-    )
-    assert auth_client.post('/save_push_token', json={'fid': ''}).status_code == 422
-    assert (
-        auth_client.post('/save_push_token', json={'push_token': ''}).status_code == 422
-    )
+def test_save_push_token_form(auth_client):
+    url = '/save_push_token'
+    assert auth_client.post(url, json={}).status_code == 422
+    assert auth_client.post(url, json={'fid': 'x'}).status_code == 422
+    assert auth_client.post(url, json={'push_token': ''}).status_code == 422
+    assert auth_client.post(url, json={'push_token': 't', 'fid': ''}).status_code == 422
 
 
 def test_save_push_token_is_protected(api_client):
     # В этом модуле auth подменён autouse-фикстурой — снимаем подмену для 401.
     app.dependency_overrides.pop(get_current_user)
-    assert api_client.post('/save_push_token', json={'fid': 'x'}).status_code == 401
+    assert (
+        api_client.post('/save_push_token', json={'push_token': 't'}).status_code == 401
+    )
 
 
 def test_save_push_token_fid_not_implemented_until_agreed(auth_client):
     # Заменяется при реализации 0016 на проверку сохранения FID.
-    assert auth_client.post('/save_push_token', json={'fid': 'x'}).status_code == 501
+    assert (
+        auth_client.post(
+            '/save_push_token', json={'push_token': 't', 'fid': 'x'}
+        ).status_code
+        == 501
+    )
