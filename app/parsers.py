@@ -175,7 +175,7 @@ async def _parse_ya_market_page(html: str) -> ParsedItemInfo:
         raise ItemInfoParseError('Не найдена картинка')
     return ParsedItemInfo(
         title=attrs['og:title'],
-        image_url=attrs['og:image'],  # type: ignore
+        image_url=attrs['og:image'],
         description=attrs.get('og:description', ''),
     )
 
@@ -219,7 +219,7 @@ async def _parse_wildberries(item_id: int, client: httpx.AsyncClient) -> ParsedI
             return ParsedItemInfo(
                 title=api_data['imt_name'],
                 description=api_data.get('description', ''),
-                image_url=f'{base_url}/images/big/1.webp',  # type: ignore
+                image_url=f'{base_url}/images/big/1.webp',
             )
         # Самый старший хост пачки не существует → basket-ов выше нет, дальше не ищем.
         if isinstance(responses[-1], BaseException):
@@ -260,7 +260,7 @@ def _parse_og_tags(link: str, html: str) -> ParsedItemInfo:
     return ParsedItemInfo(
         title=title,
         description=description,
-        image_url=image_url,  # type: ignore
+        image_url=image_url,
     )
 
 

@@ -171,8 +171,13 @@ def send_push(
 class SendResponseLike(Protocol):
     """Структурный контракт ответа FCM: то, что читает разбор доставки."""
 
-    success: bool
-    exception: Exception | None
+    # Только чтение: у `messaging.SendResponse` это свойства без сеттера,
+    # с обычными атрибутами протокол с ним не совместим.
+    @property
+    def success(self) -> bool: ...
+
+    @property
+    def exception(self) -> Exception | None: ...
 
 
 def dead_token_user_ids(
