@@ -47,4 +47,4 @@ class Settings(BaseSettings):
         return value.rstrip('/')
 
 
-settings = Settings()  # type: ignore
+settings = Settings()
