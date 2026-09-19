@@ -5,7 +5,7 @@
 | Name                                  |    Stmts |     Miss |    Cover |   Missing |
 |-------------------------------------- | -------: | -------: | -------: | --------: |
 | app/\_\_init\_\_.py                   |        0 |        0 |     100% |           |
-| app/config.py                         |       18 |        0 |     100% |           |
+| app/config.py                         |       20 |        0 |     100% |           |
 | app/constants.py                      |       73 |        0 |     100% |           |
 | app/cron\_scripts/\_\_init\_\_.py     |        0 |        0 |     100% |           |
 | app/cron\_scripts/at\_noon.py         |      162 |        0 |     100% |           |
@@ -51,7 +51,7 @@
 | app/test\_auth.py                     |       88 |        0 |     100% |           |
 | app/utils.py                          |       40 |        0 |     100% |           |
 | app/vk.py                             |      115 |        0 |     100% |           |
-| **TOTAL**                             | **2772** |    **0** | **100%** |           |
+| **TOTAL**                             | **2774** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
