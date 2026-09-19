@@ -20,7 +20,13 @@ from app.constants import (
     RecommendationCategory,
     TestPersona,
 )
-from app.db import User, Wish, WishPriceObservation, WishRecommendation
+from app.db import (
+    PushInstallation,
+    User,
+    Wish,
+    WishPriceObservation,
+    WishRecommendation,
+)
 from app.helpers.price_watch import (
     ProductObservation,
     WbPriceSchema,
@@ -226,6 +232,16 @@ def _get_or_create_rich(db: Session) -> User:
     reserved = Wish(name='Настольная лампа')
     friends[1].wishes.append(reserved)
     user.reserved_wishes.append(reserved)
+
+    # Две установки (0016): старый клиент (только токен) и новый (FID + токен) —
+    # оба состояния адресов; детерминированно, без сети. В FCM такие адреса
+    # не существуют — стенд шлёт с `IS_DEBUG` (dry-run), до FCM не доходит.
+    user.push_installations.append(
+        PushInstallation(push_token='test-rich-token-legacy')
+    )
+    user.push_installations.append(
+        PushInstallation(fid='test-rich-fid', push_token='test-rich-fid:token')
+    )
 
     db.commit()
     return user

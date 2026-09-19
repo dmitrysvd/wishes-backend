@@ -264,7 +264,7 @@ def collect_digests(today: date) -> list[UserDigest]:
     выключенная группа — нет: её отсекает `send_push`, а dry-run помечает.
     """
     with SessionLocal() as db:
-        users = db.scalars(select(User).where(User.firebase_push_token.isnot(None)))
+        users = db.scalars(select(User).where(User.can_receive_push))
         candidates = [(user, store_wishes(user)) for user in users]
     digests: list[UserDigest] = []
     for user, wishes in candidates:
@@ -309,7 +309,7 @@ def send_price_alerts(today: date | None = None) -> int:
             trigger=digest.trigger,
             with_delivery_id=True,
         )
-        sent_total += outcome.sent
+        sent_total += len(outcome.sent_user_ids)
         if user.id not in outcome.accepted_user_ids:
             continue
         now = utc_now()

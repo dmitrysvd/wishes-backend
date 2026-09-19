@@ -15,6 +15,7 @@ from app.cron_scripts.at_noon import (
 from app.db import (
     NotificationSetting,
     NotificationSettingEvent,
+    PushInstallation,
     PushReason,
     PushSendingLog,
     User,
@@ -36,7 +37,7 @@ def _user(db: Session, name: str = 'Test user', token: str | None = None) -> Use
     user = User(
         display_name=name,
         firebase_uid=f'uid-{name}',
-        firebase_push_token=token,
+        push_installations=[PushInstallation(push_token=token)] if token else [],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -171,7 +172,7 @@ def test_send_push_skips_opted_out_and_keeps_others(db: Session, fcm):
 
     sent = send_push([opted_out, listener], 'title', 'body', reason=PushReason.SEASONAL)
 
-    assert sent.sent == 1
+    assert len(sent.sent_user_ids) == 1
     assert sent.accepted_user_ids == {listener.id}
     assert fcm.tokens == ['token-on']
     # Лог — только по реально отправленному: гварды по логу не расходуются.
@@ -185,7 +186,7 @@ def test_send_push_other_group_still_delivered(db: Session, fcm):
     user = _user(db, 'Partial', token='token')
     set_group_enabled(db, user, NotificationGroup.tips, False)
 
-    assert send_push([user], 't', 'b', reason=PushReason.RESERVATION).sent == 1
+    assert send_push([user], 't', 'b', reason=PushReason.RESERVATION).sent_user_ids
     assert fcm.tokens == ['token']
 
 
@@ -193,7 +194,10 @@ def test_send_push_all_opted_out_returns_zero(db: Session, fcm):
     user = _user(db, 'Off', token='token')
     set_group_enabled(db, user, NotificationGroup.birthdays, False)
 
-    assert send_push([user], 't', 'b', reason=PushReason.FOLLOWER_BIRTHDAY).sent == 0
+    assert (
+        send_push([user], 't', 'b', reason=PushReason.FOLLOWER_BIRTHDAY).sent_user_ids
+        == frozenset()
+    )
     assert fcm.calls == []
 
 

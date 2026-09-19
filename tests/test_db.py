@@ -3,7 +3,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.db import User, Wish
+from app.db import PushInstallation, User, Wish
 from app.utils import utc_now
 
 
@@ -14,11 +14,11 @@ def test_user_repr_str():
 
 
 def test_push_token_empty_string_rejected(db):
-    # CHECK push_token_not_empty: '' в firebase_push_token недопустима (NULL — ок).
+    # CHECK push_token_not_empty: '' в адресе установки недопустима.
     user = User(
         display_name='Empty Token',
         firebase_uid='empty_token_uid',
-        firebase_push_token='',
+        push_installations=[PushInstallation(push_token='')],
         registered_at=utc_now(),
     )
     db.add(user)

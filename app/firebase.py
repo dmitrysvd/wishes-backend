@@ -1,3 +1,4 @@
+import enum
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -5,13 +6,13 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 import firebase_admin
-from firebase_admin import auth, messaging
+from firebase_admin import auth, exceptions, messaging
 from firebase_admin.auth import UserRecord
-from sqlalchemy import update
+from sqlalchemy import delete, select
 
 from app.config import settings
 from app.constants import PriceAlertTrigger
-from app.db import PushReason, PushSendingLog, SessionLocal, User
+from app.db import PushInstallation, PushReason, PushSendingLog, SessionLocal, User
 from app.logging import logger
 from app.notification_settings import disabled_user_ids
 
@@ -24,14 +25,16 @@ firebase_admin.initialize_app(cred)
 class PushSendOutcome:
     """Итог `send_push`: сколько сообщений ушло и кого FCM принял.
 
-    `sent` — число построенных и отправленных сообщений (по нему вызывающий
-    решает, расходовать ли свой гвард, напр.
-    `pre_bday_push_for_followers_last_sent_at`);
-    `accepted_user_ids` — адресаты, чьё сообщение FCM принял (не «доставлено» —
-    доставку FCM не подтверждает). Мёртвый токен и сбой сюда не попадают.
+    `sent_user_ids` — адресаты, которым построено сообщение (= строки лога; по
+    ним вызывающий решает, расходовать ли свой гвард, напр.
+    `pre_bday_push_for_followers_last_sent_at`). Установок у адресата может
+    быть несколько — сообщений уходит больше, но единица — юзер;
+    `accepted_user_ids` ⊆ `sent_user_ids` — те, у кого FCM принял хотя бы одну
+    установку (не «доставлено» — доставку FCM не подтверждает). Мёртвый адрес
+    и сбой сюда не попадают.
     """
 
-    sent: int = 0
+    sent_user_ids: frozenset[UUID] = field(default_factory=frozenset)
     accepted_user_ids: frozenset[UUID] = field(default_factory=frozenset)
 
 
@@ -86,12 +89,28 @@ def send_push(
     )
     android_config = messaging.AndroidConfig(notification=android_notification)
     messages = []
-    users_with_message_ids = []
+    # Параллельно `messages`: чья установка и какой юзер за каждым сообщением.
+    message_installations: list[PushInstallation] = []
+    users_with_message_ids: list[UUID] = []
     delivery_ids: list[UUID] = []
 
     target_users = list(set(target_users))
     with SessionLocal() as db:
         opted_out = disabled_user_ids(db, (u.id for u in target_users), reason)
+        # Установки читаем своим запросом, а не через `user.push_installations`:
+        # адресаты часто приходят отвязанными от сессии (крон), ленивая
+        # загрузка на них упала бы.
+        installations_by_user: dict[UUID, list[PushInstallation]] = {}
+        for installation in db.scalars(
+            select(PushInstallation).where(
+                PushInstallation.user_id.in_(
+                    u.id for u in target_users if u.id not in opted_out
+                )
+            )
+        ):
+            installations_by_user.setdefault(installation.user_id, []).append(
+                installation
+            )
     if opted_out:
         logger.info(
             'Группа пуша {reason} выключена у {count} адресатов, пропущены',
@@ -101,25 +120,32 @@ def send_push(
     for user in target_users:
         if user.id in opted_out:
             continue
-        if not user.firebase_push_token:
+        installations = installations_by_user.get(user.id)
+        if not installations:
             logger.warning(
-                'Не отправлено сообщение из-за отсутствия пуш-токена: {user_id}',
+                'Не отправлено сообщение: у юзера нет установок: {user_id}',
                 user_id=user.id,
             )
             continue
+        # Один delivery_id (= строка лога) на юзера: дедуп и `push/opened` —
+        # на юзера, установки — просто адреса одного и того же пуша.
         delivery_id = uuid4()
-        message = messaging.Message(
-            android=android_config,
-            token=user.firebase_push_token,
-            data=(
-                {**data, 'delivery_id': str(delivery_id)} if with_delivery_id else data
-            ),
+        message_data = (
+            {**data, 'delivery_id': str(delivery_id)} if with_delivery_id else data
         )
-        messages.append(message)
+        for installation in installations:
+            messages.append(
+                messaging.Message(
+                    android=android_config,
+                    data=message_data,
+                    **installation_target(installation),
+                )
+            )
+            message_installations.append(installation)
         users_with_message_ids.append(user.id)
         delivery_ids.append(delivery_id)
     logger.info(
-        f'Отправка {len(messages)} собщений пользователям: {users_with_message_ids}'
+        f'Отправка {len(messages)} сообщений пользователям: {users_with_message_ids}'
     )
     if not messages:
         return PushSendOutcome()
@@ -147,25 +173,26 @@ def send_push(
         )
         db.commit()
     accepted = frozenset(
-        user_id
-        for resp, user_id in zip(
-            response.responses, users_with_message_ids, strict=True
+        installation.user_id
+        for resp, installation in zip(
+            response.responses, message_installations, strict=True
         )
         if resp.success
     )
-    dead = dead_token_user_ids(response.responses, users_with_message_ids)
+    dead = dead_installation_ids(response.responses, message_installations)
     if dead:
-        # Обнуляем протухшие токены, которые FCM признал недоставляемыми по адресату
+        # Удаляем установки, которые FCM признал недоставляемыми по адресату:
+        # мёртв FID или токен — мертва установка целиком.
         with SessionLocal() as db:
-            db.execute(
-                update(User).where(User.id.in_(dead)).values(firebase_push_token=None)
-            )
+            db.execute(delete(PushInstallation).where(PushInstallation.id.in_(dead)))
             db.commit()
         logger.warning(
-            'Обнулено протухших пуш-токенов: {count}',
+            'Удалено мёртвых установок: {count}',
             count=len(dead),
         )
-    return PushSendOutcome(sent=len(messages), accepted_user_ids=accepted)
+    return PushSendOutcome(
+        sent_user_ids=frozenset(users_with_message_ids), accepted_user_ids=accepted
+    )
 
 
 class SendResponseLike(Protocol):
@@ -180,22 +207,60 @@ class SendResponseLike(Protocol):
     def exception(self) -> Exception | None: ...
 
 
-def dead_token_user_ids(
-    responses: Sequence[SendResponseLike],
-    user_ids: Sequence[UUID],
-) -> list[UUID]:
-    """Отбирает id адресатов с устойчивыми ошибками доставки (мёртвые токены).
+def installation_target(installation: PushInstallation) -> dict[str, str]:
+    """Адрес FCM-сообщения для установки: FID, если есть, иначе токен.
 
-    Транзиентные ошибки (quota/internal) не считаются мёртвыми — токен сохраняем.
+    Возвращает kwargs для `messaging.Message` — `{'fid': ...}` либо
+    `{'token': ...}`. Откат на токен для всех — заменить тело на
+    `{'token': installation.push_token}`.
+    """
+    if installation.fid:
+        return {'fid': installation.fid}
+    return {'token': installation.push_token}
+
+
+_DEAD_ADDRESS_ERRORS = (messaging.UnregisteredError, messaging.SenderIdMismatchError)
+
+
+def dead_installation_ids(
+    responses: Sequence[SendResponseLike],
+    installations: Sequence[PushInstallation],
+) -> list[UUID]:
+    """Отбирает установки с устойчивыми ошибками доставки (мёртвый адрес).
+
+    Транзиентные ошибки (quota/internal) не считаются мёртвыми — установку
+    сохраняем.
     """
     dead = []
-    for resp, user_id in zip(responses, user_ids, strict=True):
-        if not resp.success and isinstance(
-            resp.exception,
-            (messaging.UnregisteredError, messaging.SenderIdMismatchError),
-        ):
-            dead.append(user_id)
+    for resp, installation in zip(responses, installations, strict=True):
+        if not resp.success and isinstance(resp.exception, _DEAD_ADDRESS_ERRORS):
+            dead.append(installation.id)
     return dead
+
+
+class AddressCheck(enum.Enum):
+    """Итог dry-run проверки адреса в FCM (скрипт переноса адресов, 0016)."""
+
+    ok = 'ok'
+    # FCM ответил «unregistered / sender mismatch» — адрес мёртв.
+    dead = 'dead'
+    # Другая ошибка FCM (лимиты, внутренняя) — про адрес ничего не известно.
+    unknown = 'unknown'
+
+
+def check_address(*, fid: str | None = None, token: str | None = None) -> AddressCheck:
+    """Проверить адрес dry-run отправкой (`validate_only`): FCM валидирует
+    адресата, но ничего не доставляет. Ровно один из `fid`/`token`."""
+    assert (fid is None) != (token is None)
+    message = messaging.Message(fid=fid) if fid else messaging.Message(token=token)
+    try:
+        messaging.send(message, dry_run=True)
+    except _DEAD_ADDRESS_ERRORS:
+        return AddressCheck.dead
+    except exceptions.FirebaseError as exc:
+        logger.warning('FCM dry-run не дал ответа про адрес: {exc}', exc=exc)
+        return AddressCheck.unknown
+    return AddressCheck.ok
 
 
 def create_firebase_user(

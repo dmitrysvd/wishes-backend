@@ -7,6 +7,7 @@ from app.config import settings
 from app.constants import PriceAlertTrigger, PriceObservationStatus, Shop
 from app.db import (
     FollowEvent,
+    PushInstallation,
     PushReason,
     PushSendingLog,
     User,
@@ -29,6 +30,20 @@ class IsSetFilter(BooleanFilter):
         return query
 
 
+class CanReceivePushFilter(BooleanFilter):
+    """Да/Нет по «есть хотя бы одна установка» (`User.can_receive_push`)."""
+
+    def __init__(self) -> None:
+        super().__init__(User.id, title='Can receive push')
+
+    async def get_filtered_query(self, query, value, model):
+        if value == 'true':
+            return query.filter(User.can_receive_push)
+        if value == 'false':
+            return query.filter(~User.can_receive_push)
+        return query
+
+
 def enum_filter(column, enum_cls, title: str) -> StaticValuesFilter:
     # SQLAlchemy `Enum` хранит и сравнивает по имени члена, не по значению
     # (у `PushReason` значения — числа из `enum.auto()`).
@@ -40,12 +55,20 @@ class UserAdmin(ModelView, model=User):
     icon = 'fa-solid fa-user'
     column_searchable_list = [User.display_name, User.id]
     column_default_sort = ('registered_at', True)
-    column_details_exclude_list = [User.vk_access_token, User.firebase_push_token]
-    form_excluded_columns = [User.vk_access_token, User.firebase_push_token]
+    column_details_exclude_list = [
+        User.vk_access_token,
+        User.firebase_push_token,
+        User.push_installations,
+    ]
+    form_excluded_columns = [
+        User.vk_access_token,
+        User.firebase_push_token,
+        User.push_installations,
+    ]
     column_filters = [
         BooleanFilter(User.is_test, title='Test user'),
         IsSetFilter(User.vk_id, title='Via VK'),
-        IsSetFilter(User.firebase_push_token, title='Has push token'),
+        CanReceivePushFilter(),
     ]
     can_export = False
 
@@ -146,6 +169,30 @@ class WishPriceObservationAdmin(ModelView, model=WishPriceObservation):
     can_export = False
 
 
+class PushInstallationAdmin(ModelView, model=PushInstallation):
+    name = 'Push Installation'
+    name_plural = 'Push Installations'
+    # Адреса приходят только от клиента; править руками нечего, удалить
+    # (отвязать устройство) — можно.
+    can_create = False
+    can_edit = False
+    column_list = [
+        PushInstallation.saved_at,
+        PushInstallation.user,
+        PushInstallation.fid,
+        PushInstallation.push_token,
+    ]
+    icon = 'fa-solid fa-mobile-screen'
+    column_searchable_list = [
+        PushInstallation.user_id,
+        PushInstallation.fid,
+        PushInstallation.push_token,
+    ]
+    column_default_sort = ('saved_at', True)
+    column_filters = [IsSetFilter(PushInstallation.fid, title='Has FID')]
+    can_export = False
+
+
 class PushSendingLogAdmin(ModelView, model=PushSendingLog):
     name = 'Push Sending Log'
     name_plural = 'Push Sending Logs'
@@ -215,5 +262,6 @@ def setup_admin(app, engine):
     admin.add_view(FollowEventAdmin)
     admin.add_view(UserAttributionAdmin)
     admin.add_view(WishPriceObservationAdmin)
+    admin.add_view(PushInstallationAdmin)
     admin.add_view(PushSendingLogAdmin)
     return admin

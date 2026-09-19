@@ -1072,10 +1072,44 @@ class RequestFirebaseAuthSchema(BaseModel):
 
 
 class SavePushTokenSchema(BaseModel):
-    # Пустой токен бессмыслен: пуш по нему не уйдёт, а «нет токена» кодируется
-    # как NULL в БД. min_length=1 не пускает '' в колонку (см. CHECK-констрейнт
-    # push_token_not_empty на модели User).
-    push_token: str = Field(min_length=1)
+    """Адреса одной установки приложения (фича 0016).
+
+    Установка — приложение на конкретном устройстве; у юзера их может быть
+    несколько, пуш приходит на каждую. Повтор с теми же адресами идемпотентен.
+    Если установка была привязана к другому аккаунту (A вышел, B вошёл на том же
+    устройстве), она переходит к текущему — A на это устройство пуши больше не
+    получает. Явный `null` в `fid` = опущен. Удалить установку через эту ручку
+    нельзя.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {'fid': 'dQw4w9WgXcQ-eYb3tR1LmA', 'push_token': 'dQw4w9WgXcQ:APA91bH…'},
+                {'push_token': 'dQw4w9WgXcQ:APA91bH…'},
+            ]
+        }
+    )
+
+    # Пустая строка бессмысленна: пуш по ней не уйдёт, а «нет адреса» кодируется
+    # как NULL в БД. min_length=1 не пускает '' в колонку.
+    push_token: str = Field(
+        min_length=1,
+        description=(
+            'FCM registration token (`FirebaseMessaging.getToken()`) этой '
+            'установки. Обязателен всегда: единственный адрес у клиентов до 0016 '
+            'и запасной у новых.'
+        ),
+    )
+    fid: str | None = Field(
+        None,
+        min_length=1,
+        description=(
+            'Firebase Installation ID (`FirebaseInstallations.getId()`) этой '
+            'установки — основной адрес: если есть, бэк шлёт по нему. Новый '
+            'клиент присылает всегда вместе с токеном; старый — не присылает.'
+        ),
+    )
 
 
 class FollowActionSchema(BaseModel):

@@ -17,10 +17,11 @@ def send_reservation_notifincations():
             User.wishes.any(
                 Wish.reserved_by_id.is_not(None)
                 & ~Wish.is_reservation_notification_sent
-            )
+            ),
+            # Фильтр по установкам — в SQL: дальше юзеры отвязаны от сессии.
+            User.can_receive_push,
         )
-        users = db.scalars(users_with_reserved_wishes_q).all()
-    users_to_send_pushes = [user for user in users if user.firebase_push_token]
+        users_to_send_pushes = list(db.scalars(users_with_reserved_wishes_q))
     user_ids_to_send_pushes = {user.id for user in users_to_send_pushes}
     with SessionLocal() as db:
         db.execute(
@@ -62,9 +63,7 @@ def send_wish_creation_notifications():
         db.commit()
         for user in users_with_new_wishes:
             followers_to_send_push = [
-                follower
-                for follower in user.followed_by
-                if follower.firebase_push_token
+                follower for follower in user.followed_by if follower.can_receive_push
             ]
             if followers_to_send_push:
                 logger.info(
@@ -77,7 +76,7 @@ def send_wish_creation_notifications():
                 followers_to_send_pushes = [
                     follower
                     for follower in followers_to_send_push
-                    if follower.firebase_push_token
+                    if follower.can_receive_push
                 ]
                 send_push(
                     target_users=followers_to_send_pushes,
@@ -114,7 +113,7 @@ def send_new_follower_notifications():
             events_by_target.setdefault(event.target_id, []).append(event)
         for target_id, target_events in events_by_target.items():
             target = db.get(User, target_id)
-            if target is None or not target.firebase_push_token:
+            if target is None or not target.can_receive_push:
                 continue
             still_following_ids = {follower.id for follower in target.followed_by}
             followers = [

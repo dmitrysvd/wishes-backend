@@ -17,6 +17,7 @@ from app.firebase import (
 )
 from app.helpers import refresh_avatar_on_login
 from app.logging import logger
+from app.push_installations import upsert_push_installation
 from app.schemas import (
     RegistrationAttributionSchema,
     RequestFirebaseAuthSchema,
@@ -294,18 +295,22 @@ def auth_firebase(
         save_registration_attribution(db, user, firebase_auth_schema.attribution)
 
 
-@router.post('/save_push_token', response_class=Response)
+@router.post(
+    '/save_push_token',
+    response_class=Response,
+    responses={200: {'description': 'Установка сохранена. Тело пустое.'}},
+)
 def save_push_token(
     schema: SavePushTokenSchema,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-):
+) -> None:
     """
-    Сохранить токен для отправки пушей на мобилки.
+    Сохранить адреса установки приложения: FCM-токен и, у нового клиента, FID
+    (фича 0016). Семантика установок — в `SavePushTokenSchema`.
 
-    Вызывается после аутентификации через vk или firebase.
+    Вызывается на каждом логине и при рефреше адреса на foreground (0008).
+    Конфликтов не бывает — ответ всегда `200`.
     """
-    user.firebase_push_token = schema.push_token
-    user.firebase_push_token_saved_at = utc_now()
-    db.add(user)
+    upsert_push_installation(db, user, fid=schema.fid, push_token=schema.push_token)
     db.commit()
