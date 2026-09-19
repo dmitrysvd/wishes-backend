@@ -121,7 +121,7 @@ class User(Base):
     firebase_uid: Mapped[str] = mapped_column(String(1000), unique=True)
     # DEPRECATED (0016): адреса пушей живут в `PushInstallation`, эти два поля
     # ни читаются, ни пишутся. Оставлены только ради отката кода: значения на
-    # момент миграции f0a1b2c3d4e5 — снимок, по которому старый код снова
+    # момент миграции a7c3e5f1b9d2 — снимок, по которому старый код снова
     # сможет слать. Удалить отдельной фичей.
     firebase_push_token: Mapped[str | None] = mapped_column(String(1000))
     firebase_push_token_saved_at: Mapped[datetime | None] = mapped_column()

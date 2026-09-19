@@ -1,4 +1,4 @@
-"""Перенос данных в миграции f0a1b2c3d4e5: токены юзеров → установки."""
+"""Перенос данных в миграции a7c3e5f1b9d2: токены юзеров → установки."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -8,7 +8,7 @@ from sqlalchemy import text
 from alembic import command
 from app.config import settings
 
-REV = 'f0a1b2c3d4e5'
+REV = 'a7c3e5f1b9d2'
 
 
 def _cfg() -> Config:
