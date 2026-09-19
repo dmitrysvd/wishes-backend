@@ -4,7 +4,15 @@ import pytest
 from sqlalchemy import select
 
 from app.constants import FollowAction
-from app.db import FollowEvent, Gender, PushReason, PushSendingLog, User, Wish
+from app.db import (
+    FollowEvent,
+    Gender,
+    PushInstallation,
+    PushReason,
+    PushSendingLog,
+    User,
+    Wish,
+)
 from app.notifications import (
     send_new_follower_notifications,
     send_reservation_notifincations,
@@ -18,7 +26,7 @@ def user_with_token(db):
     user = User(
         display_name='User with Token',
         firebase_uid='uid1',
-        firebase_push_token='token1',
+        push_installations=[PushInstallation(push_token='token1')],
         registered_at=utc_now(),
         gender=Gender.male,
     )
@@ -32,7 +40,7 @@ def user_without_token(db):
     user = User(
         display_name='User without Token',
         firebase_uid='uid2',
-        firebase_push_token=None,
+        push_installations=[],
         registered_at=utc_now(),
         gender=Gender.female,
     )
@@ -67,7 +75,7 @@ async def test_send_reservation_notifications(
     send_reservation_notifincations()
 
     assert len(fcm.calls) == 1
-    assert fcm.tokens == [user_with_token.firebase_push_token]
+    assert fcm.tokens == ['token1']
     assert fcm.messages[0].android.notification.title
     assert fcm.messages[0].android.notification.body
 
@@ -117,7 +125,7 @@ async def test_send_wish_creation_notifications(
     assert fcm.calls == []
 
     # Mark follower with token
-    user_without_token.firebase_push_token = 'token2'
+    user_without_token.push_installations = [PushInstallation(push_token='token2')]
     db.add(user_without_token)
     # Reset flag for wish1
     wish1.is_creation_notification_sent = False
@@ -128,7 +136,7 @@ async def test_send_wish_creation_notifications(
 
     assert len(fcm.calls) == 1
     (message,) = fcm.messages
-    assert message.token == user_without_token.firebase_push_token
+    assert message.token == 'token2'
     notification = message.android.notification
     assert 'обновил' in notification.title  # user_with_token is male
     assert notification.body == 'Узнайте, что User with Token хочет получить в подарок'
@@ -151,7 +159,7 @@ def _user(db, name: str, token: str | None) -> User:
     user = User(
         display_name=name,
         firebase_uid=f'uid-{name}',
-        firebase_push_token=token,
+        push_installations=[PushInstallation(push_token=token)] if token else [],
         registered_at=utc_now(),
     )
     db.add(user)

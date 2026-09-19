@@ -6,7 +6,7 @@ from firebase_admin.auth import verify_id_token
 from firebase_admin.exceptions import AlreadyExistsError, FirebaseError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from starlette.status import HTTP_410_GONE, HTTP_501_NOT_IMPLEMENTED
+from starlette.status import HTTP_410_GONE
 
 from app.db import User
 from app.dependencies import AUTH_TAG, get_current_user, get_db
@@ -17,6 +17,7 @@ from app.firebase import (
 )
 from app.helpers import refresh_avatar_on_login
 from app.logging import logger
+from app.push_installations import upsert_push_installation
 from app.schemas import (
     RegistrationAttributionSchema,
     RequestFirebaseAuthSchema,
@@ -337,10 +338,5 @@ def save_push_token(
     на каждую. Конфликтов нет: чужая установка с теми же адресами переезжает к
     текущему юзеру, ответ всегда `200`.
     """
-    if schema.fid is not None:
-        # Контракт 0016 не заморожен — FID пока не принимаем.
-        raise HTTPException(HTTP_501_NOT_IMPLEMENTED)
-    user.firebase_push_token = schema.push_token
-    user.firebase_push_token_saved_at = utc_now()
-    db.add(user)
+    upsert_push_installation(db, user, fid=schema.fid, push_token=schema.push_token)
     db.commit()

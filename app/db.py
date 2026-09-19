@@ -1,5 +1,5 @@
 import enum
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from sqlite3 import Connection as SQLite3Connection
 from typing import Any
@@ -25,9 +25,11 @@ from sqlalchemy import (
     Uuid,
     create_engine,
     event,
+    exists,
     select,
 )
 from sqlalchemy.engine import Engine
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -117,6 +119,10 @@ class User(Base):
     )
     vk_friends_data: Mapped[list[Any] | None] = mapped_column(JSON)
     firebase_uid: Mapped[str] = mapped_column(String(1000), unique=True)
+    # DEPRECATED (0016): адреса пушей живут в `PushInstallation`, эти два поля
+    # ни читаются, ни пишутся. Оставлены только ради отката кода: значения на
+    # момент миграции `scripts/migrate_push_installations.py` — снимок, по
+    # которому старый код снова сможет слать. Удалить отдельной фичей.
     firebase_push_token: Mapped[str | None] = mapped_column(String(1000))
     firebase_push_token_saved_at: Mapped[datetime | None] = mapped_column()
 
@@ -154,12 +160,69 @@ class User(Base):
         secondaryjoin=(id == user_following_table.c.follower_id),
         back_populates='follows',
     )
+    push_installations: Mapped[list['PushInstallation']] = relationship(
+        back_populates='user', cascade='all, delete-orphan'
+    )
+
+    @hybrid_property
+    def can_receive_push(self) -> bool:
+        """Есть хотя бы одна установка приложения (0016) — единственное
+        определение «юзеру можно слать пуш», общее для Python и SQL.
+
+        На экземпляре читает `push_installations` (ленивая загрузка — нужна
+        живая сессия), в `select().where()` разворачивается в `EXISTS`.
+        """
+        return bool(self.push_installations)
+
+    @can_receive_push.inplace.expression
+    @classmethod
+    def _can_receive_push_expression(cls):
+        return exists().where(PushInstallation.user_id == cls.id)
 
     def __repr__(self) -> str:
         return f'User(id={self.id}, display_name="{self.display_name}")'
 
     def __str__(self) -> str:
         return repr(self)
+
+
+class PushInstallation(Base):
+    """Установка приложения у юзера — адресат пуша (фича 0016).
+
+    Юзер может иметь несколько установок (телефон, планшет, веб); пуш уходит на
+    каждую. `fid` — основной адрес (Firebase Installation ID), `push_token` —
+    запасной и единственный у клиентов до 0016. Оба уникальны глобально: одна
+    установка принадлежит ровно одному юзеру — при логине другого аккаунта на
+    том же устройстве строка переезжает к нему (`save_push_token`). Удаляется
+    только по ответу FCM «unregistered» в `send_push`.
+    """
+
+    __tablename__ = 'push_installation'
+    __table_args__ = (
+        # «Нет адреса» = NULL / отсутствие строки; пустая строка запрещена,
+        # чтобы не было второго представления того же состояния.
+        CheckConstraint("push_token <> ''", name='push_token_not_empty'),
+        CheckConstraint("fid <> ''", name='fid_not_empty'),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey('user.id', ondelete='CASCADE'), nullable=False, index=True
+    )
+    fid: Mapped[str | None] = mapped_column(String(100), unique=True)
+    push_token: Mapped[str] = mapped_column(String(1000), unique=True, nullable=False)
+    saved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    user: Mapped['User'] = relationship(back_populates='push_installations')
+
+    @property
+    def address(self) -> str:
+        """Строка для логов: `fid:…` либо усечённый токен."""
+        return f'fid:{self.fid}' if self.fid else f'token:{self.push_token[:12]}…'
 
 
 class UserAttribution(Base):

@@ -190,9 +190,7 @@ def test_new_filters_apply(admin_client, observed_wish):
     # Юзер из фикстуры: не тестовый, без VK и без push-токена.
     users = admin_client.get('/admin/user/list?is_test=false&vk_id=false').text
     assert 'Тест' in users
-    assert (
-        'Тест' not in admin_client.get('/admin/user/list?firebase_push_token=true').text
-    )
+    assert 'Тест' not in admin_client.get('/admin/user/list?id=true').text
 
 
 def test_wish_edit_page_renders(admin_client, observed_wish):

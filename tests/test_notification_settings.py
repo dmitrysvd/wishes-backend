@@ -15,6 +15,7 @@ from app.cron_scripts.at_noon import (
 from app.db import (
     NotificationSetting,
     NotificationSettingEvent,
+    PushInstallation,
     PushReason,
     PushSendingLog,
     User,
@@ -36,7 +37,7 @@ def _user(db: Session, name: str = 'Test user', token: str | None = None) -> Use
     user = User(
         display_name=name,
         firebase_uid=f'uid-{name}',
-        firebase_push_token=token,
+        push_installations=[PushInstallation(push_token=token)] if token else [],
         registered_at=utc_now(),
     )
     db.add(user)

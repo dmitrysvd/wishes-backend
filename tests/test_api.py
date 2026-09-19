@@ -19,6 +19,7 @@ from app.constants import (
 )
 from app.db import (
     FollowEvent,
+    PushInstallation,
     User,
     UserAttribution,
     Wish,
@@ -855,7 +856,7 @@ class TestFollowUnfollow:
         self, auth_client: TestClient, db: Session, user: User, other_user: User, fcm
     ):
         """Пуш о подписчике уходит ежечасным кроном, не на само событие."""
-        other_user.firebase_push_token = 'token'
+        other_user.push_installations = [PushInstallation(push_token='token')]
         db.add(other_user)
         db.commit()
 

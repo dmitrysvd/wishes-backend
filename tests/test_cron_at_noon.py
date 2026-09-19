@@ -16,7 +16,7 @@ from app.cron_scripts.at_noon import (
     send_upcoming_birthday_of_current_user_notification,
     send_upcoming_birthday_of_followed_user_notification,
 )
-from app.db import Gender, PushReason, PushSendingLog, User, Wish
+from app.db import Gender, PushInstallation, PushReason, PushSendingLog, User, Wish
 from app.utils import utc_now
 
 
@@ -79,7 +79,7 @@ async def test_send_upcoming_birthday_of_current_user_notification(db, mocker, f
     user = User(
         display_name='Birthday User',
         firebase_uid='bday_uid',
-        firebase_push_token='token_bday',
+        push_installations=[PushInstallation(push_token='token_bday')],
         birth_date=bday,
         registered_at=utc_now(),
     )
@@ -117,7 +117,7 @@ async def test_send_upcoming_birthday_of_followed_user_notification(db, mocker, 
     follower = User(
         display_name='Follower',
         firebase_uid='follower_uid',
-        firebase_push_token='token_follower',
+        push_installations=[PushInstallation(push_token='token_follower')],
         registered_at=utc_now(),
     )
     follower.follows.append(followed_user)
@@ -128,7 +128,7 @@ async def test_send_upcoming_birthday_of_followed_user_notification(db, mocker, 
 
     assert len(fcm.calls) == 1
     (message,) = fcm.messages
-    assert message.token == follower.firebase_push_token
+    assert message.token == 'token_follower'
     assert 'её' in message.android.notification.body
 
     # Факт отправки записан в лог (наблюдаемость follower-ДР-пуша).
@@ -167,7 +167,7 @@ async def test_followed_user_push_skipped_when_recently_sent(db, mocker, fcm):
     follower = User(
         display_name='Follower',
         firebase_uid='recent_follower_uid',
-        firebase_push_token='token_recent',
+        push_installations=[PushInstallation(push_token='token_recent')],
         registered_at=utc_now(),
     )
     follower.follows.append(followed)
@@ -200,7 +200,7 @@ async def test_seasonal_sent_in_window(db, mocker, fcm):
     user = User(
         display_name='Seasonal User',
         firebase_uid='seasonal_uid',
-        firebase_push_token='token_seasonal',
+        push_installations=[PushInstallation(push_token='token_seasonal')],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -243,21 +243,21 @@ async def test_seasonal_targets_only_matching_gender(db, mocker, fcm):
     female = User(
         display_name='F',
         firebase_uid='f_uid',
-        firebase_push_token='tok_f',
+        push_installations=[PushInstallation(push_token='tok_f')],
         gender=Gender.female,
         registered_at=utc_now(),
     )
     male = User(
         display_name='M',
         firebase_uid='m_uid',
-        firebase_push_token='tok_m',
+        push_installations=[PushInstallation(push_token='tok_m')],
         gender=Gender.male,
         registered_at=utc_now(),
     )
     unknown = User(
         display_name='U',
         firebase_uid='u_uid',
-        firebase_push_token='tok_u',
+        push_installations=[PushInstallation(push_token='tok_u')],
         gender=None,
         registered_at=utc_now(),
     )
@@ -282,7 +282,7 @@ async def test_seasonal_dedup_same_season(db, mocker, fcm):
     user = User(
         display_name='Dedup User',
         firebase_uid='dedup_uid',
-        firebase_push_token='token_dedup',
+        push_installations=[PushInstallation(push_token='token_dedup')],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -306,7 +306,7 @@ async def test_seasonal_skips_user_without_token(db, mocker, fcm):
     none_token = User(
         display_name='No Token',
         firebase_uid='none_token_uid',
-        firebase_push_token=None,
+        push_installations=[],
         registered_at=utc_now(),
     )
     db.add(none_token)
@@ -323,7 +323,7 @@ async def test_seasonal_not_sent_out_of_window(db, mocker, fcm):
     user = User(
         display_name='Out Of Window',
         firebase_uid='oow_uid',
-        firebase_push_token='token_oow',
+        push_installations=[PushInstallation(push_token='token_oow')],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -376,7 +376,7 @@ def test_send_upcoming_birthday_current_user_no_token(db, mocker, fcm):
     user = User(
         display_name='No Token User',
         firebase_uid='no_token_uid',
-        firebase_push_token=None,
+        push_installations=[],
         birth_date=bday,
         registered_at=utc_now(),
     )
@@ -394,7 +394,7 @@ def test_send_upcoming_birthday_followed_no_token(db, mocker, fcm):
     follower = User(
         display_name='R',
         firebase_uid='r_uid',
-        firebase_push_token=None,
+        push_installations=[],
         registered_at=utc_now(),
     )
     follower.follows.append(followed)
@@ -415,7 +415,7 @@ async def test_current_user_no_push_when_birthday_far(db, mocker, fcm):
     user = User(
         display_name='Far Birthday',
         firebase_uid='far_uid',
-        firebase_push_token='token_far',
+        push_installations=[PushInstallation(push_token='token_far')],
         birth_date=bday,
         registered_at=utc_now(),
     )
@@ -442,7 +442,7 @@ async def test_followed_user_no_push_when_birthday_outside_window(db, mocker, fc
     follower = User(
         display_name='Follower',
         firebase_uid='far_follower_uid',
-        firebase_push_token='token_follower2',
+        push_installations=[PushInstallation(push_token='token_follower2')],
         registered_at=utc_now(),
     )
     follower.follows.append(followed)
@@ -464,7 +464,7 @@ async def test_empty_list_reactivation_sends_and_dedups(db, mocker, fcm):
     user = User(
         display_name='Empty List User',
         firebase_uid='empty_uid',
-        firebase_push_token='token_empty',
+        push_installations=[PushInstallation(push_token='token_empty')],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -474,7 +474,7 @@ async def test_empty_list_reactivation_sends_and_dedups(db, mocker, fcm):
 
     assert len(fcm.calls) == 1
     (message,) = fcm.messages
-    assert message.token == user.firebase_push_token
+    assert message.token == 'token_empty'
     assert message.data['link'] == 'http://link'
     log = db.scalars(
         select(PushSendingLog).where(
@@ -498,7 +498,7 @@ async def test_empty_list_reactivation_skips_non_archived_wish(db, mocker, fcm):
     user = User(
         display_name='Has Wish',
         firebase_uid='has_wish_uid',
-        firebase_push_token='token_has_wish',
+        push_installations=[PushInstallation(push_token='token_has_wish')],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -519,7 +519,7 @@ async def test_empty_list_reactivation_sends_when_only_archived(db, mocker, fcm)
     user = User(
         display_name='Only Archived',
         firebase_uid='only_archived_uid',
-        firebase_push_token='token_archived',
+        push_installations=[PushInstallation(push_token='token_archived')],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -537,7 +537,7 @@ async def test_empty_list_reactivation_skips_recent_log(db, mocker, fcm):
     user = User(
         display_name='Recently Reactivated',
         firebase_uid='recent_react_uid',
-        firebase_push_token='token_recent_react',
+        push_installations=[PushInstallation(push_token='token_recent_react')],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -563,7 +563,7 @@ async def test_empty_list_reactivation_no_token_skipped(db, mocker, fcm):
     user = User(
         display_name='No Token Empty',
         firebase_uid='no_token_empty_uid',
-        firebase_push_token=None,
+        push_installations=[],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -580,7 +580,7 @@ async def test_empty_list_reactivation_skips_old_registrant(db, mocker, fcm):
     user = User(
         display_name='Old Empty',
         firebase_uid='old_empty_uid',
-        firebase_push_token='token_old',
+        push_installations=[PushInstallation(push_token='token_old')],
         registered_at=datetime.now() - timedelta(days=RECENT_REGISTRANT_DAYS + 1),
     )
     db.add(user)

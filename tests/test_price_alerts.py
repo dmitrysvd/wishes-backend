@@ -20,6 +20,7 @@ from app.constants import (
     Shop,
 )
 from app.db import (
+    PushInstallation,
     PushReason,
     PushSendingLog,
     User,
@@ -48,7 +49,7 @@ def user(db: Session) -> User:
     user = User(
         display_name='Автор',
         firebase_uid='author-uid',
-        firebase_push_token='token-author',
+        push_installations=[PushInstallation(push_token='token-author')],
         registered_at=utc_now(),
     )
     db.add(user)
@@ -491,7 +492,7 @@ def test_dry_run_reports_without_side_effects(db, user, fcm, availability_on):
     silent = User(
         display_name='Тихий',
         firebase_uid='silent-uid',
-        firebase_push_token='token-silent',
+        push_installations=[PushInstallation(push_token='token-silent')],
         registered_at=utc_now(),
     )
     db.add(silent)

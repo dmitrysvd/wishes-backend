@@ -161,15 +161,14 @@ def send_upcoming_birthday_of_current_user_notification():
         users_with_upcoming_birthday = [
             user
             for user in db.scalars(
-                select(User).where(User.birth_date.isnot(None))
+                # Фильтр по установкам — в SQL: дальше юзеры отвязаны от сессии.
+                select(User).where(User.birth_date.isnot(None), User.can_receive_push)
             ).all()
             if user.birth_date is not None
             and days_until_next_birthday(user.birth_date)
             < CURRENT_USER_BIRTHDAY_NOTIFY_DAYS_IN_ADVANCE
         ]
     for user in users_with_upcoming_birthday:
-        if not user.firebase_push_token:
-            continue
         with SessionLocal() as db:
             if db.scalars(
                 select(PushSendingLog).where(
@@ -214,7 +213,7 @@ def send_upcoming_birthday_of_followed_user_notification():
                 continue
             sent_any = False
             for follower in user.followed_by:
-                if not follower.firebase_push_token:
+                if not follower.can_receive_push:
                     continue
                 pronoun = 'её' if user.gender == Gender.female else 'его'
                 sent = send_push(
@@ -255,7 +254,7 @@ def send_empty_list_reactivation_notifications():
         # Недавние регистранты с живым токеном и без единой не-архивной хотелки.
         users_with_empty_list = db.scalars(
             select(User).where(
-                User.firebase_push_token.isnot(None)
+                User.can_receive_push
                 & ~User.wishes.any(~Wish.is_archived)
                 & (
                     User.registered_at
@@ -322,7 +321,7 @@ def send_seasonal_notifications(today: date | None = None) -> None:
             with SessionLocal() as db:
                 users = db.scalars(
                     select(User).where(
-                        User.firebase_push_token.isnot(None),
+                        User.can_receive_push,
                         *segment.filters,
                         User.id.not_in(already_sent),
                     )
