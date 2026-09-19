@@ -9,8 +9,15 @@ export PATH="/home/wishes/.local/bin:$PATH"  # на случай запуска 
 export WISHES_TAG="${1:-latest}"
 
 cd ~/wishes
-git switch master
-git pull
+git fetch origin
+if [ "$WISHES_TAG" = latest ]; then
+  git checkout master
+  git pull --ff-only
+else
+  # Конфиги (compose, static, nginx) — из того же коммита, что и образ: и при
+  # деплое, и при откате на старый SHA. Detached HEAD — намеренно.
+  git checkout --detach "$WISHES_TAG"
+fi
 
 cp /home/wishes/wishes/static/* /data/static -r
 
