@@ -25,7 +25,7 @@ import sys
 import time
 from base64 import b64encode
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from hashlib import sha1
 from hmac import new as hmac_new
 from typing import Any
@@ -283,7 +283,7 @@ def read_csv_gz(content: bytes) -> list[dict[str, str]]:
 
 
 def _ts(value: str | None) -> datetime | None:
-    return datetime.fromtimestamp(int(value), tz=timezone.utc) if value else None
+    return datetime.fromtimestamp(int(value), tz=UTC) if value else None
 
 
 def _uuid_or_none(value: str | None) -> UUID | None:
@@ -394,7 +394,7 @@ def save_request(
             'date_from': date_from,
             'date_to': date_to,
             'status': status,
-            'finished_at': datetime.now(timezone.utc)
+            'finished_at': datetime.now(UTC)
             if status in ('loaded', 'failed')
             else None,
             'rows_loaded': rows_loaded,

@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from datetime import date, timedelta
+from datetime import timedelta
 from uuid import UUID
 
 import pytest
@@ -11,6 +11,7 @@ from app.constants import PriceObservationStatus, PriceSource, TestPersona
 from app.db import User, Wish, WishPriceObservation, user_following_table
 from app.main import app, get_db
 from app.test_auth import build_test_token, get_or_create_test_user
+from app.utils import utc_now
 
 
 @pytest.fixture
@@ -182,6 +183,9 @@ def test_rich_store_observations_are_redated_on_each_call(db: Session):
     get_or_create_test_user(db, TestPersona.rich)
 
     dates = set(db.scalars(select(WishPriceObservation.observed_date)))
-    assert dates == {date.today(), date.today() - timedelta(days=1)}
+    # Сид датирует наблюдения по UTC; локальное date.today() после полуночи
+    # по местному времени уходит на день вперёд.
+    today = utc_now().date()
+    assert dates == {today, today - timedelta(days=1)}
     assert db.scalar(select(func.count()).select_from(WishPriceObservation)) == 6
     assert len([w for w in user.wishes if w.link]) == 4

@@ -1,5 +1,5 @@
 import gzip
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from urllib.parse import parse_qs
 
 import httpx
@@ -105,7 +105,7 @@ def test_rows_for_table_maps_selectors_and_skips_keyless():
     )
     rows = mt.rows_for_table(mt.KINDS['events'], records)
     assert len(rows) == 2  # третья — без tsEvent
-    assert rows[0]['event_at'] == datetime(2025, 9, 18, 12, 0, tzinfo=timezone.utc)
+    assert rows[0]['event_at'] == datetime(2025, 9, 18, 12, 0, tzinfo=UTC)
     assert str(rows[0]['user_id']) == USER_ID
     assert rows[0]['event_name'] == 'LOGIN' and rows[0]['event_value'] is None
     # Чужой формат customUserId сохраняется как текст, но в uuid не парсится.
@@ -123,7 +123,7 @@ def test_rows_for_installs_and_sessions():
             }
         ],
     )
-    assert installs[0]['installed_at'] == datetime.fromtimestamp(10, tz=timezone.utc)
+    assert installs[0]['installed_at'] == datetime.fromtimestamp(10, tz=UTC)
     assert installs[0]['country'] == 'RU' and installs[0]['device_model'] is None
     sessions = mt.rows_for_table(
         mt.KINDS['sessions'], [{'idDevice': 'd', 'tsEvent': '10', 'duration': '42'}]
