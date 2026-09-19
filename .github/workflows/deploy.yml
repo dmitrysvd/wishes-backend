@@ -100,10 +100,11 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           # Разворачиваем именно собранный образ по SHA, а не плавающий latest.
-          # deploy.sh версионируется в репозитории; подтягиваем свежую копию
-          # перед запуском.
+          # Репо на сервере переводим на тот же SHA: deploy.sh, compose, static
+          # и nginx-конфиг берутся из него, иначе при новом push в master между
+          # CI и деплоем конфиги уехали бы вперёд образа.
           script: |
             cd /home/wishes/wishes
-            git switch master
-            git pull --ff-only
+            git fetch origin
+            git checkout --detach ${{ env.DEPLOY_SHA }}
             bash deploy.sh ${{ env.DEPLOY_SHA }}
