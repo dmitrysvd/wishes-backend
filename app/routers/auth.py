@@ -298,31 +298,7 @@ def auth_firebase(
 @router.post(
     '/save_push_token',
     response_class=Response,
-    responses={
-        200: {
-            'description': 'Установка сохранена (создана или обновлена). Тело пустое.'
-        },
-        401: {'description': 'Нет или истёк Firebase-токен авторизации.'},
-        422: {
-            'description': (
-                '`push_token` не передан или пустая строка; `fid` — пустая строка.'
-            ),
-            'content': {
-                'application/json': {
-                    'schema': {'$ref': '#/components/schemas/HTTPValidationError'},
-                    'example': {
-                        'detail': [
-                            {
-                                'type': 'missing',
-                                'loc': ['body', 'push_token'],
-                                'msg': 'Field required',
-                            }
-                        ]
-                    },
-                }
-            },
-        },
-    },
+    responses={200: {'description': 'Установка сохранена. Тело пустое.'}},
 )
 def save_push_token(
     schema: SavePushTokenSchema,
@@ -331,12 +307,10 @@ def save_push_token(
 ) -> None:
     """
     Сохранить адреса установки приложения: FCM-токен и, у нового клиента, FID
-    (фича 0016). Upsert установки — правила поиска в `SavePushTokenSchema`.
+    (фича 0016). Семантика установок — в `SavePushTokenSchema`.
 
     Вызывается на каждом логине и при рефреше адреса на foreground (0008).
-    Установок у юзера может быть несколько (телефон, планшет, веб) — пуш уходит
-    на каждую. Конфликтов нет: чужая установка с теми же адресами переезжает к
-    текущему юзеру, ответ всегда `200`.
+    Конфликтов не бывает — ответ всегда `200`.
     """
     upsert_push_installation(db, user, fid=schema.fid, push_token=schema.push_token)
     db.commit()
