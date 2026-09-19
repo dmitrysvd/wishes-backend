@@ -1,9 +1,11 @@
 """push_installation — адреса пушей на установку (фича 0016)
 
 Таблица установок юзера: FID + FCM-токен на каждую, юзер может иметь несколько.
-Данные из `user.firebase_push_token` сюда НЕ переносятся миграцией: перенос
-делает `scripts/migrate_push_installations.py` — ему нужен dry-run в FCM на
-каждый адрес. Старые колонки `user` остаются (снимок для отката кода).
+Текущий `user.firebase_push_token` становится первой установкой юзера (без FID:
+FID приходит только от клиента — префикс токена FCM как FID не принимает,
+проверено dry-run на проде 2026-09-19). Мёртвые токены не отсеиваем — их
+удалит `send_push` по «unregistered» при первом пуше. Старые колонки `user`
+остаются нетронутыми (снимок для отката кода).
 
 Revision ID: f0a1b2c3d4e5
 Revises: e1a7c3b9d2f4
@@ -50,6 +52,20 @@ def upgrade() -> None:
     )
     op.create_index(
         op.f('ix_push_installation_user_id'), 'push_installation', ['user_id']
+    )
+    op.execute(
+        """
+        INSERT INTO push_installation (id, user_id, fid, push_token, saved_at)
+        SELECT DISTINCT ON (firebase_push_token)
+               gen_random_uuid(), id, NULL, firebase_push_token,
+               COALESCE(firebase_push_token_saved_at, now())
+        FROM "user"
+        WHERE firebase_push_token IS NOT NULL AND firebase_push_token <> ''
+        -- Один токен мог осесть у двух аккаунтов (A вышел, B вошёл на том же
+        -- телефоне; на проде таких 25): установка одна — тому, кто сохранил
+        -- её последним.
+        ORDER BY firebase_push_token, firebase_push_token_saved_at DESC NULLS LAST
+        """
     )
 
 

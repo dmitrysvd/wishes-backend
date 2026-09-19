@@ -1,4 +1,3 @@
-import enum
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -6,7 +5,7 @@ from typing import Protocol
 from uuid import UUID, uuid4
 
 import firebase_admin
-from firebase_admin import auth, exceptions, messaging
+from firebase_admin import auth, messaging
 from firebase_admin.auth import UserRecord
 from sqlalchemy import delete, select
 
@@ -236,31 +235,6 @@ def dead_installation_ids(
         if not resp.success and isinstance(resp.exception, _DEAD_ADDRESS_ERRORS):
             dead.append(installation.id)
     return dead
-
-
-class AddressCheck(enum.Enum):
-    """Итог dry-run проверки адреса в FCM (скрипт переноса адресов, 0016)."""
-
-    ok = 'ok'
-    # FCM ответил «unregistered / sender mismatch» — адрес мёртв.
-    dead = 'dead'
-    # Другая ошибка FCM (лимиты, внутренняя) — про адрес ничего не известно.
-    unknown = 'unknown'
-
-
-def check_address(*, fid: str | None = None, token: str | None = None) -> AddressCheck:
-    """Проверить адрес dry-run отправкой (`validate_only`): FCM валидирует
-    адресата, но ничего не доставляет. Ровно один из `fid`/`token`."""
-    assert (fid is None) != (token is None)
-    message = messaging.Message(fid=fid) if fid else messaging.Message(token=token)
-    try:
-        messaging.send(message, dry_run=True)
-    except _DEAD_ADDRESS_ERRORS:
-        return AddressCheck.dead
-    except exceptions.FirebaseError as exc:
-        logger.warning('FCM dry-run не дал ответа про адрес: {exc}', exc=exc)
-        return AddressCheck.unknown
-    return AddressCheck.ok
 
 
 def create_firebase_user(
