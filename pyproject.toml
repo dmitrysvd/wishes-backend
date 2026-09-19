@@ -34,6 +34,11 @@ dev = [
     "ruff>=0.15.9",
 ]
 
+[tool.uv]
+# Резолвим только под CPython: firebase-admin для PyPy<3.11 держит
+# cryptography<44, и без этого uv тащит уязвимую 43.x во всю ветку py3.10.
+environments = ["platform_python_implementation != 'PyPy'"]
+
 [tool.black]
 skip-string-normalization = true
 
