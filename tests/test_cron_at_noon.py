@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -8,15 +9,28 @@ from app.cron_scripts.at_noon import (
     RECENT_REGISTRANT_DAYS,
     SeasonalCampaign,
     SeasonalSegment,
+    cli,
     followers_push_recently_sent,
     get_next_birthday,
     is_in_campaign_window,
+    seasonal_dry_run,
+    select_seasonal_recipients,
     send_empty_list_reactivation_notifications,
     send_seasonal_notifications,
+    send_seasonal_rehearsal,
     send_upcoming_birthday_of_current_user_notification,
     send_upcoming_birthday_of_followed_user_notification,
 )
-from app.db import Gender, PushInstallation, PushReason, PushSendingLog, User, Wish
+from app.db import (
+    Gender,
+    NotificationGroup,
+    NotificationSetting,
+    PushInstallation,
+    PushReason,
+    PushSendingLog,
+    User,
+    Wish,
+)
 from app.utils import utc_now
 
 
@@ -367,8 +381,140 @@ def test_at_noon_script_execution(mocker):
     mocker.patch('app.price_alerts.SessionLocal')
     mocker.patch('app.firebase.messaging.send_each')
 
+    # runpy наследует sys.argv pytest'а — CLI их не поймёт.
+    mocker.patch('sys.argv', ['at_noon.py'])
     script_path = os.path.abspath(at_noon.__file__)
     runpy.run_path(script_path, run_name='__main__')
+
+
+def _seasonal_user(uid: str, token_age_days: int = 0, **kwargs) -> User:
+    return User(
+        display_name=uid,
+        firebase_uid=uid,
+        push_installations=[
+            PushInstallation(
+                push_token=f'token_{uid}',
+                saved_at=utc_now() - timedelta(days=token_age_days),
+            )
+        ],
+        registered_at=utc_now(),
+        **kwargs,
+    )
+
+
+@pytest.mark.anyio
+async def test_seasonal_excludes_test_users(db, mocker, fcm):
+    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    campaign = _today_campaign()
+    real = _seasonal_user('real')
+    db.add_all([real, _seasonal_user('test', is_test=True)])
+    db.commit()
+
+    users = select_seasonal_recipients(db, campaign, campaign.segments[0], date.today())
+
+    assert [u.id for u in users] == [real.id]
+
+
+@pytest.mark.anyio
+async def test_seasonal_dry_run_reports_without_sending(db, mocker, fcm):
+    mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
+    fresh = _seasonal_user('fresh', token_age_days=1, birth_date=date(1990, 1, 1))
+    mid = _seasonal_user('mid', token_age_days=45, vk_friends_data=[])
+    stale = _seasonal_user('stale', token_age_days=120)
+    db.add_all([fresh, mid, stale, _seasonal_user('test', is_test=True)])
+    db.commit()
+    db.add(
+        NotificationSetting(
+            user_id=stale.id, group=NotificationGroup.tips, enabled=False
+        )
+    )
+    db.commit()
+
+    lines = seasonal_dry_run()
+
+    assert lines == [
+        f'test-all-{date.today().year}: получателей 3; '
+        'токен <30д: 1, 30–90д: 1, >90д: 1; '
+        'birth_date есть: 1, нет: 2; '
+        'vk_friends_data есть: 1, нет: 2; '
+        'выключили tips: 1; '
+        'is_test отсечено: 1'
+    ]
+    assert fcm.calls == []
+    assert db.scalars(select(PushSendingLog)).all() == []
+
+
+def test_seasonal_dry_run_out_of_window(db, mocker):
+    mocker.patch(
+        'app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS',
+        (_today_campaign(),),
+    )
+    yesterday = date.today() - timedelta(days=1)
+
+    assert seasonal_dry_run(yesterday) == [
+        f'{yesterday}: ни одна сезонная кампания не в окне'
+    ]
+
+
+@pytest.mark.anyio
+async def test_seasonal_rehearsal_uses_suffixed_key(db, mocker, fcm):
+    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
+    tester = _seasonal_user('tester')
+    db.add_all([tester, _seasonal_user('bystander')])
+    db.commit()
+
+    sent = send_seasonal_rehearsal([tester.id])
+
+    assert sent == 1
+    assert len(fcm.calls) == 1
+    (log,) = db.scalars(select(PushSendingLog)).all()
+    assert log.target_user_id == tester.id
+    year = date.today().year
+    assert log.campaign_key == f'test-all-{year}-rehearsal'
+
+    # Боевой ключ не израсходован: боевая рассылка шлёт репетировавшему снова.
+    fcm.clear()
+    send_seasonal_notifications()
+    assert len(fcm.calls) == 2
+    assert sorted(
+        (log.target_user_id == tester.id, log.campaign_key)
+        for log in db.scalars(select(PushSendingLog)).all()
+    ) == [
+        (False, f'test-all-{year}'),
+        (True, f'test-all-{year}'),
+        (True, f'test-all-{year}-rehearsal'),
+    ]
+
+
+def test_seasonal_rehearsal_unknown_user(db):
+    with pytest.raises(SystemExit, match='Юзеры не найдены'):
+        send_seasonal_rehearsal([uuid4()])
+
+
+def test_cli_dispatch(mocker, capsys):
+    dry = mocker.patch(
+        'app.cron_scripts.at_noon.seasonal_dry_run', return_value=['строка']
+    )
+    rehearsal = mocker.patch(
+        'app.cron_scripts.at_noon.send_seasonal_rehearsal', return_value=2
+    )
+    main = mocker.patch('app.cron_scripts.at_noon.main')
+
+    cli(['--seasonal-dry-run', '--today', '2026-12-20'])
+    dry.assert_called_once_with(date(2026, 12, 20))
+    assert capsys.readouterr().out == 'строка\n'
+
+    user_id = uuid4()
+    cli(['--send-to', str(user_id)])
+    rehearsal.assert_called_once_with([user_id], None)
+    assert capsys.readouterr().out == 'Отправлено: 2\n'
+
+    cli([])
+    main.assert_called_once()
+
+    with pytest.raises(SystemExit):
+        cli(['--seasonal-dry-run', '--send-to', str(user_id)])
 
 
 def test_send_upcoming_birthday_current_user_no_token(db, mocker, fcm):
