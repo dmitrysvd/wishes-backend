@@ -14,14 +14,14 @@
 | app/cron\_scripts/price\_watch.py     |       40 |        0 |     100% |           |
 | app/db.py                             |      220 |        0 |     100% |           |
 | app/dependencies.py                   |       69 |        0 |     100% |           |
-| app/firebase.py                       |       97 |        0 |     100% |           |
+| app/firebase.py                       |      101 |        0 |     100% |           |
 | app/hawk.py                           |       16 |        0 |     100% |           |
 | app/heartbeat.py                      |       10 |        0 |     100% |           |
 | app/helpers/\_\_init\_\_.py           |        5 |        0 |     100% |           |
 | app/helpers/activity.py               |       37 |        0 |     100% |           |
 | app/helpers/browser\_transport.py     |       15 |        0 |     100% |           |
 | app/helpers/og\_helpers.py            |       33 |        0 |     100% |           |
-| app/helpers/pagination.py             |       15 |        0 |     100% |           |
+| app/helpers/pagination.py             |       16 |        0 |     100% |           |
 | app/helpers/price\_watch.py           |      110 |        0 |     100% |           |
 | app/helpers/recommendations.py        |       31 |        0 |     100% |           |
 | app/helpers/store\_price.py           |       48 |        0 |     100% |           |
@@ -47,11 +47,11 @@
 | app/routers/users.py                  |      120 |        0 |     100% |           |
 | app/routers/wishes.py                 |      175 |        0 |     100% |           |
 | app/scheduler.py                      |       29 |        0 |     100% |           |
-| app/schemas.py                        |      179 |        0 |     100% |           |
+| app/schemas.py                        |      177 |        0 |     100% |           |
 | app/test\_auth.py                     |       88 |        0 |     100% |           |
 | app/utils.py                          |       40 |        0 |     100% |           |
 | app/vk.py                             |      115 |        0 |     100% |           |
-| **TOTAL**                             | **2774** |    **0** | **100%** |           |
+| **TOTAL**                             | **2777** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
