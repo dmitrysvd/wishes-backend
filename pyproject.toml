@@ -67,3 +67,6 @@ line-ending = "auto"
 # покрытия в CI строится в контейнере action, где репо смонтирован не в
 # /home/runner/...). С абсолютными путями coverage падает «No source for code».
 relative_files = true
+# Админка (sqladmin) — декларативные ModelView, поведение задаёт библиотека;
+# 100% покрытие требуем только для продуктового кода.
+omit = ["app/admin/*"]
