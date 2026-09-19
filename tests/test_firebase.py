@@ -134,7 +134,7 @@ def test_send_push_no_installations(mocker, db):
 
     outcome = send_push([user], 'title', 'body', reason=PushReason.SEASONAL)
     mock_logger.warning.assert_called()
-    assert outcome.sent == 0
+    assert outcome.sent_user_ids == frozenset()
 
 
 def test_send_push_fid_first_then_token_and_one_log_row_per_user(fcm, db):
@@ -150,7 +150,7 @@ def test_send_push_fid_first_then_token_and_one_log_row_per_user(fcm, db):
     assert (by_fid.fid, by_fid.token) == ('F1', None)
     assert (by_token.fid, by_token.token) == (None, 'plain-token')
     assert by_fid.data['delivery_id'] == by_token.data['delivery_id']
-    assert outcome.sent == 1
+    assert outcome.sent_user_ids == frozenset({user.id})
     assert outcome.accepted_user_ids == frozenset({user.id})
     (log,) = db.scalars(select(PushSendingLog)).all()
     assert str(log.id) == by_fid.data['delivery_id']

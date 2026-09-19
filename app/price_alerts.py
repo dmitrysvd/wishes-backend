@@ -309,7 +309,7 @@ def send_price_alerts(today: date | None = None) -> int:
             trigger=digest.trigger,
             with_delivery_id=True,
         )
-        sent_total += outcome.sent
+        sent_total += len(outcome.sent_user_ids)
         if user.id not in outcome.accepted_user_ids:
             continue
         now = utc_now()

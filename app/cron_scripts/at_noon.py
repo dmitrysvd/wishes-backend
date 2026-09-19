@@ -227,7 +227,7 @@ def send_upcoming_birthday_of_followed_user_notification():
                     reason_user=user,
                     link=get_user_deep_link(user),
                 )
-                sent_any = sent_any or sent.sent > 0
+                sent_any = sent_any or bool(sent.sent_user_ids)
             # Гвард обновляем только если реально хоть кому-то отправили (по
             # возврату send_push — подписчик с выключенной группой «Дни рождения»
             # отправкой не считается). Иначе у именинника без достижимых

@@ -25,16 +25,16 @@ firebase_admin.initialize_app(cred)
 class PushSendOutcome:
     """Итог `send_push`: сколько сообщений ушло и кого FCM принял.
 
-    `sent` — число адресатов, которым построено сообщение (= строк лога; по
-    нему вызывающий решает, расходовать ли свой гвард, напр.
+    `sent_user_ids` — адресаты, которым построено сообщение (= строки лога; по
+    ним вызывающий решает, расходовать ли свой гвард, напр.
     `pre_bday_push_for_followers_last_sent_at`). Установок у адресата может
-    быть несколько — сообщений уходит больше, но считаем юзеров;
-    `accepted_user_ids` — адресаты, у которых FCM принял хотя бы одну установку
-    (не «доставлено» — доставку FCM не подтверждает). Мёртвый адрес и сбой
-    сюда не попадают.
+    быть несколько — сообщений уходит больше, но единица — юзер;
+    `accepted_user_ids` ⊆ `sent_user_ids` — те, у кого FCM принял хотя бы одну
+    установку (не «доставлено» — доставку FCM не подтверждает). Мёртвый адрес
+    и сбой сюда не попадают.
     """
 
-    sent: int = 0
+    sent_user_ids: frozenset[UUID] = field(default_factory=frozenset)
     accepted_user_ids: frozenset[UUID] = field(default_factory=frozenset)
 
 
@@ -190,7 +190,9 @@ def send_push(
             'Удалено мёртвых установок: {count}',
             count=len(dead),
         )
-    return PushSendOutcome(sent=len(users_with_message_ids), accepted_user_ids=accepted)
+    return PushSendOutcome(
+        sent_user_ids=frozenset(users_with_message_ids), accepted_user_ids=accepted
+    )
 
 
 class SendResponseLike(Protocol):
