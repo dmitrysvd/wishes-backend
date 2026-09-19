@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.constants import (
+    HIDDEN_RESERVER_ID,
     UPLOAD_IMAGE_MAX_BYTES,
     FollowAction,
     FollowSource,
@@ -342,10 +343,91 @@ class TestReservedWishes:
         db.commit()
         return wish
 
-    def test_list_reserved_wishes(self, auth_client: TestClient, reserved_wish: Wish):
+    def test_list_reserved_wishes(
+        self, auth_client: TestClient, reserved_wish: Wish, user: User
+    ):
         response = auth_client.get('/reserved_wishes')
         assert response.is_success
-        assert [w['id'] for w in response.json()] == [str(reserved_wish.id)]
+        (item,) = response.json()
+        assert item['id'] == str(reserved_wish.id)
+        # Свой резерв — как есть: по нему клиент показывает «зарезервировано мной».
+        assert item['is_reserved'] is True
+        assert item['reserved_by_id'] == str(user.id)
+
+
+class TestReserverPrivacy:
+    """Личность чужого дарителя наружу не уходит — ни владельцу, ни третьим."""
+
+    @pytest.fixture
+    def wish_reserved_by_other(self, db: Session, wish: Wish, other_user: User):
+        # Хотелка `user`, зарезервирована `other_user`: владелец не должен узнать кем.
+        wish.reserved_by_id = other_user.id
+        db.commit()
+        return wish
+
+    @pytest.fixture
+    def foreign_reserved_wish(self, db: Session, user: User, other_user: User):
+        # Хотелка `other_user`, зарезервирована третьим: `user` — посторонний зритель.
+        third = User(
+            display_name='Third', firebase_uid='firebase uid 3', registered_at=utc_now()
+        )
+        db.add(third)
+        db.flush()
+        _wish = Wish(user_id=other_user.id, name='taken', reserved_by_id=third.id)
+        db.add(_wish)
+        db.commit()
+        return _wish
+
+    @pytest.mark.parametrize(
+        'url', ['/wishes', '/wishes/{id}', '/users/{owner}/wishes']
+    )
+    def test_owner_sees_reserved_but_not_who(
+        self,
+        auth_client: TestClient,
+        wish_reserved_by_other: Wish,
+        user: User,
+        url: str,
+    ):
+        url = url.format(id=wish_reserved_by_other.id, owner=user.id)
+        data = auth_client.get(url).json()
+        item = data[0] if isinstance(data, list) else data
+        assert item['is_reserved'] is True
+        assert item['reserved_by_id'] == str(HIDDEN_RESERVER_ID)
+
+    def test_owner_archived_list_masks_reserver(
+        self, auth_client: TestClient, wish_reserved_by_other: Wish, db: Session
+    ):
+        wish_reserved_by_other.is_archived = True
+        db.commit()
+        (item,) = auth_client.get('/archived_wishes').json()
+        assert item['reserved_by_id'] == str(HIDDEN_RESERVER_ID)
+
+    def test_owner_write_responses_mask_reserver(
+        self, auth_client: TestClient, wish_reserved_by_other: Wish
+    ):
+        response = auth_client.put(
+            f'/wishes/{wish_reserved_by_other.id}',
+            json={'name': 'renamed', 'description': None, 'link': None, 'price': 1},
+        )
+        assert response.is_success, response.text
+        assert response.json()['reserved_by_id'] == str(HIDDEN_RESERVER_ID)
+
+    def test_third_party_sees_reserved_but_not_who(
+        self, auth_client: TestClient, foreign_reserved_wish: Wish, other_user: User
+    ):
+        (item,) = auth_client.get(f'/users/{other_user.id}/wishes').json()
+        assert item['is_reserved'] is True
+        assert item['reserved_by_id'] == str(HIDDEN_RESERVER_ID)
+
+    def test_free_wish_has_no_reserver(self, auth_client: TestClient, wish: Wish):
+        item = auth_client.get(f'/wishes/{wish.id}').json()
+        assert item['is_reserved'] is False
+        assert item['reserved_by_id'] is None
+
+    def test_user_wishes_requires_auth(self, api_client: TestClient, user: User):
+        # auth подменён autouse-фикстурой модуля — снимаем подмену для 401.
+        app.dependency_overrides.pop(get_current_user)
+        assert api_client.get(f'/users/{user.id}/wishes').status_code == 401
 
     def test_reserve_wish(
         self,
