@@ -14,7 +14,7 @@
 | app/cron\_scripts/price\_watch.py     |       40 |        0 |     100% |           |
 | app/db.py                             |      220 |        0 |     100% |           |
 | app/dependencies.py                   |       69 |        0 |     100% |           |
-| app/firebase.py                       |      113 |        0 |     100% |           |
+| app/firebase.py                       |       97 |        0 |     100% |           |
 | app/hawk.py                           |       16 |        0 |     100% |           |
 | app/helpers/\_\_init\_\_.py           |        5 |        0 |     100% |           |
 | app/helpers/activity.py               |       37 |        0 |     100% |           |
@@ -32,7 +32,7 @@
 | app/notifications.py                  |       58 |        0 |     100% |           |
 | app/parsers.py                        |      143 |        0 |     100% |           |
 | app/price\_alerts.py                  |      170 |        0 |     100% |           |
-| app/push\_installations.py            |       67 |        0 |     100% |           |
+| app/push\_installations.py            |       27 |        0 |     100% |           |
 | app/routers/\_\_init\_\_.py           |        0 |        0 |     100% |           |
 | app/routers/auth.py                   |       86 |        0 |     100% |           |
 | app/routers/birthday\_radar.py        |       83 |        0 |     100% |           |
@@ -49,7 +49,7 @@
 | app/test\_auth.py                     |       88 |        0 |     100% |           |
 | app/utils.py                          |       40 |        0 |     100% |           |
 | app/vk.py                             |      115 |        0 |     100% |           |
-| **TOTAL**                             | **2724** |    **0** | **100%** |           |
+| **TOTAL**                             | **2668** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
