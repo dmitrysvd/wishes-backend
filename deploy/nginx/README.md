@@ -64,6 +64,53 @@ sudo logrotate -d /etc/logrotate.d/nginx-analytics   # dry-run, без запи�
 **до** применения конфига: без него `nginx -t` упадёт, и `apply-nginx.sh`
 откатится (что правильно, но деплой отработает вхолостую).
 
+## Что делает для PWA (0019 / 0020 / 0021)
+
+- `location /__/auth/` — прокси на Firebase auth-handler (`hotelki-ec7c8.firebaseapp.com`).
+  В установленном PWA popup-логин не возвращается в окно, фронт использует
+  `signInWithRedirect` с `authDomain=hotelki.pro`; без прокси `/__/auth/handler` ловил
+  бы SPA-fallback и отдавал `index.html`. Домен `hotelki.pro` должен быть добавлен в
+  Authorized domains Firebase Auth и в redirect URI OAuth-клиента Google — это руками
+  в консолях.
+- `Cache-Control: no-cache` на всю раздачу SPA (`/`, `/user`, `*.wasm`): сборка Flutter
+  не версионирует пути, поэтому единственный безопасный режим — ревалидация по ETag.
+  Долгий `immutable`-кэш заготовлен закомментированным блоком и включается только для
+  пути, который фронт объявит хэшированным.
+- `application/wasm` для `*.wasm` (в mime.types nginx 1.18 типа нет) — иначе
+  `WebAssembly.instantiateStreaming` отвергает ответ.
+- gzip для js/wasm/json/css (`gzip_types` в server; глобально сжимается только html).
+  Brotli-модуля в этой сборке nginx нет. `gzip_static on` подхватит `*.gz`, если
+  `deploy_front.sh` (на хосте, `/home/wishes/deploy_front.sh`) их положит рядом:
+
+  ```bash
+  # в deploy_front.sh после unzip, перед mv:
+  find "$SRC" -type f \( -name '*.js' -o -name '*.wasm' -o -name '*.json' -o -name '*.css' \) \
+    -size +1k -exec gzip -k -9 {} +
+  ```
+
+  Без этого шага сжатие идёт на лету на каждый запрос (уровень 5) — тоже работает.
+- `/firebase-messaging-sw.js` — обычный статический файл в корне `/data/www`: тип
+  `application/javascript` по mime-карте, без редиректов, scope `/` по умолчанию
+  (`Service-Worker-Allowed` не нужен, файл в корне).
+
+### Проверить после применения
+
+```bash
+# auth-handler отвечает Firebase, а не index.html (в теле — handler.js, не <title>ХОТЕЛКИ):
+curl -s 'https://hotelki.pro/__/auth/handler?apiKey=x' | head -c 300
+
+# SW пушей: 200, application/javascript, no-cache, без Location:
+curl -sI https://hotelki.pro/firebase-messaging-sw.js | grep -iE '^(HTTP|content-type|cache-control|location)'
+
+# index.html и загрузчик — no-cache:
+curl -sI https://hotelki.pro/index.html | grep -i cache-control
+curl -sI https://hotelki.pro/flutter_bootstrap.js | grep -i cache-control
+
+# wasm: application/wasm + gzip:
+curl -sI -H 'Accept-Encoding: gzip' https://hotelki.pro/canvaskit/canvaskit.wasm \
+  | grep -iE '^(content-type|content-encoding)'
+```
+
 ## Применение: автоматически из deploy.sh
 
 `deploy.sh` на каждом деплое вызывает `apply-nginx.sh`, который **идемпотентно**
