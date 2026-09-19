@@ -62,8 +62,9 @@ def test_auth_firebase_existing_user_update_uid(mocker, db):
 
 
 def test_save_push_token(auth_client, db, user):
+    # `fid: null` — как опущен (сериализаторы клиентов пишут null по умолчанию).
     response = auth_client.post(
-        '/save_push_token', json={'push_token': 'new_push_token'}
+        '/save_push_token', json={'push_token': 'new_push_token', 'fid': None}
     )
     assert response.status_code == 200
     db.refresh(user)
@@ -120,6 +121,13 @@ def test_delete_own_account(auth_client, mocker, db, user):
 
 def test_save_push_token_requires_an_address(auth_client):
     assert auth_client.post('/save_push_token', json={}).status_code == 422
+    # Явный null = опущено, а не «обнулить»: два null — тоже нет адреса.
+    assert (
+        auth_client.post(
+            '/save_push_token', json={'fid': None, 'push_token': None}
+        ).status_code
+        == 422
+    )
     assert auth_client.post('/save_push_token', json={'fid': ''}).status_code == 422
     assert (
         auth_client.post('/save_push_token', json={'push_token': ''}).status_code == 422

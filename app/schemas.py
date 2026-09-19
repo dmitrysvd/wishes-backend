@@ -1075,15 +1075,18 @@ class RequestFirebaseAuthSchema(BaseModel):
 class SavePushTokenSchema(BaseModel):
     """Адреса для пушей (фича 0016). Хотя бы одно из полей обязательно.
 
-    Опущенное поле бэк **не трогает**: `{"fid": ...}` оставляет сохранённый ранее
-    `push_token` как есть, и наоборот. Присланное поле перезаписывает своё
-    значение у пользователя.
+    Опущенное поле или явный `null` бэк **не трогает**: `{"fid": ...}` и
+    `{"fid": ..., "push_token": null}` одинаково оставляют сохранённый ранее
+    `push_token` как есть, и наоборот. Присланная строка перезаписывает своё
+    значение у пользователя. Обнулить адрес через эту ручку нельзя — адреса
+    обнуляет только бэк по ответу FCM «unregistered».
     """
 
     model_config = ConfigDict(
         json_schema_extra={
             'examples': [
                 {'fid': 'dQw4w9WgXcQ-eYb3tR1LmA'},
+                {'fid': 'dQw4w9WgXcQ-eYb3tR1LmA', 'push_token': None},
                 {'push_token': 'dQw4w9WgXcQ:APA91bH…'},
                 {'fid': 'dQw4w9WgXcQ-eYb3tR1LmA', 'push_token': 'dQw4w9WgXcQ:APA91bH…'},
             ]
