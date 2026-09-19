@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -62,7 +62,7 @@ def test_record_activity_creates_row(db: Session, user: User):
 def test_record_activity_same_day_upserts(db: Session, user: User):
     # Время прибито: с `utc_now()` тест краснел, когда стартовал после 22:00 UTC —
     # `+2ч` уезжали в следующие сутки, upsert давал вторую строку.
-    first = datetime(2026, 1, 15, 10, 0, tzinfo=timezone.utc)
+    first = datetime(2026, 1, 15, 10, 0, tzinfo=UTC)
     later = first + timedelta(hours=2)
     record_activity(user.id, now=first)
     record_activity(user.id, now=later)

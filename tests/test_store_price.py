@@ -6,7 +6,7 @@
 прогоняется целиком, без моков внутри.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -46,7 +46,7 @@ WB_NO_SIZE_LINK = 'https://www.wildberries.ru/catalog/100/detail.aspx'
 WB_SOLD_OUT_LINK = 'https://www.wildberries.ru/catalog/200/detail.aspx'
 WB_GONE_LINK = 'https://www.wildberries.ru/catalog/300/detail.aspx'
 OZON_LINK = 'https://www.ozon.ru/product/123456'
-NOW = datetime(2026, 9, 12, 12, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 9, 12, 12, 0, tzinfo=UTC)
 
 
 def store_client(handler) -> httpx.Client:

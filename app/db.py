@@ -1,5 +1,5 @@
 import enum
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from sqlite3 import Connection as SQLite3Connection
 from typing import Any
@@ -139,28 +139,28 @@ class User(Base):
     pre_bday_push_for_followers_last_sent_at: Mapped[datetime | None] = mapped_column()
 
     # relationships
-    wishes: Mapped[list['Wish']] = relationship(
+    wishes: Mapped[list[Wish]] = relationship(
         back_populates='user',
         cascade='all, delete-orphan',
         foreign_keys='[Wish.user_id]',
     )
-    reserved_wishes: Mapped[list['Wish']] = relationship(
+    reserved_wishes: Mapped[list[Wish]] = relationship(
         back_populates='reserved_by',
         foreign_keys='Wish.reserved_by_id',
     )
-    follows: Mapped[list['User']] = relationship(
+    follows: Mapped[list[User]] = relationship(
         secondary=user_following_table,
         primaryjoin=(id == user_following_table.c.follower_id),
         secondaryjoin=(id == user_following_table.c.followed_id),
         back_populates='followed_by',
     )
-    followed_by: Mapped[list['User']] = relationship(
+    followed_by: Mapped[list[User]] = relationship(
         secondary=user_following_table,
         primaryjoin=(id == user_following_table.c.followed_id),
         secondaryjoin=(id == user_following_table.c.follower_id),
         back_populates='follows',
     )
-    push_installations: Mapped[list['PushInstallation']] = relationship(
+    push_installations: Mapped[list[PushInstallation]] = relationship(
         back_populates='user', cascade='all, delete-orphan'
     )
 
@@ -214,10 +214,10 @@ class PushInstallation(Base):
     saved_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(UTC),
     )
 
-    user: Mapped['User'] = relationship(back_populates='push_installations')
+    user: Mapped[User] = relationship(back_populates='push_installations')
 
     @property
     def address(self) -> str:
@@ -257,8 +257,8 @@ class UserAttribution(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    user: Mapped['User'] = relationship(foreign_keys=[user_id])
-    referrer: Mapped['User | None'] = relationship(foreign_keys=[referrer_id])
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    referrer: Mapped[User | None] = relationship(foreign_keys=[referrer_id])
 
 
 class WishRecommendation(Base):
@@ -281,7 +281,7 @@ class WishRecommendation(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    wishes: Mapped[list['Wish']] = relationship(back_populates='recommendation')
+    wishes: Mapped[list[Wish]] = relationship(back_populates='recommendation')
 
 
 # Внутренний статус наблюдения → публичный enum наличия (контракт 0011).
@@ -367,11 +367,11 @@ class Wish(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    user: Mapped['User'] = relationship(back_populates='wishes', foreign_keys=[user_id])
-    reserved_by: Mapped['User | None'] = relationship(
+    user: Mapped[User] = relationship(back_populates='wishes', foreign_keys=[user_id])
+    reserved_by: Mapped[User | None] = relationship(
         back_populates='reserved_wishes', foreign_keys=[reserved_by_id]
     )
-    recommendation: Mapped['WishRecommendation | None'] = relationship(
+    recommendation: Mapped[WishRecommendation | None] = relationship(
         back_populates='wishes'
     )
 
@@ -450,8 +450,8 @@ class PushSendingLog(Base):
     )
 
     # Только для чтения в админке: колонки-ссылки на карточки юзеров вместо UUID.
-    reason_user: Mapped['User'] = relationship(foreign_keys=[reason_user_id])
-    target_user: Mapped['User'] = relationship(foreign_keys=[target_user_id])
+    reason_user: Mapped[User] = relationship(foreign_keys=[reason_user_id])
+    target_user: Mapped[User] = relationship(foreign_keys=[target_user_id])
 
 
 class WishPriceRefreshEvent(Base):
@@ -659,7 +659,7 @@ class WishPriceObservation(Base):
     # Односторонняя связь для админки (ссылка на хотелку). Обратной коллекции на
     # Wish нет: обход пишет через pg_insert, а ленивая загрузка тысяч наблюдений
     # на хотелке никому не нужна.
-    wish: Mapped['Wish'] = relationship()
+    wish: Mapped[Wish] = relationship()
 
 
 engine = create_engine(

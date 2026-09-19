@@ -43,7 +43,13 @@ class BrowserTransport(httpx.BaseTransport):
         )
         return httpx.Response(
             status_code=response.status_code,
-            headers=list(response.headers.multi_items()),
+            # curl_cffi типизирует значение как `str | None`, httpx требует `str`;
+            # None там не бывает, но ty на этом падает.
+            headers=[
+                (name, value)
+                for name, value in response.headers.multi_items()
+                if value is not None
+            ],
             content=response.content,
             request=request,
         )

@@ -1,5 +1,4 @@
 from datetime import date, datetime
-from typing import Generic, TypeVar
 from uuid import UUID
 
 from pydantic import (
@@ -22,10 +21,8 @@ from app.constants import (
     TestPersona,
 )
 
-ItemT = TypeVar('ItemT', bound=BaseModel)
 
-
-class PageSchema(BaseModel, Generic[ItemT]):
+class PageSchema[ItemT: BaseModel](BaseModel):
     """Универсальная схема-страница для offset/limit-пагинации."""
 
     items: list[ItemT] = Field(description='Элементы страницы; `[]` — пусто.')

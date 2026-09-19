@@ -138,7 +138,7 @@ def enable_head_for_get_routes(application: FastAPI) -> None:
             route.methods = set(methods) | {'HEAD'}  # ty: ignore[unresolved-attribute]
 
 
-class HeartbeatName(str, enum.Enum):
+class HeartbeatName(enum.StrEnum):
     """Фоновые процессы, за свежестью которых следит внешний монитор."""
 
     BACKUP = 'backup'

@@ -2,42 +2,43 @@
 name = "wishes"
 version = "0.1.0"
 description = ""
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
-    "fastapi>=0.104.1",
-    "sqlalchemy>=2.0.23",
-    "pydantic[email]>=2.5.1",
-    "gunicorn>=21.2.0",
-    "uvicorn[standard]>=0.24.0.post1",
-    "jinja2>=3.1.2",
-    "pydantic-settings>=2.1.0",
-    "httpx>=0.25.1",
-    "alembic>=1.12.1",
-    "firebase-admin>=6.2.0",
-    "sqladmin[full]>=0.16.0",
-    "loguru>=0.7.2",
-    "beautifulsoup4>=4.12.2",
-    "ipython>=8.20.0",
+    "fastapi>=0.141.1",
+    "sqlalchemy>=2.0.52",
+    "pydantic[email]>=2.13.5",
+    "gunicorn>=26.2.0",
+    "uvicorn[standard]>=0.52.4",
+    "jinja2>=3.1.6",
+    "pydantic-settings>=2.15.0",
+    "httpx>=0.28.1",
+    "alembic>=1.20.0",
+    "firebase-admin>=7.5.0",
+    "sqladmin[full]>=0.31.1",
+    "loguru>=0.7.3",
+    "beautifulsoup4>=4.15.0",
+    "ipython>=9.17.1",
     "hawk-python-sdk>=3.5.2",
-    "psycopg2-binary>=2.9.11",
-    "apscheduler>=3.11.2",
+    "psycopg2-binary>=2.9.13",
+    "apscheduler>=3.11.3",
     "curl-cffi>=0.16.3",
 ]
 
 [dependency-groups]
 dev = [
-    "pre-commit>=3.5.0",
-    "ty>=0.0.47",
-    "pytest>=7.4.3",
-    "pytest-cov>=4.1.0",
-    "pytest-mock>=3.12.0",
-    "ruff>=0.15.9",
+    "pre-commit>=4.6.2",
+    "ty>=0.0.80",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-mock>=3.15.1",
+    "ruff>=0.16.7",
 ]
 
 [tool.uv]
-# Резолвим только под CPython: firebase-admin для PyPy<3.11 держит
-# cryptography<44, и без этого uv тащит уязвимую 43.x во всю ветку py3.10.
-environments = ["platform_python_implementation != 'PyPy'"]
+# Кулдаун против supply-chain-атак: в резолв попадают только релизы старше
+# 7 дней — скомпрометированную версию успевают снять с PyPI до того, как она
+# окажется в uv.lock. Без этого `uv lock --upgrade` берёт релиз в день выхода.
+exclude-newer = "7 days"
 
 [tool.black]
 skip-string-normalization = true
@@ -47,7 +48,7 @@ profile = "black"
 
 [tool.ruff]
 line-length = 88
-target-version = "py310"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "TID251"]

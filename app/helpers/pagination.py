@@ -1,11 +1,12 @@
 from typing import Annotated, Any
 
 from fastapi import Query
+from pydantic import BaseModel
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from app.constants import DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT
-from app.schemas import ItemT, PageSchema
+from app.schemas import PageSchema
 
 
 class PaginationParams:
@@ -24,7 +25,7 @@ class PaginationParams:
         self.offset = offset
 
 
-def paginate(
+def paginate[ItemT: BaseModel](
     db: Session,
     query: Select[tuple[Any]],
     params: PaginationParams,
