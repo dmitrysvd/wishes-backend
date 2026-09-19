@@ -1,9 +1,23 @@
+import argparse
+import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
-from app.db import Gender, PushReason, PushSendingLog, SessionLocal, User, Wish
+from app.db import (
+    Gender,
+    NotificationGroup,
+    NotificationSetting,
+    PushInstallation,
+    PushReason,
+    PushSendingLog,
+    SessionLocal,
+    User,
+    Wish,
+)
 from app.firebase import send_push
 from app.logging import logger
 from app.main import get_user_deep_link
@@ -297,47 +311,170 @@ def is_in_campaign_window(campaign: SeasonalCampaign, today: date) -> bool:
     return window_start <= today <= anchor
 
 
+def seasonal_campaign_key(
+    campaign: SeasonalCampaign, segment: SeasonalSegment, today: date
+) -> str:
+    """Ключ дедупа сегмента в сезоне. Год якоря входит в ключ, чтобы «этот
+    сезон» дедупился корректно."""
+    return f'{campaign.key}-{segment.key}-{today.year}'
+
+
+def select_seasonal_recipients(
+    db: Session, campaign: SeasonalCampaign, segment: SeasonalSegment, today: date
+) -> list[User]:
+    """Боевая выборка получателей сегмента: с живым токеном, под фильтрами
+    сегмента, не тестовые и ещё не получавшие этот сегмент в сезоне `today`.
+
+    Дедуп свёрнут прямо в запрос через `campaign_key`. Тестовые аккаунты
+    исключены здесь, а не в `send_push`: иначе репетиция на них расходовала бы
+    боевой ключ, а боевая рассылка уходила бы на стенд.
+    """
+    campaign_key = seasonal_campaign_key(campaign, segment, today)
+    already_sent = select(PushSendingLog.target_user_id).where(
+        (PushSendingLog.reason == PushReason.SEASONAL)
+        & (PushSendingLog.campaign_key == campaign_key)
+    )
+    return list(
+        db.scalars(
+            select(User).where(
+                User.can_receive_push,
+                ~User.is_test,
+                *segment.filters,
+                User.id.not_in(already_sent),
+            )
+        ).all()
+    )
+
+
+def _active_segments(today: date) -> list[tuple[SeasonalCampaign, SeasonalSegment]]:
+    return [
+        (campaign, segment)
+        for campaign in SEASONAL_CAMPAIGNS
+        if is_in_campaign_window(campaign, today)
+        for segment in campaign.segments
+    ]
+
+
 def send_seasonal_notifications(today: date | None = None) -> None:
     """Сезонные глобальные пуши по сегментам кампаний.
 
-    Для каждой активной сегодня кампании и каждого её сегмента выбираем юзеров с
-    живым токеном, подходящих под фильтры сегмента и ещё не получавших этот пуш
-    в текущем сезоне. Один юзер за сезон получает не более одного пуша на
-    сегмент — дедуп свёрнут прямо в запрос через `campaign_key`. `today`
-    параметризован ради тестируемости без подмены системного времени.
+    Для каждой активной сегодня кампании и каждого её сегмента шлём получателям
+    из `select_seasonal_recipients`. Один юзер за сезон получает не более
+    одного пуша на сегмент. `today` параметризован ради тестируемости без
+    подмены системного времени.
     """
     today = today or date.today()
-    for campaign in SEASONAL_CAMPAIGNS:
-        if not is_in_campaign_window(campaign, today):
-            continue
-        for segment in campaign.segments:
-            # Год якоря входит в ключ, чтобы «этот сезон» дедупился корректно.
-            campaign_key = f'{campaign.key}-{segment.key}-{today.year}'
-            # Кому уже слали этот сегмент в этом сезоне — исключаем в запросе.
-            already_sent = select(PushSendingLog.target_user_id).where(
-                (PushSendingLog.reason == PushReason.SEASONAL)
-                & (PushSendingLog.campaign_key == campaign_key)
+    for campaign, segment in _active_segments(today):
+        campaign_key = seasonal_campaign_key(campaign, segment, today)
+        with SessionLocal() as db:
+            users = select_seasonal_recipients(db, campaign, segment, today)
+        for user in users:
+            send_push(
+                target_users=[user],
+                title=segment.title,
+                body=segment.body,
+                reason=PushReason.SEASONAL,
+                campaign_key=campaign_key,
+                link=get_user_deep_link(user),
             )
-            with SessionLocal() as db:
-                users = db.scalars(
-                    select(User).where(
-                        User.can_receive_push,
-                        *segment.filters,
-                        User.id.not_in(already_sent),
+        logger.info(f'Сезонная кампания {campaign_key}: отправлено {len(users)} пушей')
+
+
+def seasonal_dry_run(today: date | None = None) -> list[str]:
+    """Сухой прогон: кто получил бы сезонный пуш на дату `today` и какой это
+    срез — без отправки и без записи в БД (ни лога, ни гвардов).
+
+    Возвращает строки отчёта (они же уходят в лог) — чтобы CLI печатал их, а
+    тест проверял без перехвата stdout. `is_test` в срезе — сколько тестовых
+    аккаунтов боевая выборка отсекла; остальные счётчики — по получателям.
+    """
+    today = today or date.today()
+    now = utc_now()
+    lines: list[str] = []
+    active = _active_segments(today)
+    if not active:
+        lines.append(f'{today}: ни одна сезонная кампания не в окне')
+    with SessionLocal() as db:
+        for campaign, segment in active:
+            campaign_key = seasonal_campaign_key(campaign, segment, today)
+            users = select_seasonal_recipients(db, campaign, segment, today)
+            user_ids = [u.id for u in users]
+            # Свежесть адресата — по самой новой установке юзера.
+            token_age_days = {
+                user_id: (now - newest).days
+                for user_id, newest in db.execute(
+                    select(
+                        PushInstallation.user_id,
+                        func.max(PushInstallation.saved_at),
+                    )
+                    .where(PushInstallation.user_id.in_(user_ids))
+                    .group_by(PushInstallation.user_id)
+                ).all()
+            }
+            tips_disabled = set(
+                db.scalars(
+                    select(NotificationSetting.user_id).where(
+                        NotificationSetting.user_id.in_(user_ids),
+                        NotificationSetting.group == NotificationGroup.tips,
+                        NotificationSetting.enabled.is_(False),
                     )
                 ).all()
+            )
+            excluded_test = db.scalar(
+                select(func.count())
+                .select_from(User)
+                .where(User.can_receive_push, User.is_test, *segment.filters)
+            )
+            ages = list(token_age_days.values())
+            lines.append(
+                f'{campaign_key}: получателей {len(users)}; '
+                f'токен <30д: {sum(a < 30 for a in ages)}, '
+                f'30–90д: {sum(30 <= a <= 90 for a in ages)}, '
+                f'>90д: {sum(a > 90 for a in ages)}; '
+                f'birth_date есть: {sum(u.birth_date is not None for u in users)}, '
+                f'нет: {sum(u.birth_date is None for u in users)}; '
+                f'vk_friends_data есть: '
+                f'{sum(u.vk_friends_data is not None for u in users)}, '
+                f'нет: {sum(u.vk_friends_data is None for u in users)}; '
+                f'выключили tips: {len(tips_disabled)}; '
+                f'is_test отсечено: {excluded_test}'
+            )
+    for line in lines:
+        logger.info(f'[dry-run] {line}')
+    return lines
+
+
+def send_seasonal_rehearsal(user_ids: list[UUID], today: date | None = None) -> int:
+    """Репетиция: реальная отправка активных на `today` сегментов только
+    указанным юзерам, с ключом `<боевой ключ>-rehearsal`.
+
+    Сегментная выборка и дедуп не применяются — получатели ровно те, что
+    переданы (в т.ч. `is_test`), повторный запуск шлёт снова. Боевой ключ не
+    расходуется: в декабре эти же юзеры получат настоящий пуш.
+    Возвращает число отправок.
+    """
+    today = today or date.today()
+    sent = 0
+    with SessionLocal() as db:
+        users = list(db.scalars(select(User).where(User.id.in_(user_ids))).all())
+        missing = set(user_ids) - {u.id for u in users}
+        if missing:
+            raise SystemExit(f'Юзеры не найдены: {sorted(map(str, missing))}')
+        for campaign, segment in _active_segments(today):
+            campaign_key = seasonal_campaign_key(campaign, segment, today)
+            rehearsal_key = f'{campaign_key}-rehearsal'
             for user in users:
                 send_push(
                     target_users=[user],
                     title=segment.title,
                     body=segment.body,
                     reason=PushReason.SEASONAL,
-                    campaign_key=campaign_key,
+                    campaign_key=rehearsal_key,
                     link=get_user_deep_link(user),
                 )
-            logger.info(
-                f'Сезонная кампания {campaign_key}: отправлено {len(users)} пушей'
-            )
+                sent += 1
+            logger.info(f'Репетиция {rehearsal_key}: отправлено {len(users)} пушей')
+    return sent
 
 
 def main():
@@ -350,5 +487,39 @@ def main():
     send_empty_list_reactivation_notifications()
 
 
+def cli(argv: list[str]) -> None:
+    """Точка входа скрипта. Без аргументов — обычный полуденный крон; с
+    `--seasonal-dry-run` / `--send-to` — только сезонная часть, см. docstring
+    `seasonal_dry_run` и `send_seasonal_rehearsal`."""
+    parser = argparse.ArgumentParser(description='Полуденный крон')
+    parser.add_argument(
+        '--seasonal-dry-run',
+        action='store_true',
+        help='Посчитать получателей сезонных пушей, ничего не слать и не писать',
+    )
+    parser.add_argument(
+        '--send-to',
+        type=lambda s: [UUID(x) for x in s.split(',')],
+        metavar='UUID[,UUID...]',
+        help='Репетиция: реально отправить сезонный пуш этим юзерам с ключом '
+        '<боевой ключ>-rehearsal',
+    )
+    parser.add_argument(
+        '--today',
+        type=date.fromisoformat,
+        help='Дата, на которую считать окно кампаний (по умолчанию сегодня)',
+    )
+    args = parser.parse_args(argv)
+    if args.seasonal_dry_run and args.send_to:
+        parser.error('--seasonal-dry-run и --send-to взаимоисключающие')
+    if args.seasonal_dry_run:
+        for line in seasonal_dry_run(args.today):
+            print(line)
+    elif args.send_to:
+        print(f'Отправлено: {send_seasonal_rehearsal(args.send_to, args.today)}')
+    else:
+        main()
+
+
 if __name__ == '__main__':
-    main()
+    cli(sys.argv[1:])
