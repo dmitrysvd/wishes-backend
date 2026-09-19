@@ -1,6 +1,6 @@
 """Перенос данных в миграции a7c3e5f1b9d2: токены юзеров → установки."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from alembic.config import Config
 from sqlalchemy import text
@@ -21,7 +21,7 @@ def _cfg() -> Config:
 def test_tokens_become_installations_latest_owner_wins(test_engine):
     cfg = _cfg()
     command.downgrade(cfg, f'{REV}-1')
-    now = datetime(2026, 9, 19, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 19, tzinfo=UTC)
     with test_engine.begin() as conn:
         conn.execute(text('DELETE FROM "user"'))
         # A и B делят один токен (один телефон, два аккаунта): B сохранил позже.

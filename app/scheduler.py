@@ -66,7 +66,7 @@ def start_scheduler():
     logger.info('Scheduler started')
     try:
         scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
+    except KeyboardInterrupt, SystemExit:
         logger.info('Scheduler stopped')
 
 

@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -162,7 +162,7 @@ async def test_send_upcoming_birthday_of_followed_user_notification(db, mocker, 
 def test_followers_push_recently_sent():
     assert followers_push_recently_sent(None) is False
     # aware-время приводится к naive перед сравнением
-    assert followers_push_recently_sent(datetime.now(timezone.utc)) is True
+    assert followers_push_recently_sent(datetime.now(UTC)) is True
     assert followers_push_recently_sent(datetime(2000, 1, 1)) is False
 
 

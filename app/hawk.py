@@ -24,8 +24,8 @@ class LoggedError(Exception):
     """`logger.error(...)` без исключения: в Hawk уходит текст записи."""
 
 
-def make_hawk_sink(tracker: Hawk) -> 'Callable[[Message], None]':
-    def sink(message: 'Message') -> None:
+def make_hawk_sink(tracker: Hawk) -> Callable[[Message], None]:
+    def sink(message: Message) -> None:
         record = message.record
         context = {
             'logger': record['name'],

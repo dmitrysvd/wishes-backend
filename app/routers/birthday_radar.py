@@ -50,7 +50,7 @@ def parse_vk_bdate_day_month(bdate: str | None) -> tuple[int, int] | None:
         day = int(parts[0])
         month = int(parts[1])
         date(2000, month, day)  # 2000 високосный — допускает 29.02, ловит мусор
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return None
     return day, month
 

@@ -128,7 +128,7 @@ def db(test_engine, mocker):
     for module in modules:
         try:
             mocker.patch(f'{module}.SessionLocal', return_value=wrapper)
-        except (ImportError, AttributeError):
+        except ImportError, AttributeError:
             pass
 
     nested = connection.begin_nested()
@@ -154,7 +154,7 @@ def _disable_avatar_refresh_on_login(mocker):
     # test_user_helpers (через httpx.MockTransport).
     try:
         mocker.patch('app.routers.auth.refresh_avatar_on_login')
-    except (ImportError, AttributeError):
+    except ImportError, AttributeError:
         pass
 
 
