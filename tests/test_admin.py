@@ -201,3 +201,62 @@ def test_wish_edit_page_renders(admin_client, observed_wish):
     response = admin_client.get(f'/admin/wish/edit/{observed_wish}')
     assert response.status_code == 200
     assert 'type="checkbox"' in response.text
+
+
+@pytest.fixture
+def push_log_row(test_engine):
+    """Одна запись лога отправок (сезонный пуш, не открыт), закоммиченная в БД."""
+    from uuid import uuid4
+
+    from sqlalchemy.orm import Session
+
+    from app.db import PushReason, PushSendingLog, User
+    from app.utils import utc_now
+
+    with Session(test_engine) as session:
+        user = User(
+            firebase_uid=f'uid-{uuid4()}',
+            display_name='Адресат',
+            email=f'{uuid4()}@t.ru',
+            registered_at=utc_now(),
+        )
+        session.add(user)
+        session.flush()
+        log = PushSendingLog(
+            sent_at=utc_now(),
+            reason_user_id=user.id,
+            target_user_id=user.id,
+            reason=PushReason.SEASONAL,
+            campaign_key='mar8-2026',
+        )
+        session.add(log)
+        session.commit()
+        log_id, user_id = log.id, user.id
+    yield log_id, user_id
+    with Session(test_engine) as session:
+        session.delete(session.get(User, user_id))  # каскадом уходит лог
+        session.commit()
+
+
+def test_push_log_admin_filters(admin_client, push_log_row):
+    log_id, user_id = push_log_row
+    url = '/admin/push-sending-log/list'
+    row = f'/admin/push-sending-log/details/{log_id}'
+
+    page = admin_client.get(f'{url}?search={user_id}').text
+    assert 'Push Sending Logs' in page
+    assert row in page
+    # Адресат — ссылка на карточку юзера, а не голый UUID.
+    assert f'/admin/user/details/{user_id}' in page
+
+    # Фильтр по типу: имя члена enum (значения `PushReason` — числа из auto()).
+    assert row in admin_client.get(f'{url}?reason=SEASONAL').text
+    assert row not in admin_client.get(f'{url}?reason=PRICE_ALERT').text
+    # Не пуш по складу, не открыт, сезонная кампания задана.
+    assert row not in admin_client.get(f'{url}?trigger=price').text
+    assert row in admin_client.get(f'{url}?opened_at=false').text
+    assert row not in admin_client.get(f'{url}?opened_at=true').text
+    assert row in admin_client.get(f'{url}?campaign_key=true').text
+
+    # Лог только для чтения: удалять/редактировать/создавать нельзя.
+    assert admin_client.get(f'/admin/push-sending-log/edit/{log_id}').status_code == 403

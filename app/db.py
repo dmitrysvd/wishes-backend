@@ -386,6 +386,10 @@ class PushSendingLog(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Только для чтения в админке: колонки-ссылки на карточки юзеров вместо UUID.
+    reason_user: Mapped['User'] = relationship(foreign_keys=[reason_user_id])
+    target_user: Mapped['User'] = relationship(foreign_keys=[target_user_id])
+
 
 class WishPriceRefreshEvent(Base):
     """Append-only лог нажатий «актуальная с WB» (фича 0011).
