@@ -4,9 +4,11 @@ from sqladmin.authentication import AuthenticationBackend
 from sqladmin.filters import BooleanFilter, StaticValuesFilter, get_column_obj
 
 from app.config import settings
-from app.constants import PriceObservationStatus, Shop
+from app.constants import PriceAlertTrigger, PriceObservationStatus, Shop
 from app.db import (
     FollowEvent,
+    PushReason,
+    PushSendingLog,
     User,
     UserAttribution,
     Wish,
@@ -28,9 +30,9 @@ class IsSetFilter(BooleanFilter):
 
 
 def enum_filter(column, enum_cls, title: str) -> StaticValuesFilter:
-    return StaticValuesFilter(
-        column, [(e.value, e.value) for e in enum_cls], title=title
-    )
+    # SQLAlchemy `Enum` хранит и сравнивает по имени члена, не по значению
+    # (у `PushReason` значения — числа из `enum.auto()`).
+    return StaticValuesFilter(column, [(e.name, e.name) for e in enum_cls], title=title)
 
 
 class UserAdmin(ModelView, model=User):
@@ -144,6 +146,39 @@ class WishPriceObservationAdmin(ModelView, model=WishPriceObservation):
     can_export = False
 
 
+class PushSendingLogAdmin(ModelView, model=PushSendingLog):
+    name = 'Push Sending Log'
+    name_plural = 'Push Sending Logs'
+    # Append-only лог отправок — от него зависит дедуп (один пуш в сутки,
+    # сезонные кампании): удалённая руками строка = повторный пуш юзеру.
+    can_create = False
+    can_edit = False
+    can_delete = False
+    column_list = [
+        PushSendingLog.sent_at,
+        PushSendingLog.reason,
+        PushSendingLog.target_user,
+        PushSendingLog.reason_user,
+        PushSendingLog.campaign_key,
+        PushSendingLog.trigger,
+        PushSendingLog.opened_at,
+    ]
+    icon = 'fa-solid fa-bell'
+    column_searchable_list = [
+        PushSendingLog.target_user_id,
+        PushSendingLog.reason_user_id,
+        PushSendingLog.campaign_key,
+    ]
+    column_default_sort = ('sent_at', True)
+    column_filters = [
+        enum_filter(PushSendingLog.reason, PushReason, 'Reason'),
+        enum_filter(PushSendingLog.trigger, PriceAlertTrigger, 'Trigger'),
+        IsSetFilter(PushSendingLog.opened_at, title='Opened'),
+        IsSetFilter(PushSendingLog.campaign_key, title='Seasonal campaign'),
+    ]
+    can_export = False
+
+
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
         form = await request.form()
@@ -180,4 +215,5 @@ def setup_admin(app, engine):
     admin.add_view(FollowEventAdmin)
     admin.add_view(UserAttributionAdmin)
     admin.add_view(WishPriceObservationAdmin)
+    admin.add_view(PushSendingLogAdmin)
     return admin
