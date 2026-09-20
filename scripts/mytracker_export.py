@@ -18,9 +18,11 @@
 """
 
 import argparse
+import ast
 import csv
 import gzip
 import io
+import json
 import sys
 import time
 from base64 import b64encode
@@ -95,7 +97,11 @@ KINDS: dict[str, ExportKind] = {
     'events': ExportKind(
         name='events',
         event='customEvents',
-        selectors=COMMON_SELECTORS + ('eventName', 'eventValue'),
+        # params.name / params.value — кастомные параметры события списками
+        # (`['value','code']` / `['false','0']`); eventValue — числовое значение
+        # события SDK, у наших событий всегда 0, параметры в нём не лежат.
+        selectors=COMMON_SELECTORS
+        + ('eventName', 'eventValue', 'params.name', 'params.value'),
         key=('id_profile', 'event_at', 'event_name'),
         extra=(('eventName', 'event_name'), ('eventValue', 'event_value')),
     ),
@@ -147,10 +153,12 @@ CREATE TABLE IF NOT EXISTS {SCHEMA}.events (
     event_at timestamptz NOT NULL,
     event_name text NOT NULL,
     event_value text,
+    params jsonb,
     app_version text,
     os_version text,
     PRIMARY KEY (id_profile, event_at, event_name)
 );
+ALTER TABLE {SCHEMA}.events ADD COLUMN IF NOT EXISTS params jsonb;
 CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON {SCHEMA}.sessions (user_id);
 CREATE INDEX IF NOT EXISTS events_user_id_idx ON {SCHEMA}.events (user_id);
 CREATE INDEX IF NOT EXISTS installs_user_id_idx ON {SCHEMA}.installs (user_id);
@@ -293,6 +301,29 @@ def _uuid_or_none(value: str | None) -> UUID | None:
         return None
 
 
+def _param_list(value: str | None) -> list[str] | None:
+    """`['a','b\n c']` из Export API → список строк; пусто/битое → None."""
+    if not value:
+        return None
+    try:
+        parsed = ast.literal_eval(value)
+    except ValueError, SyntaxError:
+        return None
+    if not isinstance(parsed, list):
+        return None
+    return [str(item) for item in parsed]
+
+
+def event_params(rec: dict[str, str]) -> dict[str, str] | None:
+    """Кастомные параметры события: `params.name` × `params.value` → dict.
+    Списки разной длины — параметры не восстановить, лучше NULL, чем сдвиг."""
+    names = _param_list(rec.get('params.name'))
+    values = _param_list(rec.get('params.value'))
+    if not names or values is None or len(names) != len(values):
+        return None
+    return dict(zip(names, values, strict=True))
+
+
 def _row_from_record(kind: ExportKind, rec: dict[str, str]) -> dict[str, Any]:
     row: dict[str, Any] = {
         'id_profile': rec.get('idProfile') or rec.get('idDevice') or '',
@@ -312,6 +343,9 @@ def _row_from_record(kind: ExportKind, rec: dict[str, str]) -> dict[str, Any]:
     for selector, column in kind.extra:
         value = rec.get(selector)
         row[column] = int(value) if column == 'duration' and value else (value or None)
+    if kind.name == 'events':
+        params = event_params(rec)
+        row['params'] = json.dumps(params, ensure_ascii=False) if params else None
     return row
 
 
@@ -340,18 +374,32 @@ def ensure_schema(conn: Connection) -> None:
 
 def upsert_rows(conn: Connection, kind: ExportKind, rows: list[dict[str, Any]]) -> int:
     """Вставить строки, дубли по естественному ключу пропустить. Возвращает
-    число реально вставленных."""
+    число реально вставленных. Исключение — `events.params`: у строк, залитых
+    до появления колонки, он NULL, и повторная выгрузка окна его дозаполняет
+    (в счётчик такие строки не входят)."""
     if not rows:
         return 0
     columns = list(rows[0])
+    values = ', '.join(
+        f'CAST(:{c} AS jsonb)' if c == 'params' else f':{c}' for c in columns
+    )
+    on_conflict = 'DO NOTHING'
+    if 'params' in columns:
+        on_conflict = (
+            'DO UPDATE SET params = EXCLUDED.params '
+            f'WHERE {SCHEMA}.{kind.name}.params IS NULL '
+            'AND EXCLUDED.params IS NOT NULL'
+        )
     sql = text(
         f'INSERT INTO {SCHEMA}.{kind.name} ({", ".join(columns)}) '
-        f'VALUES ({", ".join(":" + c for c in columns)}) '
-        f'ON CONFLICT ({", ".join(kind.key)}) DO NOTHING'
+        f'VALUES ({values}) '
+        f'ON CONFLICT ({", ".join(kind.key)}) {on_conflict} '
+        'RETURNING (xmax = 0) AS inserted'
     )
     inserted = 0
     for row in rows:
-        inserted += conn.execute(sql, row).rowcount
+        # xmax = 0 — строка новая; у обновлённой (дозаполнен params) xmax ≠ 0.
+        inserted += sum(1 for (is_new,) in conn.execute(sql, row) if is_new)
     return inserted
 
 

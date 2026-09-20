@@ -31,11 +31,13 @@ scripts/prod_snapshot.sh          # срез прод-таблиц для джо
 |---|---|---|
 | `mytracker.installs` | `id_profile, event_at` | `user_id`, `installed_at`, `app_version`, `os_version`, `device_model`, `manufacturer`, `country`, `sdk_version` |
 | `mytracker.sessions` | `id_profile, event_at` | `user_id`, `duration` (−1 = оборванная), `app_version`, `os_version` |
-| `mytracker.events` | `id_profile, event_at, event_name` | `user_id`, `event_name`, `event_value`, `app_version` |
+| `mytracker.events` | `id_profile, event_at, event_name` | `user_id`, `event_name`, `event_value`, `params` (jsonb: кастомные параметры события, напр. `{"value":"true","code":"0"}` у `gms_available`), `app_version` |
 | `mytracker.export_request` | `id_raw_export` | журнал запросов: `kind`, окно, `status` (`pending`/`loaded`/`failed`) |
 | `prod_snapshot.*` | как в проде | `user` (id, даты, пол, is_test), `push_sending_log`, `user_activity_day`, `push_installation` (без токенов), `user_following`, `wish` (без названий) |
 
-`user_id` — распарсенный `customUserId` (NULL, если не UUID; сырое — в
+`event_value` — числовое значение события SDK (у наших событий 0); параметры клиента —
+в `params`. Строки, залитые до появления `params`, дозаполняются повторной выгрузкой
+окна с `--force` (обновляется только NULL). `user_id` — распарсенный `customUserId` (NULL, если не UUID; сырое — в
 `custom_user_id`). `event_at` — UTC. `app_version` — как отдаёт SDK (`1.1.16`).
 `id_profile` = устройство+приложение; один юзер может быть на нескольких.
 

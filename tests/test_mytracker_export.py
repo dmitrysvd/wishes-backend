@@ -1,4 +1,6 @@
+import csv
 import gzip
+import io
 from datetime import UTC, date, datetime
 from urllib.parse import parse_qs
 
@@ -67,8 +69,12 @@ def test_quota_reset_in():
 
 
 def _csv_gz(header: list[str], rows: list[list[str]]) -> bytes:
-    lines = [','.join(header)] + [','.join(r) for r in rows]
-    return gzip.compress(('\n'.join(lines) + '\n').encode())
+    # Через csv.writer: значения со списками параметров содержат запятые.
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    writer.writerows(rows)
+    return gzip.compress(buf.getvalue().encode())
 
 
 USER_ID = '7c9e6679-7425-40de-944b-e07fc1f90ae7'
@@ -86,9 +92,22 @@ def test_rows_for_table_maps_selectors_and_skips_keyless():
                 'idOsVersionTitle',
                 'eventName',
                 'eventValue',
+                'params.name',
+                'params.value',
             ],
             [
-                ['d1', 'p1', USER_ID, '1758196800', '1.1.16', '14', 'LOGIN', ''],
+                [
+                    'd1',
+                    'p1',
+                    USER_ID,
+                    '1758196800',
+                    '1.1.16',
+                    '14',
+                    'LOGIN',
+                    '',
+                    '',
+                    '',
+                ],
                 [
                     'd1',
                     'p1',
@@ -98,8 +117,10 @@ def test_rows_for_table_maps_selectors_and_skips_keyless():
                     '14',
                     'gms_available',
                     '1',
+                    "['value','code']",
+                    "['true','0']",
                 ],
-                ['d2', 'p2', '', '', '1.1.15', '13', 'LOGIN', ''],
+                ['d2', 'p2', '', '', '1.1.15', '13', 'LOGIN', '', '', ''],
             ],
         )
     )
@@ -110,6 +131,49 @@ def test_rows_for_table_maps_selectors_and_skips_keyless():
     assert rows[0]['event_name'] == 'LOGIN' and rows[0]['event_value'] is None
     # Чужой формат customUserId сохраняется как текст, но в uuid не парсится.
     assert rows[1]['custom_user_id'] == 'not-a-uuid' and rows[1]['user_id'] is None
+    assert rows[0]['params'] is None
+    assert rows[1]['params'] == '{"value": "true", "code": "0"}'
+
+
+def test_event_params_parsed_from_lists():
+    rec = {'params.name': "['value','code']", 'params.value': "['false','0']"}
+    assert mt.event_params(rec) == {'value': 'false', 'code': '0'}
+    # Перенос строки внутри значения — формат Export API это допускает.
+    rec = {'params.name': "['note']", 'params.value': "['a\\n b']"}
+    assert mt.event_params(rec) == {'note': 'a\n b'}
+    # Нет параметров / битый список / разная длина → NULL, а не сдвиг.
+    assert mt.event_params({}) is None
+    assert mt.event_params({'params.name': '[oops', 'params.value': "['1']"}) is None
+    assert (
+        mt.event_params({'params.name': "['a','b']", 'params.value': "['1']"}) is None
+    )
+    assert mt.event_params({'params.name': "'str'", 'params.value': "'x'"}) is None
+
+
+def test_upsert_backfills_params_without_counting_as_insert(conn):
+    mt.ensure_schema(conn)
+    kind = mt.KINDS['events']
+    base = {
+        'id_profile': 'p1',
+        'id_device': 'd1',
+        'custom_user_id': None,
+        'user_id': None,
+        'event_at': datetime(2026, 9, 17, 12, 0, tzinfo=UTC),
+        'app_version': '1.1.16',
+        'os_version': '15',
+        'event_name': 'gms_available',
+        'event_value': '0',
+        'params': None,
+    }
+    assert mt.upsert_rows(conn, kind, [base]) == 1
+    # Та же строка с параметрами: дозаполняется, вставкой не считается.
+    assert mt.upsert_rows(conn, kind, [{**base, 'params': '{"value": "true"}'}]) == 0
+    # Уже заполненные параметры повторная заливка не трогает.
+    assert mt.upsert_rows(conn, kind, [{**base, 'params': '{"value": "false"}'}]) == 0
+    stored = conn.execute(
+        text(f"SELECT params->>'value' FROM {mt.SCHEMA}.events")
+    ).scalar()
+    assert stored == 'true'
 
 
 def test_rows_for_installs_and_sessions():
