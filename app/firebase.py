@@ -237,14 +237,18 @@ def build_webpush_config(
 
 
 def installation_target(installation: PushInstallation) -> dict[str, str]:
-    """Адрес FCM-сообщения для установки: FID, если есть, иначе токен.
+    """Адрес FCM-сообщения для установки — всегда `push_token`.
 
-    Возвращает kwargs для `messaging.Message` — `{'fid': ...}` либо
-    `{'token': ...}`. Откат на токен для всех — заменить тело на
-    `{'token': installation.push_token}`.
+    `firebase-admin` считает `token` устаревшим в пользу `fid`, но FID —
+    адрес только для «FCM registered app instance»: связь FID ↔ регистрация
+    создаёт клиентский FCM SDK при получении токена, и наш Flutter-клиент её
+    не создаёт — на живую установку FCM отвечает по FID `NotRegistered`, а по
+    токену той же установки доставляет (dry-run на стенде 2026-09-20; на проде
+    0 из 743 в `d4973f2`). С FID в адресе `send_push` ещё и сносил установку
+    как мёртвую. FID остаётся ключом идентичности установки (upsert в
+    `save_push_token`); вернуться к нему — после того как клиент обновит FCM
+    SDK и dry-run по FID на свежей установке пройдёт.
     """
-    if installation.fid:
-        return {'fid': installation.fid}
     return {'token': installation.push_token}
 
 

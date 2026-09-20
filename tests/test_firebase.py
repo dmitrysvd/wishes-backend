@@ -138,23 +138,23 @@ def test_send_push_no_installations(mocker, db):
     assert outcome.sent_user_ids == frozenset()
 
 
-def test_send_push_fid_first_then_token_and_one_log_row_per_user(fcm, db):
-    # Две установки: с FID (шлём по fid) и без (по токену); лог — одна строка,
-    # delivery_id у обоих сообщений один и тот же.
+def test_send_push_by_token_even_with_fid_and_one_log_row_per_user(fcm, db):
+    # Две установки: с FID и без — обе адресуются токеном (FID адресом FCM не
+    # принимает); лог — одна строка, delivery_id у обоих сообщений один и тот же.
     user = _persisted_user(db, 'fid:F1', 'plain-token')
 
     outcome = send_push(
         [user], 'title', 'body', reason=PushReason.PRICE_ALERT, with_delivery_id=True
     )
 
-    by_fid, by_token = sorted(fcm.messages, key=lambda m: m.token or '')
-    assert (by_fid.fid, by_fid.token) == ('F1', None)
-    assert (by_token.fid, by_token.token) == (None, 'plain-token')
-    assert by_fid.data['delivery_id'] == by_token.data['delivery_id']
+    plain, with_fid = sorted(fcm.messages, key=lambda m: m.token)
+    assert (with_fid.fid, with_fid.token) == (None, 'tok-for-F1')
+    assert (plain.fid, plain.token) == (None, 'plain-token')
+    assert with_fid.data['delivery_id'] == plain.data['delivery_id']
     assert outcome.sent_user_ids == frozenset({user.id})
     assert outcome.accepted_user_ids == frozenset({user.id})
     (log,) = db.scalars(select(PushSendingLog)).all()
-    assert str(log.id) == by_fid.data['delivery_id']
+    assert str(log.id) == with_fid.data['delivery_id']
 
 
 def test_send_push_deletes_dead_installation_keeps_live_one(mocker, db):
@@ -166,7 +166,7 @@ def test_send_push_deletes_dead_installation_keeps_live_one(mocker, db):
         return FakeBatchResponse(
             [
                 FakeSendResponse(False, messaging.UnregisteredError('gone'))
-                if m.fid == 'DEAD'
+                if m.token == 'tok-for-DEAD'
                 else FakeSendResponse(True)
                 for m in messages
             ]
