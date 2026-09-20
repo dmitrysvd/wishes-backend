@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # они не нужны.
     MYTRACKER_API_USER_ID: str | None = None
     MYTRACKER_API_SECRET: str | None = None
+    # GA4 Data API (scripts/ga4_export.py): числовой id property Firebase-проекта
+    # и json сервисного аккаунта с ролью Viewer на property. Ключ не задан —
+    # берётся FIREBASE_KEY_PATH (тот же аккаунт, если ему выдали Viewer).
+    # Приложению не нужны.
+    GA4_PROPERTY_ID: str | None = None
+    GA4_KEY_PATH: Path | None = None
     # DATABASE_URL: str = 'sqlite:///db.sqlite'
     DATABASE_URL: str
     TEST_DATABASE_URL: str = 'sqlite://'
