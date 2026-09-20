@@ -143,9 +143,7 @@ def test_send_push_by_token_even_with_fid_and_one_log_row_per_user(fcm, db):
     # принимает); лог — одна строка, delivery_id у обоих сообщений один и тот же.
     user = _persisted_user(db, 'fid:F1', 'plain-token')
 
-    outcome = send_push(
-        [user], 'title', 'body', reason=PushReason.PRICE_ALERT, with_delivery_id=True
-    )
+    outcome = send_push([user], 'title', 'body', reason=PushReason.PRICE_ALERT)
 
     plain, with_fid = sorted(fcm.messages, key=lambda m: m.token)
     assert (with_fid.fid, with_fid.token) == (None, 'tok-for-F1')
@@ -155,6 +153,17 @@ def test_send_push_by_token_even_with_fid_and_one_log_row_per_user(fcm, db):
     assert outcome.accepted_user_ids == frozenset({user.id})
     (log,) = db.scalars(select(PushSendingLog)).all()
     assert str(log.id) == with_fid.data['delivery_id']
+
+
+def test_send_push_puts_delivery_id_into_every_reason(fcm, db):
+    # delivery_id — у любого пуша, не только у PRICE_ALERT: клиент шлёт
+    # POST /push/opened по его наличию, иначе открытие для бэка невидимо.
+    user = _persisted_user(db, 'token')
+    send_push([user], 'title', 'body', reason=PushReason.CURRENT_USER_BIRTHDAY)
+    (message,) = fcm.messages
+    (log,) = db.scalars(select(PushSendingLog)).all()
+    assert message.data['delivery_id'] == str(log.id)
+    assert 'trigger' not in message.data
 
 
 def test_send_push_deletes_dead_installation_keeps_live_one(mocker, db):
@@ -225,7 +234,6 @@ def test_send_push_webpush_config_with_link(fcm, db):
         'body',
         reason=PushReason.PRICE_ALERT,
         link='https://hotelki.pro/wish?wishId=1',
-        with_delivery_id=True,
     )
 
     (message,) = fcm.messages
