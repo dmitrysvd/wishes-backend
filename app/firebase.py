@@ -47,15 +47,14 @@ def send_push(
     campaign_key: str | None = None,
     link: str | None = None,
     trigger: PriceAlertTrigger | None = None,
-    with_delivery_id: bool = False,
 ) -> PushSendOutcome:
     """Единственная точка отправки пушей; сама пишет `PushSendingLog`.
 
     `trigger` — тип триггера пуша по складу (0013), уходит в лог и в
-    `data.trigger`. `with_delivery_id` — положить в `data.delivery_id` id
-    будущей строки лога: по нему клиент сообщает об открытии
-    (`POST /push/opened`), поэтому id генерится ДО отправки. `title`/`body`
-    дублируются в `data` для тоста в foreground.
+    `data.trigger`. `data.delivery_id` — id будущей строки лога у КАЖДОГО
+    пуша: по нему клиент сообщает об открытии (`POST /push/opened`), поэтому
+    id генерится ДО отправки; без него открытие пуша для бэка невидимо.
+    `title`/`body` дублируются в `data` для тоста в foreground.
 
     Лог — источник правды для дедупа (крон-пуши читают его перед отправкой) и
     для метрики «пушей на юзера в неделю», поэтому обойти его нельзя: `reason`
@@ -134,9 +133,7 @@ def send_push(
         # Один delivery_id (= строка лога) на юзера: дедуп и `push/opened` —
         # на юзера, установки — просто адреса одного и того же пуша.
         delivery_id = uuid4()
-        message_data = (
-            {**data, 'delivery_id': str(delivery_id)} if with_delivery_id else data
-        )
+        message_data = {**data, 'delivery_id': str(delivery_id)}
         for installation in installations:
             messages.append(
                 messaging.Message(

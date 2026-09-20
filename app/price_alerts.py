@@ -307,7 +307,6 @@ def send_price_alerts(today: date | None = None) -> int:
             reason=PushReason.PRICE_ALERT,
             link=digest.link,
             trigger=digest.trigger,
-            with_delivery_id=True,
         )
         sent_total += len(outcome.sent_user_ids)
         if user.id not in outcome.accepted_user_ids:
