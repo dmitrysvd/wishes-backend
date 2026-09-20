@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 from firebase_admin import messaging
+from loguru import logger
 from sqlalchemy import select
 
 from app.config import settings
@@ -182,13 +183,22 @@ def test_send_push_deletes_dead_installation_keeps_live_one(mocker, db):
         )
 
     mock_send_each.side_effect = respond
-
-    outcome = send_push([user], 'title', 'body', reason=PushReason.SEASONAL)
+    records = []
+    handler_id = logger.add(lambda m: records.append(m.record), level='WARNING')
+    try:
+        outcome = send_push([user], 'title', 'body', reason=PushReason.SEASONAL)
+    finally:
+        logger.remove(handler_id)
 
     db.expire_all()
     assert [i.push_token for i in user.push_installations] == ['live-token']
     # Юзер принят: хотя бы одна установка дошла.
     assert outcome.accepted_user_ids == frozenset({user.id})
+    # Провал залогирован с классом ошибки FCM и адресом установки: по логу
+    # отличают мёртвый адрес от сбоя FCM.
+    (failure,) = [r for r in records if r['message'].startswith('Не доставлено')]
+    assert 'UnregisteredError' in failure['message']
+    assert 'fid:DEAD' in failure['message']
 
 
 def test_create_firebase_user(mocker):

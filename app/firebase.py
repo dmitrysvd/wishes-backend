@@ -157,6 +157,21 @@ def send_push(
         success=response.success_count,
         failure=response.failure_count,
     )
+    # Провалы — с классом ошибки FCM: без него по логу не отличить мёртвый
+    # адрес (Unregistered) от сбоя FCM (Unavailable/Internal) и битого токена
+    # (InvalidArgument), а это разные проблемы: churn, инцидент, дефект клиента.
+    for resp, installation in zip(
+        response.responses, message_installations, strict=True
+    ):
+        if not resp.success:
+            logger.warning(
+                'Не доставлено: user={user_id} установка={address} '
+                'ошибка={error_type}: {error}',
+                user_id=installation.user_id,
+                address=installation.address,
+                error_type=type(resp.exception).__name__,
+                error=resp.exception,
+            )
     sent_at = datetime.now()
     with SessionLocal() as db:
         db.add_all(
