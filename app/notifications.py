@@ -1,10 +1,16 @@
-from datetime import timedelta
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select, update
 
-from app.constants import FollowAction, Gender
-from app.db import FollowEvent, PushReason, SessionLocal, User, Wish
+from app.constants import (
+    WISH_CREATION_PUSH_DELAY,
+    WISH_CREATION_PUSH_HOURS_UTC,
+    WISH_CREATION_PUSH_MIN_INTERVAL,
+    FollowAction,
+    Gender,
+)
+from app.db import FollowEvent, PushReason, PushSendingLog, SessionLocal, User, Wish
 from app.firebase import send_push
 from app.logging import logger
 from app.main import get_user_deep_link
@@ -46,14 +52,30 @@ def send_reservation_notifincations():
     )
 
 
-def send_wish_creation_notifications():
-    """Отправить всем подписчикам уведомление о новых хотелках."""
-    created_not_later_than = utc_now() - timedelta(minutes=30)
+def send_wish_creation_notifications(now: datetime | None = None) -> None:
+    """Отправить подписчикам пуш о новых хотелках автора.
+
+    Хотелка «созрела», когда старше `WISH_CREATION_PUSH_DELAY`. Вне
+    `WISH_CREATION_PUSH_HOURS_UTC` прогон ничего не помечает и не шлёт — созревшие
+    хотелки уйдут первым прогоном в окне. Пара (подписчик, автор) получает не
+    больше одного пуша за `WISH_CREATION_PUSH_MIN_INTERVAL` — по `PushSendingLog`.
+    `now` — для тестов окна и интервала; в проде — текущее UTC.
+    """
+    now = now or utc_now()
+    if now.hour not in WISH_CREATION_PUSH_HOURS_UTC:
+        logger.info('Пуши о новых хотелках вне окна отправки, час UTC {h}', h=now.hour)
+        return
+    created_not_later_than = now - WISH_CREATION_PUSH_DELAY
+    # `sent_at` в логе — naive UTC (`datetime.now()` в `send_push`).
+    interval_start = (now - WISH_CREATION_PUSH_MIN_INTERVAL).replace(tzinfo=None)
     with SessionLocal() as db:
         wishes_filter_cond = ~Wish.is_creation_notification_sent & (
             Wish.created_at < created_not_later_than
         )
-        users_q = select(User).join(User.wishes).where(wishes_filter_cond)
+        # DISTINCT по всей строке юзера невозможен (JSON-колонка) — по id.
+        users_q = select(User).where(
+            User.id.in_(select(Wish.user_id).where(wishes_filter_cond))
+        )
         users_with_new_wishes = db.scalars(users_q).all()
         db.execute(
             update(Wish)
@@ -62,8 +84,19 @@ def send_wish_creation_notifications():
         )
         db.commit()
         for user in users_with_new_wishes:
+            recently_notified = set(
+                db.scalars(
+                    select(PushSendingLog.target_user_id).where(
+                        PushSendingLog.reason == PushReason.WISH_CREATION,
+                        PushSendingLog.reason_user_id == user.id,
+                        PushSendingLog.sent_at > interval_start,
+                    )
+                )
+            )
             followers_to_send_push = [
-                follower for follower in user.followed_by if follower.can_receive_push
+                follower
+                for follower in user.followed_by
+                if follower.can_receive_push and follower.id not in recently_notified
             ]
             if followers_to_send_push:
                 logger.info(
@@ -73,13 +106,8 @@ def send_wish_creation_notifications():
                     dest=[str(user.id) for user in followers_to_send_push],
                 )
                 verb = 'обновила' if user.gender == Gender.female else 'обновил'
-                followers_to_send_pushes = [
-                    follower
-                    for follower in followers_to_send_push
-                    if follower.can_receive_push
-                ]
                 send_push(
-                    target_users=followers_to_send_pushes,
+                    target_users=followers_to_send_push,
                     title=f'{user.display_name} {verb} список желаний',
                     body=f'Узнайте, что {user.display_name} хочет получить в подарок',
                     reason=PushReason.WISH_CREATION,

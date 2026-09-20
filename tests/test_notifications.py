@@ -1,9 +1,14 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 
-from app.constants import FollowAction
+from app.constants import (
+    WISH_CREATION_PUSH_DELAY,
+    WISH_CREATION_PUSH_HOURS_UTC,
+    WISH_CREATION_PUSH_MIN_INTERVAL,
+    FollowAction,
+)
 from app.db import (
     FollowEvent,
     Gender,
@@ -89,60 +94,113 @@ async def test_send_reservation_notifications(
     )  # No token, no notification sent/marked
 
 
+# Сегодня 12:00 UTC — внутри окна отправки. Привязано к реальным суткам, потому
+# что `sent_at` в логе пишется реальными часами, а рейт-лимит сравнивает с ним.
+IN_WINDOW = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
+
+
+@pytest.fixture
+def followed_author(db, user_with_token, user_without_token) -> User:
+    """`user_without_token` подписан на автора `user_with_token`; у автора одна
+    созревшая хотелка (старше DELAY) и одна свежая."""
+    user_without_token.follows.append(user_with_token)
+    db.add_all(
+        [
+            Wish(
+                name='Old Wish',
+                user_id=user_with_token.id,
+                created_at=IN_WINDOW - WISH_CREATION_PUSH_DELAY - timedelta(minutes=1),
+                is_creation_notification_sent=False,
+            ),
+            Wish(
+                name='New Wish',
+                user_id=user_with_token.id,
+                created_at=IN_WINDOW - timedelta(minutes=5),
+                is_creation_notification_sent=False,
+            ),
+        ]
+    )
+    db.commit()
+    return user_with_token
+
+
+def _wish_flags(db, author: User) -> dict[str, bool]:
+    return {
+        w.name: w.is_creation_notification_sent
+        for w in db.scalars(select(Wish).where(Wish.user_id == author.id))
+    }
+
+
 @pytest.mark.anyio
 async def test_send_wish_creation_notifications(
-    db, user_with_token, user_without_token, mocker, fcm
+    db, followed_author, user_without_token, mocker, fcm
 ):
     mocker.patch('app.notifications.get_user_deep_link', return_value='http://link')
 
-    # user_without_token follows user_with_token
-    user_without_token.follows.append(user_with_token)
-    # user_with_token follows user_without_token
-    user_with_token.follows.append(user_without_token)
-
-    # Old wish (created > 30 mins ago)
-    old_time = utc_now() - timedelta(minutes=40)
-    wish1 = Wish(
-        name='Old Wish',
-        user_id=user_with_token.id,
-        created_at=old_time,
-        is_creation_notification_sent=False,
-    )
-
-    # New wish (created just now)
-    wish2 = Wish(
-        name='New Wish',
-        user_id=user_with_token.id,
-        created_at=utc_now(),
-        is_creation_notification_sent=False,
-    )
-
-    db.add_all([wish1, wish2])
-    db.commit()
-
-    send_wish_creation_notifications()
-
+    # Подписчик без установок: пуша нет, но созревшая хотелка помечена.
+    send_wish_creation_notifications(now=IN_WINDOW)
     assert fcm.calls == []
+    assert _wish_flags(db, followed_author) == {'Old Wish': True, 'New Wish': False}
 
-    # Mark follower with token
     user_without_token.push_installations = [PushInstallation(push_token='token2')]
     db.add(user_without_token)
-    # Reset flag for wish1
-    wish1.is_creation_notification_sent = False
-    db.add(wish1)
     db.commit()
 
-    send_wish_creation_notifications()
-
+    # Свежая хотелка созрела: уходит один пуш подписчику.
+    send_wish_creation_notifications(now=IN_WINDOW + WISH_CREATION_PUSH_DELAY)
     assert len(fcm.calls) == 1
     (message,) = fcm.messages
     assert message.token == 'token2'
     notification = message.android.notification
-    assert 'обновил' in notification.title  # user_with_token is male
+    assert 'обновил' in notification.title  # автор — мужчина
     assert notification.body == 'Узнайте, что User with Token хочет получить в подарок'
+    assert _wish_flags(db, followed_author) == {'Old Wish': True, 'New Wish': True}
 
-    db.refresh(wish1)
-    assert wish1.is_creation_notification_sent is True
+
+@pytest.mark.anyio
+async def test_send_wish_creation_notifications_outside_window(
+    db, followed_author, fcm
+):
+    # Вне окна прогон не шлёт и не помечает — хотелки дождутся окна.
+    night = IN_WINDOW.replace(hour=WISH_CREATION_PUSH_HOURS_UTC.stop)
+    send_wish_creation_notifications(now=night)
+    assert fcm.calls == []
+    assert _wish_flags(db, followed_author) == {'Old Wish': False, 'New Wish': False}
+
+
+@pytest.mark.anyio
+async def test_send_wish_creation_notifications_rate_limit(
+    db, followed_author, user_without_token, mocker, fcm
+):
+    mocker.patch('app.notifications.get_user_deep_link', return_value='http://link')
+    user_without_token.push_installations = [PushInstallation(push_token='token2')]
+    db.add(user_without_token)
+    db.commit()
+
+    send_wish_creation_notifications(now=IN_WINDOW)
+    assert len(fcm.calls) == 1
+
+    # Созрела вторая хотелка, но с прошлого пуша этой паре прошло меньше
+    # интервала: пуша нет, хотелка помечена и в следующий пуш не попадёт.
+    send_wish_creation_notifications(now=IN_WINDOW + WISH_CREATION_PUSH_DELAY)
+    assert len(fcm.calls) == 1
+    assert _wish_flags(db, followed_author) == {'Old Wish': True, 'New Wish': True}
+
+    # Интервал прошёл (с запасом от реального `sent_at` в логе), есть новая
+    # созревшая хотелка — пуш снова уходит.
+    db.add(
+        Wish(
+            name='Later Wish',
+            user_id=followed_author.id,
+            created_at=IN_WINDOW,
+            is_creation_notification_sent=False,
+        )
+    )
+    db.commit()
+    send_wish_creation_notifications(
+        now=IN_WINDOW + WISH_CREATION_PUSH_MIN_INTERVAL + timedelta(days=2)
+    )
+    assert len(fcm.calls) == 2
 
 
 def _follow(db, actor: User, target: User) -> FollowEvent:
