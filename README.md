@@ -14,7 +14,7 @@
 | app/cron\_scripts/price\_watch.py     |       40 |        0 |     100% |           |
 | app/db.py                             |      220 |        0 |     100% |           |
 | app/dependencies.py                   |       69 |        0 |     100% |           |
-| app/firebase.py                       |       99 |        0 |     100% |           |
+| app/firebase.py                       |      102 |        0 |     100% |           |
 | app/hawk.py                           |       16 |        0 |     100% |           |
 | app/heartbeat.py                      |       10 |        0 |     100% |           |
 | app/helpers/\_\_init\_\_.py           |        5 |        0 |     100% |           |
@@ -51,7 +51,7 @@
 | app/test\_auth.py                     |       88 |        0 |     100% |           |
 | app/utils.py                          |       40 |        0 |     100% |           |
 | app/vk.py                             |      115 |        0 |     100% |           |
-| **TOTAL**                             | **2784** |    **0** | **100%** |           |
+| **TOTAL**                             | **2787** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
