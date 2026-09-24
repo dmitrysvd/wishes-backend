@@ -5,6 +5,11 @@ from apscheduler.triggers.cron import CronTrigger
 
 from app import heartbeat
 from app.config import settings
+from app.constants import (
+    PRICE_WATCH_HOURS_UTC,
+    PRICE_WATCH_JITTER_SECONDS,
+    PRICE_WATCH_TICK_MINUTES,
+)
 from app.cron_scripts import at_noon, every_hour, every_minute, price_watch
 from app.logging import logger
 
@@ -54,11 +59,16 @@ def start_scheduler():
         id='at_noon_job',
     )
 
-    # Обход цен WB (фича 0010): раз в сутки ночью по UTC, отдельно от at_noon,
-    # чтобы частоту и время обхода можно было менять независимо от пушей.
+    # Обход цен WB (фича 0010): тик раз в несколько минут утром по UTC со
+    # случайным сдвигом, по одному запросу за тик — см. PRICE_WATCH_* в
+    # constants. Отдельно от at_noon, чтобы обход менялся независимо от пушей.
     scheduler.add_job(
         run_job,
-        CronTrigger(hour=3, minute=0),
+        CronTrigger(
+            hour=PRICE_WATCH_HOURS_UTC,
+            minute=f'*/{PRICE_WATCH_TICK_MINUTES}',
+            jitter=PRICE_WATCH_JITTER_SECONDS,
+        ),
         args=[price_watch.main, 'price_watch'],
         id='price_watch_job',
     )

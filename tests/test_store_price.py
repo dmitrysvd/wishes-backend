@@ -23,7 +23,7 @@ from app.constants import (
     Shop,
     StoreAvailability,
 )
-from app.cron_scripts.price_watch import crawl
+from app.cron_scripts.price_watch import crawl_tick
 from app.db import User, Wish, WishPriceObservation, WishPriceRefreshEvent
 from app.dependencies import get_current_user, get_db, get_store_client
 from app.helpers.price_watch import (
@@ -173,10 +173,9 @@ def test_apply_observations_skips_manual(db, user):
     assert manual_wish.store_observation is None
 
 
-def test_crawl_updates_shop_wishes(db, user, mocker):
-    mocker.patch('app.cron_scripts.price_watch.time.sleep')
+def test_crawl_updates_shop_wishes(db, user):
     wish = make_wish(db, user, link=WB_NO_SIZE_LINK, price_source=PriceSource.shop)
-    assert crawl(store_client(fixture_handler), NOW.date()) == 1
+    assert crawl_tick(store_client(fixture_handler), NOW.date()) == 1
     db.refresh(wish)
     assert wish.price == Decimal('550')
     assert wish.price_is_minimum is True

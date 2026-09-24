@@ -3,7 +3,7 @@
 Обход разрезан так, чтобы всё, кроме HTTP-похода, тестировалось на сохранённом
 ответе магазина без моков:
 
-  выбор целей (`select_watch_targets`) → батчи (`batched`) →
+  выбор ещё не наблюдённых сегодня целей (`select_pending_targets`) → батч →
   запрос (`fetch_wb_cards`, клиент инъецируется) → ответ в Pydantic →
   наблюдения (`observe_batch`, батч + ответ) → запись истории
   (`save_observations`) → обновление магазинных хотелок (`apply_observations`).
@@ -15,7 +15,7 @@
 сценария (фича 0011: превью, сохранение, кнопка) — `fetch_fresh_observation`.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import ROUND_DOWN, Decimal
@@ -35,6 +35,12 @@ from app.parsers import parse_wildberries_link
 # цену), `curr=rub` — цены в копейках.
 WB_CARD_API_URL = 'https://card.wb.ru/cards/v4/detail'
 WB_CARD_API_PARAMS = {'appType': '1', 'curr': 'rub', 'dest': '-1257786'}
+# Заголовки, с которыми API зовёт сама витрина: запрос без них отличается от
+# браузерного при том же TLS-отпечатке (см. BrowserTransport).
+WB_CARD_API_HEADERS = {
+    'Origin': 'https://www.wildberries.ru',
+    'Referer': 'https://www.wildberries.ru/',
+}
 # WB отдаёт цены целыми копейками.
 KOPECKS_IN_RUBLE = 100
 
@@ -89,9 +95,20 @@ def select_watch_targets(db: Session) -> list[WatchTarget]:
     return targets
 
 
-def batched(targets: Sequence[WatchTarget], size: int) -> Iterator[list[WatchTarget]]:
-    for start in range(0, len(targets), size):
-        yield list(targets[start : start + size])
+def select_pending_targets(db: Session, observed_date: date) -> list[WatchTarget]:
+    """Цели обхода, по которым за `observed_date` ещё нет наблюдения.
+
+    Так тик обхода не держит состояния: упавший батч просто остаётся в
+    выборке и уходит следующим тиком, рестарт планировщика ничего не теряет.
+    """
+    observed = set(
+        db.scalars(
+            select(WishPriceObservation.wish_id).where(
+                WishPriceObservation.observed_date == observed_date
+            )
+        )
+    )
+    return [t for t in select_watch_targets(db) if t.wish_id not in observed]
 
 
 def fetch_wb_cards(skus: Sequence[int], client: httpx.Client) -> WbCardResponseSchema:
@@ -99,6 +116,7 @@ def fetch_wb_cards(skus: Sequence[int], client: httpx.Client) -> WbCardResponseS
     response = client.get(
         WB_CARD_API_URL,
         params={**WB_CARD_API_PARAMS, 'nm': ';'.join(str(sku) for sku in skus)},
+        headers=WB_CARD_API_HEADERS,
     )
     response.raise_for_status()
     return WbCardResponseSchema.model_validate(response.json())

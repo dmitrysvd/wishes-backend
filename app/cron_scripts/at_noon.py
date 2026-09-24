@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.cron_scripts import price_watch
 from app.db import (
     Gender,
     NotificationGroup,
@@ -482,7 +483,8 @@ def main():
     send_upcoming_birthday_of_current_user_notification()
     send_upcoming_birthday_of_followed_user_notification()
     send_seasonal_notifications()
-    # После ночного обхода цен (03:00 UTC) — дайджест по складу (фича 0013).
+    # После утреннего обхода цен — итог обхода и дайджест по складу (фича 0013).
+    price_watch.report_coverage()
     send_price_alerts()
     send_empty_list_reactivation_notifications()
 
