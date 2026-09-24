@@ -1,4 +1,5 @@
 import json
+import random
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -9,15 +10,15 @@ import pytest
 from sqlalchemy import select
 
 from app.constants import PriceObservationStatus, Shop
-from app.cron_scripts.price_watch import crawl, main
+from app.cron_scripts.price_watch import crawl_tick, main, report_coverage
 from app.db import User, Wish, WishPriceObservation
 from app.helpers.price_watch import (
     WatchTarget,
     WbCardResponseSchema,
-    batched,
     build_observations,
     fetch_wb_cards,
     save_observations,
+    select_pending_targets,
     select_watch_targets,
 )
 from app.parsers import parse_wildberries_link
@@ -87,10 +88,19 @@ def test_select_watch_targets(db, user):
     assert select_watch_targets(db) == [WatchTarget(wb.id, 100, 1001)]
 
 
-def test_batched():
-    targets = [WatchTarget(uuid4(), i, None) for i in range(5)]
-    assert [len(b) for b in batched(targets, 2)] == [2, 2, 1]
-    assert list(batched([], 2)) == []
+def test_select_pending_targets_skips_observed_today(db, user, wb_response):
+    seen = make_wish(db, user, 'https://www.wildberries.ru/catalog/100/detail.aspx')
+    fresh = make_wish(db, user, 'https://www.wildberries.ru/catalog/200/detail.aspx')
+    save_observations(
+        db, build_observations([WatchTarget(seen.id, 100, None)], wb_response, TODAY)
+    )
+    assert [t.wish_id for t in select_pending_targets(db, TODAY)] == [fresh.id]
+    # Вчерашнее наблюдение сегодняшний обход не отменяет.
+    tomorrow = date(2026, 9, 11)
+    assert {t.wish_id for t in select_pending_targets(db, tomorrow)} == {
+        seen.id,
+        fresh.id,
+    }
 
 
 def test_fetch_wb_cards_sends_skus_and_parses(wb_response):
@@ -98,10 +108,13 @@ def test_fetch_wb_cards_sends_skus_and_parses(wb_response):
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen['nm'] = request.url.params['nm']
+        seen['origin'] = request.headers.get('origin')
         return httpx.Response(200, content=FIXTURE.read_bytes())
 
     assert fetch_wb_cards([100, 200], wb_client(handler)) == wb_response
     assert seen['nm'] == '100;200'
+    # Запрос выглядит как от витрины WB, а не голый API-клиент.
+    assert seen['origin'] == 'https://www.wildberries.ru'
 
 
 def test_fetch_wb_cards_http_error():
@@ -156,53 +169,88 @@ def test_save_observations_idempotent(db, user, wb_response):
     assert save_observations(db, []) == 0
 
 
-def test_crawl_saves_and_skips_failed_batch(db, user, mocker):
-    wishes = [
-        make_wish(
-            db, user, 'https://www.wildberries.ru/catalog/100/detail.aspx?size=1001'
-        ),
-        make_wish(db, user, 'https://www.wildberries.ru/catalog/200/detail.aspx'),
-        make_wish(db, user, 'https://www.wildberries.ru/catalog/300/detail.aspx'),
+def wb_links(db, user, *skus: int) -> list[Wish]:
+    return [
+        make_wish(db, user, f'https://www.wildberries.ru/catalog/{sku}/detail.aspx')
+        for sku in skus
     ]
-    calls = []
+
+
+def test_crawl_tick_takes_one_batch_until_all_observed(db, user):
+    wishes = wb_links(db, user, 100, 200, 300)
+    requests = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        calls.append(request.url.params['nm'])
-        # Второй батч падает — обход должен продолжиться и записать остальные.
-        if len(calls) == 2:
-            return httpx.Response(503)
+        requests.append(request.url.params['nm'].split(';'))
         return httpx.Response(200, content=FIXTURE.read_bytes())
 
-    sleep = mocker.patch('app.cron_scripts.price_watch.time.sleep')
-    saved = crawl(wb_client(handler), TODAY, batch_size=1, pause_seconds=0.5)
-
-    assert calls == ['100', '200', '300']
-    assert saved == 2
-    # Пауза — между батчами, не перед первым.
-    assert sleep.call_count == 2
-    rows = {r.wish_id: r.status for r in db.scalars(select(WishPriceObservation)).all()}
-    assert rows == {
-        wishes[0].id: PriceObservationStatus.ok,
-        wishes[2].id: PriceObservationStatus.gone,
-    }
+    client, rng = wb_client(handler), random.Random(0)
+    assert crawl_tick(client, TODAY, batch_size=2, rng=rng) == 2
+    assert crawl_tick(client, TODAY, batch_size=2, rng=rng) == 1
+    # Всё наблюдено — тик не ходит в сеть.
+    assert crawl_tick(client, TODAY, batch_size=2, rng=rng) == 0
+    # Один тик — один запрос; каждый артикул запрошен ровно раз.
+    assert [len(nm) for nm in requests] == [2, 1]
+    assert sorted(sum(requests, [])) == ['100', '200', '300']
+    rows = {r.wish_id for r in db.scalars(select(WishPriceObservation)).all()}
+    assert rows == {w.id for w in wishes}
 
 
-def test_crawl_all_failed_logs_error(db, user, mocker):
-    make_wish(db, user, 'https://www.wildberries.ru/catalog/100/detail.aspx')
+def test_crawl_tick_failed_batch_is_retried_next_tick(db, user, mocker):
+    (wish,) = wb_links(db, user, 100)
     logger = mocker.patch('app.cron_scripts.price_watch.logger')
-    assert crawl(wb_client(lambda r: httpx.Response(500)), TODAY) == 0
+    blocked = wb_client(
+        lambda r: httpx.Response(
+            403,
+            headers={'status-no-id': 'PG-42-XC', 'x-pow': 'status=invalid'},
+            content=b'<html>403 Forbidden</html>',
+        )
+    )
+    assert crawl_tick(blocked, TODAY) == 0
+    # В логе — метки антибота, по которым видно, кто режет.
+    message = logger.warning.call_args.args[0]
+    assert 'HTTP 403' in message
+    assert 'PG-42-XC' in message
+    assert 'status=invalid' in message
+    assert '403 Forbidden' in message
+    assert select_pending_targets(db, TODAY) == [WatchTarget(wish.id, 100, None)]
+    assert crawl_tick(fixture_client(), TODAY) == 1
+    assert select_pending_targets(db, TODAY) == []
+
+
+def test_crawl_tick_bad_format_logged_as_is(db, user, mocker):
+    wb_links(db, user, 100)
+    logger = mocker.patch('app.cron_scripts.price_watch.logger')
+    client = wb_client(lambda r: httpx.Response(200, json={'x': 1}))
+    assert crawl_tick(client, TODAY) == 0
+    assert 'WbCardResponseSchema' in logger.warning.call_args.args[0]
+
+
+def test_crawl_tick_nothing_to_watch(db):
+    assert crawl_tick(fixture_client(), TODAY) == 0
+
+
+def test_report_coverage(db, user, mocker, wb_response):
+    logger = mocker.patch('app.cron_scripts.price_watch.logger')
+    assert report_coverage(TODAY) == (0, 0)
+    logger.error.assert_not_called()
+
+    seen, _ = wb_links(db, user, 100, 200)
+    assert report_coverage(TODAY) == (0, 2)
+    logger.error.assert_called_once()
+
+    save_observations(
+        db, build_observations([WatchTarget(seen.id, 100, None)], wb_response, TODAY)
+    )
+    assert report_coverage(TODAY) == (1, 2)
     logger.error.assert_called_once()
 
 
-def test_crawl_nothing_to_watch(db):
-    assert crawl(fixture_client(), TODAY) == 0
-
-
-def test_main_runs_crawl(mocker):
-    crawl_mock = mocker.patch('app.cron_scripts.price_watch.crawl', return_value=0)
+def test_main_runs_crawl_tick(mocker):
+    tick = mocker.patch('app.cron_scripts.price_watch.crawl_tick', return_value=0)
     main()
-    crawl_mock.assert_called_once()
-    assert isinstance(crawl_mock.call_args.args[0], httpx.Client)
+    tick.assert_called_once()
+    assert isinstance(tick.call_args.args[0], httpx.Client)
 
 
 def test_script_main_execution(mocker):
@@ -214,7 +262,7 @@ def test_script_main_execution(mocker):
     # runpy импортирует модуль заново как __main__, поэтому глушим саму рабочую
     # функцию в helpers — свежий импорт внутри скрипта подхватит подмену и обход
     # не пойдёт ни в сеть, ни в БД.
-    mocker.patch('app.helpers.price_watch.select_watch_targets', return_value=[])
+    mocker.patch('app.helpers.price_watch.select_pending_targets', return_value=[])
     runpy.run_path(os.path.abspath(price_watch.__file__), run_name='__main__')
 
 
