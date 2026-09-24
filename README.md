@@ -6,12 +6,12 @@
 |-------------------------------------- | -------: | -------: | -------: | --------: |
 | app/\_\_init\_\_.py                   |        0 |        0 |     100% |           |
 | app/config.py                         |       20 |        0 |     100% |           |
-| app/constants.py                      |       77 |        0 |     100% |           |
+| app/constants.py                      |       79 |        0 |     100% |           |
 | app/cron\_scripts/\_\_init\_\_.py     |        0 |        0 |     100% |           |
-| app/cron\_scripts/at\_noon.py         |      162 |        0 |     100% |           |
+| app/cron\_scripts/at\_noon.py         |      164 |        0 |     100% |           |
 | app/cron\_scripts/every\_hour.py      |        9 |        0 |     100% |           |
 | app/cron\_scripts/every\_minute.py    |        4 |        0 |     100% |           |
-| app/cron\_scripts/price\_watch.py     |       40 |        0 |     100% |           |
+| app/cron\_scripts/price\_watch.py     |       52 |        0 |     100% |           |
 | app/db.py                             |      220 |        0 |     100% |           |
 | app/dependencies.py                   |       69 |        0 |     100% |           |
 | app/firebase.py                       |      102 |        0 |     100% |           |
@@ -22,7 +22,7 @@
 | app/helpers/browser\_transport.py     |       15 |        0 |     100% |           |
 | app/helpers/og\_helpers.py            |       33 |        0 |     100% |           |
 | app/helpers/pagination.py             |       16 |        0 |     100% |           |
-| app/helpers/price\_watch.py           |      110 |        0 |     100% |           |
+| app/helpers/price\_watch.py           |      111 |        0 |     100% |           |
 | app/helpers/recommendations.py        |       31 |        0 |     100% |           |
 | app/helpers/store\_price.py           |       48 |        0 |     100% |           |
 | app/helpers/uploads.py                |       14 |        0 |     100% |           |
@@ -46,12 +46,12 @@
 | app/routers/recommendations.py        |       32 |        0 |     100% |           |
 | app/routers/users.py                  |      120 |        0 |     100% |           |
 | app/routers/wishes.py                 |      175 |        0 |     100% |           |
-| app/scheduler.py                      |       29 |        0 |     100% |           |
+| app/scheduler.py                      |       30 |        0 |     100% |           |
 | app/schemas.py                        |      177 |        0 |     100% |           |
 | app/test\_auth.py                     |       88 |        0 |     100% |           |
 | app/utils.py                          |       40 |        0 |     100% |           |
 | app/vk.py                             |      115 |        0 |     100% |           |
-| **TOTAL**                             | **2786** |    **0** | **100%** |           |
+| **TOTAL**                             | **2804** |    **0** | **100%** |           |
 
 
 ## Setup coverage badge
