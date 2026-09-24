@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.constants import (
     NotificationGroup,
     PriceAlertTrigger,
@@ -287,7 +288,7 @@ def test_message_texts(db, user, availability_on):
     title, body, link, trigger = build_message(user, [price_alert, stock_alert])
     assert title == '2 вещи из списка подешевели или вернулись в наличие'
     assert body == '„Кроссовки для бега“: 2 700 ₽ вместо 3 000 ₽'
-    assert f'userId={user.id}' in link
+    assert link == f'{settings.FRONTEND_URL}/'
     assert trigger == PriceAlertTrigger.mixed
     # Пять одинаковых — «вещей», тип не mixed.
     title, _, _, trigger = build_message(user, [price_alert] * 5)

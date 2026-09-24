@@ -35,7 +35,6 @@ from app.db import (
     WishPriceObservation,
 )
 from app.firebase import send_push
-from app.helpers.user_helpers import get_user_deep_link
 from app.logging import logger
 from app.notification_settings import disabled_user_ids
 from app.utils import utc_now
@@ -224,7 +223,9 @@ def build_message(
     # Строка первой хотелки: «„Название“: 2 700 ₽ вместо 3 000 ₽».
     body = f'„{short_name(first.wish.name)}“: {first_body}'
     title = f'{_things(len(alerts))} из списка подешевели или вернулись в наличие'
-    return title, body, get_user_deep_link(user), trigger
+    # Несколько хотелок — корень: свой список авторизованного юзера (S2 в
+    # x-push-payload). `/user?userId=<свой id>` открывал бы себя как чужого.
+    return title, body, f'{settings.FRONTEND_URL}/', trigger
 
 
 def already_sent_today(db: Session, user_id: UUID, today: date) -> bool:
