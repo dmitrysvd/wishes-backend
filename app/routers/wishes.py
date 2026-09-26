@@ -230,10 +230,29 @@ def my_wishes(user: User = Depends(get_current_user), db: Session = Depends(get_
     return build_wish_reads(db.scalars(query), user)
 
 
-@router.get('/reserved_wishes', response_model=list[WishReadSchema])
+@router.get(
+    '/reserved_wishes',
+    response_model=list[WishReadSchema],
+    responses={
+        200: {
+            'description': (
+                'Мои резервы. Пустой список — резервов нет (заглушка вкладки, не '
+                'ошибка).'
+            )
+        }
+    },
+)
 def my_reserved_wishes(
     user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ):
+    """Вкладка «резерв» (S5): чужие хотелки, которые зарезервировал я.
+
+    Только активные: хотелка, которую владелец удалил или заархивировал после
+    резерва, сюда не попадает — поэтому `is_archived` здесь всегда `false`.
+    Включает резервы, перенесённые из гостевых при входе (фича 0018), — после
+    слияния они ничем не отличаются (`reserved_by_id` = мой id). Отдаётся целиком,
+    без пагинации; порядок не гарантирован.
+    """
     query = Wish.get_active_wish_query().where(Wish.reserved_by == user)
     return build_wish_reads(db.scalars(query), user)
 
