@@ -207,7 +207,7 @@ def test_followers_birthday_guard_not_consumed_when_follower_opted_out(
     # Единственный подписчик выключил «Дни рождения» → гвард именинника не
     # сжигается: включит обратно в окне — получит пуш этого года.
     mocker.patch(
-        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://link'
+        'app.cron_scripts.at_noon.get_push_deep_link', return_value='http://link'
     )
     followed = User(
         display_name='Followed',

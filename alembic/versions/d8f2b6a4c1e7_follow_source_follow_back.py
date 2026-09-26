@@ -1,7 +1,9 @@
-"""follow source: значения push и followers_follow_back
+"""вход в граф (0024): значения enum followsource и pushreason
 
-Фича 0024: подписка с профиля, открытого из пуша, и «В ответ» из своего списка
-подписчиков. Добавляем значения в enum `followsource` — схему таблиц не меняем.
+`followsource`: подписка с профиля, открытого из пуша, «В ответ» из своего списка
+подписчиков и серверное `invite` — взаимные подписки по инвайт-ссылке.
+`pushreason`: пуш пригласившему о регистрации по его ссылке. Схему таблиц не
+меняем.
 
 Revision ID: d8f2b6a4c1e7
 Revises: a7c3e5f1b9d2
@@ -28,6 +30,8 @@ def upgrade() -> None:
         op.execute(
             "ALTER TYPE followsource ADD VALUE IF NOT EXISTS 'followers_follow_back'"
         )
+        op.execute("ALTER TYPE followsource ADD VALUE IF NOT EXISTS 'invite'")
+        op.execute("ALTER TYPE pushreason ADD VALUE IF NOT EXISTS 'INVITE_JOINED'")
 
 
 def downgrade() -> None:

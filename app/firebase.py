@@ -47,6 +47,7 @@ def send_push(
     campaign_key: str | None = None,
     link: str | None = None,
     trigger: PriceAlertTrigger | None = None,
+    kind: str | None = None,
 ) -> PushSendOutcome:
     """Единственная точка отправки пушей; сама пишет `PushSendingLog`.
 
@@ -54,6 +55,7 @@ def send_push(
     `data.trigger`. `data.delivery_id` — id будущей строки лога у КАЖДОГО
     пуша: по нему клиент сообщает об открытии (`POST /push/opened`), поэтому
     id генерится ДО отправки; без него открытие пуша для бэка невидимо.
+    `kind` — вид пуша в `data.type` по контракту (`x-push-payload`).
     `title`/`body` дублируются в `data` для тоста в foreground.
 
     Лог — источник правды для дедупа (крон-пуши читают его перед отправкой) и
@@ -85,6 +87,8 @@ def send_push(
     if trigger is not None:
         data['type'] = 'price_alert'
         data['trigger'] = trigger.value
+    if kind is not None:
+        data['type'] = kind
     android_notification = messaging.AndroidNotification(
         title=title,
         body=body,
