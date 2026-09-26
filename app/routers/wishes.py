@@ -626,8 +626,8 @@ def reserve_wish(
         raise HTTPException(HTTP_404_NOT_FOUND, 'Wish not found')
     if wish.user == current_user:
         raise HTTPException(HTTP_403_FORBIDDEN, 'Cannot reserve own wish')
-    if wish.reserved_by and wish.reserved_by != current_user:
-        raise HTTPException(HTTP_403_FORBIDDEN, 'Reserved by someone else')
+    if wish.is_reserved and wish.reserved_by_id != current_user.id:
+        raise HTTPException(HTTP_409_CONFLICT, 'Reserved by someone else')
     wish.reserved_by = current_user
     # Момент резерва нужен, чтобы отнести подарок ко времени: без него нельзя
     # проверить, даёт ли повод (радар, пуш) прирост резерваций. У 345 резерваций,
@@ -673,7 +673,7 @@ def cancel_wish_reservation(
     wish = db.execute(select(Wish).where(Wish.id == wish_id)).scalar_one_or_none()
     if not wish:
         raise HTTPException(404, 'Wish not found')
-    if wish.reserved_by and wish.reserved_by != current_user:
+    if wish.is_reserved and wish.reserved_by_id != current_user.id:
         raise HTTPException(HTTP_403_FORBIDDEN, 'Reserved by someone else')
     wish.reserved_by = None
     wish.reserved_at = None

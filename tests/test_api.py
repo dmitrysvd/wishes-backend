@@ -962,7 +962,8 @@ class TestReservationEdgeCases:
         db.commit()
 
         response = auth_client.post(f'/wishes/{other_user_wish.id}/reserve')
-        assert response.status_code == 403
+        # 0018: «уже зарезервировано другим» — 409, отлично от 403 «своя хотелка».
+        assert response.status_code == 409
 
     def test_can_reserve_wish_again_if_already_reserved_by_me(
         self, auth_client: TestClient, db: Session, other_user_wish: Wish, user: User

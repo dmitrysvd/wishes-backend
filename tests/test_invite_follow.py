@@ -49,9 +49,11 @@ def _invite(db, inviter: User, newbie: User) -> None:
 
 
 def test_event_source_covers_public_source():
-    """Лог принимает любое значение, которое шлёт клиент, плюс серверное."""
+    """Лог принимает любое значение, которое шлёт клиент, плюс серверные."""
     public = {source.value for source in FollowSource}
-    assert public | {'invite'} == {source.value for source in FollowEventSource}
+    server_only = {'invite', 'guest_reservation'}
+    assert public | server_only == {source.value for source in FollowEventSource}
+    assert not public & server_only
 
 
 def test_self_referral_creates_no_edges(db):

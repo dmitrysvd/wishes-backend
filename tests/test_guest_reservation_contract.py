@@ -33,15 +33,10 @@ def test_public_wishlist_is_not_cacheable(api_client: TestClient, owner: User):
 
 
 @pytest.mark.parametrize('path', _GUEST_OPS)
-def test_guest_ops_not_implemented_until_agreed(
-    api_client: TestClient, owner: User, path: str
-):
-    """До agreed гостевые ручки отдают 501 — и без `Authorization` не 401.
-
-    Заменяется тестами поведения при реализации.
-    """
+def test_guest_ops_are_public(api_client: TestClient, owner: User, path: str):
+    """Без `Authorization` — не 401: неизвестная хотелка даёт свой 410."""
     url = path.format(user_id=owner.id, wish_id=uuid4())
-    assert api_client.post(url).status_code == 501
+    assert api_client.post(url).status_code == 410
 
 
 @pytest.mark.parametrize('path', _GUEST_OPS)

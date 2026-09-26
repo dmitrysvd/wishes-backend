@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +17,7 @@ from app.firebase import (
     create_firebase_user,
     get_firebase_user_data,
 )
+from app.guests import MergeResult, merge_guest
 from app.helpers import refresh_avatar_on_login
 from app.logging import logger
 from app.push_installations import upsert_push_installation
@@ -195,9 +196,26 @@ _AUTH_OPENAPI_EXTRA: dict[str, Any] = {
 }
 
 
+class VkAuthResult(NamedTuple):
+    firebase_uid: str
+    firebase_token: str
+    is_new_user: bool
+    mutual_follow_user_id: UUID | None
+    guest_merge: MergeResult
+
+
+def clear_guest_cookie(response: Response, guest_token: str | None) -> None:
+    """Снять куку гостя после входа — только если браузер её прислал."""
+    if guest_token:
+        response.delete_cookie(
+            GUEST_COOKIE_NAME, path='/', secure=True, httponly=True, samesite='lax'
+        )
+
+
 def auth_vk_via_code(
     request_data: RequestVkAuthVkidSchema,
     db: Session,
+    guest_token: str | None = None,
 ) -> ResponseVkAuthMobileSchema:
     """Обмен VK ID authorization `code` на сессию (Confidential Flow).
 
@@ -211,17 +229,16 @@ def auth_vk_via_code(
         request_data.device_id,
         request_data.redirect_uri,
     )
-    firebase_uid, firebase_token, is_new_user, mutual_follow_user_id = auth_vk(
-        access_token, vk_extra_data, db, request_data.attribution
+    result = auth_vk(
+        access_token, vk_extra_data, db, request_data.attribution, guest_token
     )
     return ResponseVkAuthMobileSchema(
-        firebase_uid=firebase_uid,
-        firebase_token=firebase_token,
-        user_created=is_new_user,
-        mutual_follow_user_id=mutual_follow_user_id,
-        # Контракт 0018 до agreed: слияния гостя ещё нет.
-        guest_merged_reservations=0,
-        guest_followed_owner_ids=[],
+        firebase_uid=result.firebase_uid,
+        firebase_token=result.firebase_token,
+        user_created=result.is_new_user,
+        mutual_follow_user_id=result.mutual_follow_user_id,
+        guest_merged_reservations=result.guest_merge.merged_reservations,
+        guest_followed_owner_ids=result.guest_merge.followed_owner_ids,
     )
 
 
@@ -230,7 +247,8 @@ def auth_vk(
     vk_extra_data: VkUserExtraData,
     db: Session,
     attribution: RegistrationAttributionSchema | None = None,
-) -> tuple[str, str, bool, UUID | None]:
+    guest_token: str | None = None,
+) -> VkAuthResult:
     """Завести/найти юзера по VK-профилю и выдать firebase custom token.
 
     `access_token` и `vk_extra_data` — только из серверного обмена VK ID
@@ -309,7 +327,12 @@ def auth_vk(
         mutual_follow_user_id = create_invite_mutual_follow(db, user, attribution)
 
     firebase_token = create_custom_firebase_token(firebase_uid)
-    return firebase_uid, firebase_token, is_new_user, mutual_follow_user_id
+    # Слияние гостя — последним: всё, что может упасть раньше, уже прошло, и
+    # не-2xx гарантированно значит «ничего не слито» (контракт 0018).
+    guest_merge = merge_guest(db, user, guest_token)
+    return VkAuthResult(
+        firebase_uid, firebase_token, is_new_user, mutual_follow_user_id, guest_merge
+    )
 
 
 LEGACY_VK_MOBILE_GONE_DETAIL = (
@@ -352,6 +375,7 @@ def auth_vk_mobile_gone() -> None:
 )
 def auth_vk_vkid(
     request_data: RequestVkAuthVkidSchema,
+    response: Response,
     guest_id: GuestCookie = None,
     db: Session = Depends(get_db),
 ) -> ResponseVkAuthMobileSchema:
@@ -389,7 +413,9 @@ def auth_vk_vkid(
     `guest_merged_reservations` и `guest_followed_owner_ids`; кука снимается.
     Вход успешен и тогда, когда переносить нечего.
     """
-    return auth_vk_via_code(request_data, db)
+    result = auth_vk_via_code(request_data, db, guest_id)
+    clear_guest_cookie(response, guest_id)
+    return result
 
 
 @router.post(
@@ -414,6 +440,7 @@ def auth_vk_vkid(
 )
 def auth_firebase(
     firebase_auth_schema: RequestFirebaseAuthSchema,
+    response: Response,
     guest_id: GuestCookie = None,
     db: Session = Depends(get_db),
 ) -> AuthFirebaseResponseSchema:
@@ -486,12 +513,13 @@ def auth_firebase(
         save_registration_attribution(db, user, attribution)
         mutual_follow_user_id = create_invite_mutual_follow(db, user, attribution)
 
+    guest_merge = merge_guest(db, user, guest_id)
+    clear_guest_cookie(response, guest_id)
     return AuthFirebaseResponseSchema(
         user_created=is_new_user,
         mutual_follow_user_id=mutual_follow_user_id,
-        # Контракт 0018 до agreed: слияния гостя ещё нет.
-        guest_merged_reservations=0,
-        guest_followed_owner_ids=[],
+        guest_merged_reservations=guest_merge.merged_reservations,
+        guest_followed_owner_ids=guest_merge.followed_owner_ids,
     )
 
 

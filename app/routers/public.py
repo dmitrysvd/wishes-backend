@@ -1,7 +1,7 @@
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import HttpUrl
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,12 +11,20 @@ from starlette.status import (
     HTTP_409_CONFLICT,
     HTTP_410_GONE,
     HTTP_429_TOO_MANY_REQUESTS,
-    HTTP_501_NOT_IMPLEMENTED,
 )
 
 from app.constants import GUEST_COOKIE_MAX_AGE_SECONDS, GUEST_COOKIE_NAME
-from app.db import User, Wish
+from app.db import Guest, User, Wish
 from app.dependencies import PUBLIC_TAG, GuestCookie, get_db
+from app.guests import (
+    GuestOutcome,
+    GuestResult,
+    client_ip,
+    find_guest,
+    guest_cancel,
+    guest_reserve,
+    is_reserved_by,
+)
 from app.push_payloads import RESERVATION_PUSH_PAYLOAD
 from app.schemas import (
     PublicBirthdaySchema,
@@ -141,8 +149,12 @@ def _build_owner(user: User) -> PublicOwnerSchema:
     )
 
 
-def _build_wish(wish: Wish) -> PublicWishSchema:
-    """Собирает публичную хотелку: путь к картинке и булев флаг резерва без личности."""
+def _build_wish(wish: Wish, guest: Guest | None) -> PublicWishSchema:
+    """Собирает публичную хотелку: путь к картинке и булев флаг резерва без личности.
+
+    `reserved_by_me` — только для гостя этого браузера; кто держит чужой резерв,
+    не раскрывается.
+    """
     return PublicWishSchema(
         id=wish.id,
         name=wish.name,
@@ -152,9 +164,47 @@ def _build_wish(wish: Wish) -> PublicWishSchema:
         link=HttpUrl(wish.link) if wish.link else None,
         image_url=f'/media/wish_images/{wish.image}' if wish.image else None,
         is_reserved=wish.is_reserved,
-        # Контракт 0018 до agreed: гостевых резервов ещё нет.
-        reserved_by_me=False,
+        reserved_by_me=is_reserved_by(wish, guest),
     )
+
+
+def _set_no_store(response: Response) -> None:
+    # Ответ зависит от куки гостя: общий кеш отдал бы чужой `reserved_by_me`.
+    response.headers['Cache-Control'] = 'private, no-store'
+    response.headers['Vary'] = 'Cookie'
+
+
+_OUTCOME_ERRORS: dict[GuestOutcome, tuple[int, str]] = {
+    GuestOutcome.owner_not_found: (HTTP_404_NOT_FOUND, 'Пользователь не найден'),
+    GuestOutcome.wish_gone: (HTTP_410_GONE, 'Хотелки больше нет'),
+    GuestOutcome.reserved_by_other: (HTTP_409_CONFLICT, 'Уже забронировано'),
+    GuestOutcome.not_yours: (HTTP_403_FORBIDDEN, 'Это не ваш резерв'),
+    GuestOutcome.limited: (HTTP_429_TOO_MANY_REQUESTS, 'Сейчас забронировать нельзя'),
+}
+
+
+def _guest_response(
+    result: GuestResult, response: Response, db: Session, token: str | None
+) -> PublicWishSchema:
+    if result.outcome != GuestOutcome.ok:
+        status, detail = _OUTCOME_ERRORS[result.outcome]
+        raise HTTPException(status, detail)
+    assert result.wish is not None
+    _set_no_store(response)
+    guest = result.new_guest
+    if guest is not None:
+        response.set_cookie(
+            GUEST_COOKIE_NAME,
+            guest.token,
+            max_age=GUEST_COOKIE_MAX_AGE_SECONDS,
+            path='/',
+            secure=True,
+            httponly=True,
+            samesite='lax',
+        )
+    else:
+        guest = find_guest(db, token)
+    return _build_wish(result.wish, guest)
 
 
 @router.get(
@@ -208,15 +258,15 @@ def public_wishlist(
     `/cancel_reservation`; поведение карточек — `x-workflow` (Swagger UI
     расширений не показывает).
     """
-    response.headers['Cache-Control'] = 'private, no-store'
-    response.headers['Vary'] = 'Cookie'
+    _set_no_store(response)
     user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
     if not user:
         raise HTTPException(HTTP_404_NOT_FOUND, 'Пользователь не найден')
     wishes = db.scalars(Wish.get_active_wish_query().where(Wish.user == user)).all()
+    guest = find_guest(db, guest_id)
     return PublicWishlistSchema(
         owner=_build_owner(user),
-        wishes=[_build_wish(wish) for wish in wishes],
+        wishes=[_build_wish(wish, guest) for wish in wishes],
     )
 
 
@@ -268,6 +318,8 @@ def public_wishlist(
 def guest_reserve_wish(
     user_id: UUID,
     wish_id: UUID,
+    request: Request,
+    response: Response,
     guest_id: GuestCookie = None,
     db: Session = Depends(get_db),
 ) -> PublicWishSchema:
@@ -286,7 +338,8 @@ def guest_reserve_wish(
     браузере резерв переходит на аккаунт (`POST /auth/firebase`,
     `POST /auth/vk/vkid`). Поведение карточки — `x-workflow`.
     """
-    raise HTTPException(HTTP_501_NOT_IMPLEMENTED)
+    result = guest_reserve(db, user_id, wish_id, guest_id, client_ip(request))
+    return _guest_response(result, response, db, guest_id)
 
 
 @router.post(
@@ -319,6 +372,7 @@ def guest_reserve_wish(
 def guest_cancel_reservation(
     user_id: UUID,
     wish_id: UUID,
+    response: Response,
     guest_id: GuestCookie = None,
     db: Session = Depends(get_db),
 ) -> PublicWishSchema:
@@ -328,4 +382,5 @@ def guest_cancel_reservation(
     сделанный из этого браузера (другое устройство или встроенный браузер
     мессенджера — другой гость). Хотелка снова свободна для всех.
     """
-    raise HTTPException(HTTP_501_NOT_IMPLEMENTED)
+    result = guest_cancel(db, user_id, wish_id, guest_id)
+    return _guest_response(result, response, db, guest_id)

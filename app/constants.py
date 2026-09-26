@@ -64,6 +64,8 @@ class FollowEventSource(enum.Enum):
     other = 'other'
     # взаимные подписки при регистрации по инвайт-ссылке (фича 0024)
     invite = 'invite'
+    # подписка дарителя на владельца при слиянии гостевых резервов (фича 0018)
+    guest_reservation = 'guest_reservation'
 
 
 class TestPersona(enum.Enum):
