@@ -82,3 +82,20 @@ def test_auth_responses_carry_guest_merge_fields():
         cookie = [p['name'] for p in operation['parameters'] if p['in'] == 'cookie']
         assert cookie == [GUEST_COOKIE_NAME]
         assert 'Set-Cookie' in operation['responses']['200']['headers']
+
+
+def test_reservation_push_payload_same_for_guest_and_app():
+    """Гостевой резерв даёт владельцу ровно тот же пуш, что обычный."""
+    paths = app.openapi()['paths']
+    guest = paths[_GUEST_OPS[0]]['post']['x-push-payload']
+    regular = paths['/wishes/{wish_id}/reserve']['post']['x-push-payload']
+    assert guest == regular
+    assert 'delivery_id' in guest['data']
+
+
+def test_app_reserve_declares_conflict_and_cancel_codes():
+    paths = app.openapi()['paths']
+    reserve = paths['/wishes/{wish_id}/reserve']['post']['responses']
+    cancel = paths['/wishes/{wish_id}/cancel_reservation']['post']['responses']
+    assert {'403', '404', '409'} <= set(reserve)
+    assert {'403', '404'} <= set(cancel)

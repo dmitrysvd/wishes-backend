@@ -43,6 +43,7 @@ from app.helpers.wish_read import build_wish_read, build_wish_reads
 from app.logging import logger
 from app.parsers import parse_wildberries_link
 from app.price_alerts import mark_seen
+from app.push_payloads import RESERVATION_PUSH_PAYLOAD
 from app.schemas import WishReadSchema, WishWriteSchema
 from app.utils import utc_now
 
@@ -551,12 +552,54 @@ def user_wishes(
     return build_wish_reads(db.scalars(query), user)
 
 
-@router.post('/wishes/{wish_id}/reserve', response_class=Response)
+@router.post(
+    '/wishes/{wish_id}/reserve',
+    response_class=Response,
+    openapi_extra={'x-push-payload': RESERVATION_PUSH_PAYLOAD},
+    responses={
+        200: {
+            'description': (
+                'Хотелка зарезервирована мной — впервые или уже была моей (повтор '
+                'идемпотентен). Тело пустое.'
+            )
+        },
+        HTTP_403_FORBIDDEN: {
+            'description': 'Это своя хотелка — резервировать свою нельзя.',
+            'content': {
+                'application/json': {'example': {'detail': 'Cannot reserve own wish'}}
+            },
+        },
+        HTTP_404_NOT_FOUND: {
+            'description': (
+                'Хотелки нет: удалена или в архиве. Карточку убрать, список '
+                'перезапросить.'
+            ),
+            'content': {'application/json': {'example': {'detail': 'Wish not found'}}},
+        },
+        HTTP_409_CONFLICT: {
+            'description': (
+                'Уже зарезервирована другим — юзером приложения или гостем с '
+                'публичной страницы (в т.ч. одновременным тапом: резерв получает '
+                'первый). Ничего не изменено. Показать «уже забронировано» и '
+                'перевести карточку в «зарезервировано кем-то» '
+                '(`reserved_by_id` = заглушка из `WishReadSchema`).'
+            ),
+            'content': {
+                'application/json': {'example': {'detail': 'Reserved by someone else'}}
+            },
+        },
+    },
+)
 def reserve_wish(
     wish_id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Зарезервировать чужую хотелку (S5).
+
+    Владельцу уходит пуш «резерв» ежечасным кроном — один за прогон, без
+    личности дарителя; payload — `x-push-payload` операции.
+    """
     query = Wish.get_active_wish_query().where(Wish.id == wish_id)
     wish = db.scalars(query).one_or_none()
     if not wish:
@@ -574,12 +617,39 @@ def reserve_wish(
     db.commit()
 
 
-@router.post('/wishes/{wish_id}/cancel_reservation', response_class=Response)
+@router.post(
+    '/wishes/{wish_id}/cancel_reservation',
+    response_class=Response,
+    responses={
+        200: {
+            'description': (
+                'Мой резерв снят (в т.ч. перенесённый из гостевого при входе и у '
+                'хотелки в архиве), либо хотелка и так свободна — повтор '
+                'идемпотентен. Тело пустое.'
+            )
+        },
+        HTTP_403_FORBIDDEN: {
+            'description': (
+                'Резерв держит не текущий юзер — другой юзер или гость. Ничего не '
+                'изменено; кнопки снятия у чужого резерва в UI нет.'
+            ),
+            'content': {
+                'application/json': {'example': {'detail': 'Reserved by someone else'}}
+            },
+        },
+        HTTP_404_NOT_FOUND: {
+            'description': 'Хотелки нет (удалена). Карточку убрать.',
+            'content': {'application/json': {'example': {'detail': 'Wish not found'}}},
+        },
+    },
+)
 def cancel_wish_reservation(
     wish_id: UUID,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Снять свой резерв — и сделанный в приложении, и перенесённый из
+    гостевого при входе (фича 0018): после слияния он ничем не отличается."""
     wish = db.execute(select(Wish).where(Wish.id == wish_id)).scalar_one_or_none()
     if not wish:
         raise HTTPException(404, 'Wish not found')

@@ -17,6 +17,7 @@ from starlette.status import (
 from app.constants import GUEST_COOKIE_MAX_AGE_SECONDS, GUEST_COOKIE_NAME
 from app.db import User, Wish
 from app.dependencies import PUBLIC_TAG, GuestCookie, get_db
+from app.push_payloads import RESERVATION_PUSH_PAYLOAD
 from app.schemas import (
     PublicBirthdaySchema,
     PublicOwnerSchema,
@@ -73,6 +74,12 @@ _WISH_GONE_RESPONSE: dict[str, Any] = {
 # Поведение гостя на S5a (фича 0018): структурно для аудитора и кодгена фронта
 # (PROTOCOL.md §7).
 _GUEST_WORKFLOW = [
+    'Кука гостя работает только при вызове API с того же origin, что и SPA '
+    '(прод: `https://hotelki.pro` + `/api/v1`; dev — через прокси dev-сервера на '
+    'тот же origin). Cross-origin запрос куку не отправит и не сохранит: каждый '
+    'резерв станет новым гостем, снять его будет нельзя. Обычный `fetch` на '
+    "same-origin куку прикладывает сам (`credentials: 'same-origin'` — по "
+    'умолчанию).',
     'Кнопки на карточке S5a: `is_reserved == false` → «Забронирую»; '
     '`reserved_by_me == true` → «Снять резерв»; `is_reserved && !reserved_by_me` — '
     'плашка «зарезервировано», кнопок нет.',
@@ -198,7 +205,11 @@ def public_wishlist(
     '/users/{user_id}/wishes/{wish_id}/reserve',
     response_model=PublicWishSchema,
     summary='Гостевой резерв хотелки',
-    openapi_extra={'security': [], 'x-workflow': _GUEST_WORKFLOW},
+    openapi_extra={
+        'security': [],
+        'x-workflow': _GUEST_WORKFLOW,
+        'x-push-payload': RESERVATION_PUSH_PAYLOAD,
+    },
     responses={
         200: {
             'description': (
@@ -248,9 +259,10 @@ def guest_reserve_wish(
     `Authorization`, если прислан, игнорируется — резерв гостевой.
 
     Для владельца и других смотрящих гостевой резерв неотличим от обычного:
-    хотелка «зарезервирована», личность скрыта; владельцу уходит обычный пуш
-    «Кто-то хочет сделать Вам подарок!». Резерв живёт, пока гость его не снимет
-    или владелец не удалит/не заархивирует хотелку. После входа гостя в том же
+    хотелка «зарезервирована», личность скрыта; владельцу уходит тот же пуш
+    «резерв», что и от резерва в приложении (`x-push-payload`). Резерв живёт,
+    пока гость его не снимет или владелец не удалит/не заархивирует хотелку.
+    После входа гостя в том же
     браузере резерв переходит на аккаунт (`POST /auth/firebase`,
     `POST /auth/vk/vkid`). Поведение карточки — `x-workflow`.
     """
