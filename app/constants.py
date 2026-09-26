@@ -37,7 +37,11 @@ class FollowSource(enum.Enum):
     search = 'search'  # результаты текстового поиска людей
     possible_friends = 'possible_friends'  # блок «возможные друзья» (VK-сидинг)
     followers_list = 'followers_list'  # экран подписчиков/подписок
-    deeplink = 'deeplink'  # профиль открыт по расшаренной ссылке
+    # профиль открыт по ссылке шеринга (URL с `ref`), в т.ч. тап по CTA на нём
+    deeplink = 'deeplink'
+    push = 'push'  # профиль открыт по ссылке из пуша (URL с `via=push`)
+    # кнопка «В ответ» в строке своего списка подписчиков
+    followers_follow_back = 'followers_follow_back'
     other = 'other'  # прочее/неизвестно
 
 

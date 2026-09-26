@@ -592,9 +592,23 @@ class TestAuth:
             json={'id_token': 'id_token'},
         )
         assert response.status_code == 200
-        assert response.content == b''
+        assert response.json() == {'user_created': True, 'mutual_follow_user_id': None}
         user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
         assert user.display_name == 'Иванов Иван'
+
+    def test_auth_firebase_existing_user(
+        self, api_client: TestClient, db: Session, user: User
+    ):
+        """Повторный вход: `user_created=false`, плашки новичку нет."""
+        user.firebase_uid = 'uid'
+        db.add(user)
+        db.commit()
+        response = api_client.post('/auth/firebase', json={'id_token': 'id_token'})
+        assert response.status_code == 200
+        assert response.json() == {
+            'user_created': False,
+            'mutual_follow_user_id': None,
+        }
 
     def test_auth_vk_vkid_saves_attribution(
         self,
@@ -729,6 +743,8 @@ class TestAuth:
         assert response.is_success, response.json()
         body = response.json()
         assert body['user_created'] is True
+        # Без `attribution` взаимных подписок по инвайту нет — поле есть и null.
+        assert body['mutual_follow_user_id'] is None
         assert body['firebase_token']
         # Ответ веб-версии НЕ содержит vk_access_token (Confidential Flow).
         assert 'vk_access_token' not in body
@@ -933,6 +949,27 @@ class TestFollowUnfollow:
         ).one()
         assert event.action == FollowAction.follow
         assert event.source == FollowSource.possible_friends
+
+    @pytest.mark.parametrize(
+        'source', [FollowSource.push, FollowSource.followers_follow_back]
+    )
+    def test_follow_user_with_follow_back_source(
+        self,
+        auth_client: TestClient,
+        db: Session,
+        user: User,
+        other_user: User,
+        source: FollowSource,
+    ):
+        """Источники «в ответ» (0024) принимаются и пишутся в лог графа."""
+        response = auth_client.post(
+            f'/follow/{other_user.id}', json={'source': source.value}
+        )
+        assert response.status_code == 200
+        event = db.scalars(
+            select(FollowEvent).where(FollowEvent.actor_id == user.id)
+        ).one()
+        assert event.source == source
 
     def test_follow_user_no_immediate_push(
         self, auth_client: TestClient, db: Session, user: User, other_user: User, fcm

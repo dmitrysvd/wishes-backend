@@ -40,6 +40,93 @@ from app.schemas import (
 
 router = APIRouter(tags=[USERS_TAG])
 
+# Пуш «новый подписчик» — побочный эффект `POST /follow` (фича 0024 добавила
+# `delivery_id`, маркер `via=push` и ссылку на свой список подписчиков).
+# Структурно, для аудитора и кодгена фронта (PROTOCOL.md §7).
+_NEW_FOLLOWER_PUSH_PAYLOAD = {
+    'kind': 'new_follower',
+    'notification': {
+        'title': 'У вас новый подписчик',
+        'body': 'На вас подписался Иван Петров',
+    },
+    'data': {
+        'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+        'type': 'new_follower',
+        'delivery_id': '5c1c9a2e-7b1d-4e3a-9f0a-2d6b8c4e1a77',
+        'link': (
+            'https://hotelki.pro/user'
+            '?userId=9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e&via=push#'
+        ),
+        'title': 'У вас новый подписчик',
+        'body': 'На вас подписался Иван Петров',
+    },
+    'fields': {
+        'type': 'Вид пуша, `new_follower`; клиенту для роутинга не нужен.',
+        'link': (
+            'Открывать через роутер, как остальные пуши. Один подписчик → его '
+            'профиль (S5): `{FRONTEND_URL}/user?userId=<uuid>&via=push#`; `via=push` '
+            '— маркер «открыт из пуша»: CTA-блока нет, подписка с профиля идёт с '
+            '`source=push`, кнопка по правилу «Подписаться в ответ» (см. '
+            '`x-workflow` у `GET /users/{user_id}`). Несколько подписчиков → свой '
+            'список подписчиков (`followers_page`): '
+            '`{FRONTEND_URL}/followers?userId=<свой id>&followedBy=true#`.'
+        ),
+        'delivery_id': (
+            'UUID строки лога отправки — тело `POST /push/opened` при открытии.'
+        ),
+    },
+    'texts': {
+        'one': {
+            'title': 'У вас новый подписчик',
+            'body': 'На вас подписался {display_name}',
+        },
+        'many': {
+            'title': 'У вас новый подписчик',
+            'body': 'На вас подписались {display_name первого} и ещё {N - 1}',
+        },
+        'rules': (
+            'Один пуш за прогон на все новые подписки получателя. Подписка, '
+            'оформленная автоматически при регистрации по инвайт-ссылке, в этот пуш '
+            'не входит — о ней пригласившему приходит `invite_joined` '
+            '(`x-push-payload` у `POST /auth/firebase`, `POST /auth/vk/vkid`).'
+        ),
+    },
+}
+
+# Правила экрана профиля (S5) для фичи 0024: CTA-блок подписки при входе по
+# ссылке шеринга и кнопка «Подписаться в ответ».
+_PROFILE_WORKFLOW = [
+    'Маркер пути входа — параметры URL `/user?userId=…`: `ref` — ссылка шеринга '
+    '(`GET /invite_link/`); `via=push` — ссылка из пуша; ни того, ни другого — '
+    'прочее (переход внутри приложения, F5 на вебе).',
+    'CTA-блок над списком показывается, только если одновременно: URL несёт `ref`, '
+    'юзер авторизован, `userId` — не свой id, в ответе `followed_by_me == false`. '
+    'Иначе блока нет (в т.ч. из поиска, списков и пушей).',
+    'Текст CTA: `follows_me == true` → «{display_name} уже подписан(а) на вас — '
+    'подписаться в ответ»; иначе «Подписаться на {display_name} — напомним о дне '
+    'рождения и покажем новые хотелки». Одна кнопка.',
+    'Тап CTA → `POST /follow/{userId}` с `source=deeplink`. `200` → блок скрыть, '
+    'кнопка профиля — «вы подписаны». Не-2xx/сеть → тост ошибки, блок и кнопка в '
+    'исходном состоянии, можно повторить (повтор идемпотентен).',
+    'Кнопка подписки на любом чужом профиле: `follows_me == true && followed_by_me '
+    '== false` → подпись «Подписаться в ответ», иначе как сейчас. Действие то же — '
+    '`POST /follow/{userId}`; `source` — по пути входа (см. `FollowActionSchema`).',
+    'Состояние блока и кнопки — из ответа этой операции при каждом открытии; '
+    'открытие той же ссылки повторно (F5) снова покажет CTA, если не подписан.',
+    'Гость (без авторизации) эту операцию не вызывает: публичный вишлист (S5a) — '
+    '`GET /public/users/{user_id}/wishlist`, CTA подписки там нет.',
+]
+
+# Правило своего списка подписчиков (`followers_page`) для фичи 0024.
+_FOLLOWERS_WORKFLOW = [
+    'Свой список (`user_id` == свой id): у строки с `followed_by_me == false` — '
+    'кнопка «В ответ» → `POST /follow/{id строки}` с '
+    '`source=followers_follow_back`. `200` → строка в состоянии «вы подписаны» '
+    'без перезагрузки списка; не-2xx/сеть → тост, кнопка в исходном состоянии.',
+    'Строки с `followed_by_me == true` и чужой список подписчиков — без изменений.',
+    'Пустой список (`[]`) — заглушка как сейчас.',
+]
+
 
 @router.get('/users/', response_model=list[AnnotatedOtherUserSchema])
 def users(db: Session = Depends(get_db)):
@@ -118,12 +205,31 @@ def search_users(
     return get_annotated_users(db, current_user, found_users)
 
 
-@router.get('/users/{user_id}', response_model=AnnotatedOtherUserSchema)
+@router.get(
+    '/users/{user_id}',
+    response_model=AnnotatedOtherUserSchema,
+    openapi_extra={'x-workflow': _PROFILE_WORKFLOW},
+    responses={
+        HTTP_404_NOT_FOUND: {
+            'description': (
+                'Юзера с таким id нет (удалил аккаунт или id испорчен). Экран '
+                'показывает «не найдено», как сейчас.'
+            ),
+            'content': {'application/json': {'example': {'detail': 'User not found'}}},
+        },
+    },
+)
 def get_user(
     user_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Профиль другого юзера (S5): данные, подписки и отношение ко мне.
+
+    `followed_by_me` — я подписан на него, `follows_me` — он на меня. По ним и по
+    параметрам URL входа клиент выбирает CTA-блок и подпись кнопки подписки —
+    правила в `x-workflow` операции (Swagger UI расширений не показывает).
+    """
     user = db.scalars(select(User).where(User.id == user_id)).one_or_none()
     if not user:
         raise HTTPException(HTTP_404_NOT_FOUND, 'User not found')
@@ -141,12 +247,20 @@ def delete_own_account(
     db.commit()
 
 
-@router.get('/users/{user_id}/followers', response_model=list[AnnotatedOtherUserSchema])
+@router.get(
+    '/users/{user_id}/followers',
+    response_model=list[AnnotatedOtherUserSchema],
+    openapi_extra={'x-workflow': _FOLLOWERS_WORKFLOW},
+)
 def user_followers(
     user_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Подписчики юзера (`followers_page`), каждый с отношением ко мне.
+
+    Кнопка «В ответ» в своём списке — `x-workflow` операции.
+    """
     user = db.scalars(select(User).where(User.id == user_id)).one()
     return get_annotated_users(db, current_user, user.followed_by)
 
@@ -163,6 +277,7 @@ def users_followed_by_this_user(
 
 @router.post(
     '/follow/{follow_user_id}',
+    openapi_extra={'x-push-payload': _NEW_FOLLOWER_PUSH_PAYLOAD},
     responses={
         200: {
             'description': (
@@ -196,7 +311,8 @@ def follow_user(
     `source = null`. Событие и ребро создаются в одной транзакции. Существование
     таргета предполагается (валидный id из приложения); несуществующий — `5xx`
     (вне контракта). Побочно: подписанному придёт пуш о новом подписчике
-    ежечасным кроном, одним сообщением за все подписки за час.
+    ежечасным кроном, одним сообщением за все подписки за час; payload —
+    `x-push-payload` операции (Swagger UI расширений не показывает).
     """
     follow_user = db.execute(select(User).where(User.id == follow_user_id)).scalar_one()
     if follow_user in user.follows:
@@ -374,7 +490,11 @@ async def get_item_info_from_page(
                 'гостем как публичная веб-страница вишлиста (S5a), залогиненным — '
                 'как user_page (S5). Клиент-получатель обязан донести `ref` (и любые '
                 'utm-параметры из URL) до момента регистрации и вернуть его в '
-                '`attribution` auth-вызова.'
+                '`attribution` auth-вызова: регистрация по ней подписывает новичка '
+                'и пригласившего друг на друга (`mutual_follow_user_id` в ответе '
+                'auth). `ref` в URL — маркер «открыт по ссылке шеринга»: '
+                'залогиненному не подписанному на владельца показывается CTA-блок '
+                'подписки (`x-workflow` у `GET /users/{user_id}`).'
             ),
             'content': {
                 'application/json': {

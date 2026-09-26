@@ -1069,6 +1069,48 @@ class RegistrationAttributionSchema(BaseModel):
     )
 
 
+_MUTUAL_FOLLOW_USER_ID_DESCRIPTION = (
+    'Регистрация по инвайт-ссылке (фича 0024): id пригласившего, если этим '
+    'запросом создан новый юзер и он с пригласившим теперь подписаны друг на '
+    'друга. Клиент по нему один раз показывает новичку плашку «Вы с {имя} '
+    'подписаны друг на друга» на списке этого юзера (S5), см. `x-workflow` '
+    'операции. `null` — во всех остальных случаях: вход в существующий аккаунт, '
+    'регистрация без `attribution.referrer_id`, метка отброшена (битая, '
+    'несуществующий или удалённый юзер, сам регистрирующийся), взаимные подписки '
+    'создать не удалось. Регистрация при этом всегда успешна, `null` не ошибка. '
+    'Поле всегда присутствует.'
+)
+
+
+class AuthFirebaseResponseSchema(BaseModel):
+    """Ответ `POST /auth/firebase`."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            'examples': [
+                {
+                    'user_created': True,
+                    'mutual_follow_user_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                },
+                {'user_created': True, 'mutual_follow_user_id': None},
+                {'user_created': False, 'mutual_follow_user_id': None},
+            ]
+        }
+    )
+
+    user_created: bool = Field(
+        description=(
+            '`true` — аккаунт создан этим запросом впервые (первый вход); '
+            '`false` — вход в существующий аккаунт. Влияет на учёт `attribution` '
+            '(учитывается только при `true`).'
+        )
+    )
+    mutual_follow_user_id: UUID | None = Field(
+        description=_MUTUAL_FOLLOW_USER_ID_DESCRIPTION,
+        examples=['7c9e6679-7425-40de-944b-e07fc1f90ae7', None],
+    )
+
+
 class RequestFirebaseAuthSchema(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
@@ -1153,9 +1195,21 @@ class FollowActionSchema(BaseModel):
         description=(
             'Экран-источник, с которого пришли на профиль перед действием '
             '(аналитика формирования графа). Опущено/`null` = источник неизвестен '
-            '(в т.ч. клиент ещё не шлёт метку). На результат не влияет.'
+            '(в т.ч. клиент ещё не шлёт метку). На результат не влияет. Как '
+            'выбрать значение: `search` — профиль из поиска людей; '
+            '`possible_friends` — из блока «возможные друзья»; '
+            '`followers_follow_back` — кнопка «В ответ» в строке СВОЕГО списка '
+            'подписчиков (без перехода на профиль); `followers_list` — любой '
+            'другой переход из списков подписчиков/подписок; `deeplink` — '
+            'профиль открыт по ссылке шеринга, т.е. URL `/user?userId=…` с '
+            'параметром `ref` (и кнопка профиля, и CTA-блок на нём); `push` — '
+            'профиль открыт по ссылке из пуша, т.е. URL с параметром `via=push` '
+            '(так помечены все ссылки на профиль в пушах; это и есть «подписаться '
+            'в ответ» из пуша о новом подписчике); `other` — прочее, в т.ч. URL '
+            '`/user?userId=…` без `ref` и без `via` (F5 на профиле из поиска, '
+            'ссылка, скопированная из адресной строки).'
         ),
-        examples=['search', 'possible_friends'],
+        examples=['search', 'deeplink', 'push', 'followers_follow_back'],
     )
 
 
@@ -1254,7 +1308,14 @@ class ResponseVkAuthMobileSchema(BaseModel):
                     'firebase_uid': 'firebase-uid-abc123',
                     'firebase_token': 'eyJhbGciOi...firebase-custom-token',
                     'user_created': True,
-                }
+                    'mutual_follow_user_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                },
+                {
+                    'firebase_uid': 'firebase-uid-abc123',
+                    'firebase_token': 'eyJhbGciOi...firebase-custom-token',
+                    'user_created': False,
+                    'mutual_follow_user_id': None,
+                },
             ]
         }
     )
@@ -1275,6 +1336,10 @@ class ResponseVkAuthMobileSchema(BaseModel):
             '`false` — вход в существующий аккаунт. Влияет на учёт `attribution` '
             '(учитывается только при `true`).'
         )
+    )
+    mutual_follow_user_id: UUID | None = Field(
+        description=_MUTUAL_FOLLOW_USER_ID_DESCRIPTION,
+        examples=['7c9e6679-7425-40de-944b-e07fc1f90ae7', None],
     )
 
 
