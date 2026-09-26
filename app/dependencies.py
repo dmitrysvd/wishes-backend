@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 import httpx
-from fastapi import Depends, HTTPException, Request
+from fastapi import Cookie, Depends, HTTPException, Request
 from firebase_admin.auth import (
     ExpiredIdTokenError,
     InvalidIdTokenError,
@@ -18,7 +18,11 @@ from starlette.status import (
 )
 
 from app.config import settings
-from app.constants import ACTIVITY_STATE_USER_ID, STORE_REQUEST_TIMEOUT_SECONDS
+from app.constants import (
+    ACTIVITY_STATE_USER_ID,
+    GUEST_COOKIE_NAME,
+    STORE_REQUEST_TIMEOUT_SECONDS,
+)
 from app.db import SessionLocal, User, Wish
 from app.helpers.browser_transport import BrowserTransport
 
@@ -139,3 +143,19 @@ def get_store_client() -> Iterator[httpx.Client]:
         transport=BrowserTransport(timeout=STORE_REQUEST_TIMEOUT_SECONDS)
     ) as client:
         yield client
+
+
+# Кука гостя (фича 0018) — параметр гостевых ручек и публичного списка. Клиент
+# её не шлёт руками: браузер кладёт сам (same-origin, httpOnly).
+GuestCookie = Annotated[
+    str | None,
+    Cookie(
+        alias=GUEST_COOKIE_NAME,
+        description=(
+            'Кука гостя: непрозрачная строка, ставит и снимает только бэк '
+            '(`Set-Cookie`, httpOnly). Клиент её не читает и не шлёт вручную — '
+            'браузер прикладывает сам. Отсутствует, битая или устарела — '
+            'запрос от «нового» гостя, это не ошибка.'
+        ),
+    ),
+]

@@ -593,7 +593,12 @@ class TestAuth:
             json={'id_token': 'id_token'},
         )
         assert response.status_code == 200
-        assert response.json() == {'user_created': True, 'mutual_follow_user_id': None}
+        assert response.json() == {
+            'user_created': True,
+            'mutual_follow_user_id': None,
+            'guest_merged_reservations': 0,
+            'guest_followed_owner_ids': [],
+        }
         user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
         assert user.display_name == 'Иванов Иван'
 
@@ -609,6 +614,8 @@ class TestAuth:
         assert response.json() == {
             'user_created': False,
             'mutual_follow_user_id': None,
+            'guest_merged_reservations': 0,
+            'guest_followed_owner_ids': [],
         }
 
     def test_auth_firebase_invite_mutual_follow(
@@ -624,6 +631,8 @@ class TestAuth:
         assert response.json() == {
             'user_created': True,
             'mutual_follow_user_id': str(other_user.id),
+            'guest_merged_reservations': 0,
+            'guest_followed_owner_ids': [],
         }
         newbie = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
         db.refresh(other_user)
@@ -667,6 +676,8 @@ class TestAuth:
         assert response.json() == {
             'user_created': False,
             'mutual_follow_user_id': None,
+            'guest_merged_reservations': 0,
+            'guest_followed_owner_ids': [],
         }
         assert db.scalars(select(FollowEvent)).all() == []
 

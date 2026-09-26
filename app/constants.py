@@ -286,3 +286,9 @@ RECOMMENDATION_CATEGORY_TITLES: dict[RecommendationCategory, str] = {
     RecommendationCategory.clothes: 'Одежда и аксессуары',
     RecommendationCategory.kids: 'Детям',
 }
+
+# Гостевой резерв (фича 0018): httpOnly-кука, которой бэк узнаёт гостя на
+# публичной странице и при входе сливает его резервы в аккаунт. Имя — часть
+# контракта (параметр `in: cookie` в спеке); клиент её не читает и не пишет.
+GUEST_COOKIE_NAME = 'guest_id'
+GUEST_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60

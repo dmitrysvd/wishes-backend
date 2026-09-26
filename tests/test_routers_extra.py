@@ -56,7 +56,7 @@ def test_auth_firebase_existing_user_update_uid(mocker, db):
     mock_get_data.return_value.email_verified = True
     mock_get_data.return_value.email = 'test@test.com'
 
-    auth_firebase(RequestFirebaseAuthSchema(id_token='token'), db)
+    auth_firebase(RequestFirebaseAuthSchema(id_token='token'), db=db)
 
     db.refresh(user)
     assert user.firebase_uid == 'new_uid'

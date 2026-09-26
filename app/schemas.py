@@ -655,7 +655,8 @@ class WishReadSchema(BaseWishSchema):
             'Кто зарезервировал; личность раскрывается ТОЛЬКО самому дарителю. '
             'Три состояния: `null` — свободна; id запрашивающего — зарезервировал '
             'он сам (по нему клиент считает «зарезервировано мной» и даёт отмену); '
-            '`00000000-0000-0000-0000-000000000000` — зарезервировал кто-то другой, '
+            '`00000000-0000-0000-0000-000000000000` — зарезервировал кто-то другой '
+            '(в т.ч. гость с публичной страницы — снять такой резерв нельзя), '
             'личность скрыта. Владельцу списка имя дарителя — спойлер сюрприза, '
             'остальным — чужая PII, поэтому реальный чужой id не отдаётся никогда. '
             'Заглушка вместо `null` — чтобы клиент, считающий непустое поле '
@@ -776,6 +777,16 @@ class PublicWishSchema(BaseModel):
         ),
         examples=[False],
     )
+    reserved_by_me: bool = Field(
+        description=(
+            'Всегда присутствует. true — резерв держит этот гость (браузер с '
+            'кукой гостя, сделавшей резерв): показывайте «Снять резерв». false — '
+            'хотелка свободна, зарезервирована другим или кука гостя отсутствует/'
+            'устарела; при `is_reserved = true` кнопки снятия нет. true всегда '
+            'влечёт `is_reserved = true`.'
+        ),
+        examples=[False],
+    )
 
 
 class PublicWishlistSchema(BaseModel):
@@ -801,6 +812,7 @@ class PublicWishlistSchema(BaseModel):
                             'link': 'https://www.ozon.ru/product/123456',
                             'image_url': '/media/wish_images/ab12cd34.jpg',
                             'is_reserved': False,
+                            'reserved_by_me': False,
                         },
                         {
                             'id': '9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e',
@@ -811,6 +823,7 @@ class PublicWishlistSchema(BaseModel):
                             'link': None,
                             'image_url': None,
                             'is_reserved': True,
+                            'reserved_by_me': True,
                         },
                     ],
                 },
@@ -1079,6 +1092,27 @@ _MUTUAL_FOLLOW_USER_ID_DESCRIPTION = (
 )
 
 
+_GUEST_MERGED_RESERVATIONS_DESCRIPTION = (
+    'Гостевой резерв (фича 0018): сколько резервов гостя из этого браузера '
+    '(кука гостя) перешло на аккаунт этим входом. Слияние завершено ДО ответа: '
+    'первый же запрос хотелок/профиля уже видит резервы на аккаунте, а кука '
+    'гостя снята в этом ответе. `0` — куки гостя не было, она устарела или у '
+    'гостя нет живых резервов. Поле всегда '
+    'присутствует; для нового и существующего аккаунта одинаково.'
+)
+
+_GUEST_FOLLOWED_OWNER_IDS_DESCRIPTION = (
+    'Гостевой резерв (фича 0018): владельцы списков с резервами гостя, на '
+    'которых аккаунт подписан этим входом (одностороннее ребро: вы → владелец; '
+    'владелец на вас не подписывается и пуша не получает). Только НОВЫЕ подписки: '
+    'на кого вы уже были подписаны (в т.ч. взаимно по инвайту — '
+    '`mutual_follow_user_id`), сюда не попадает. Порядок — по времени первого '
+    'резерва гостя в списке этого владельца, первым — самый ранний. `[]` — новых '
+    'подписок нет. Непустой — повод «подписался» для пре-промпта пушей (0014) с '
+    'именем первого владельца, см. `x-workflow` операции. Поле всегда присутствует.'
+)
+
+
 class AuthFirebaseResponseSchema(BaseModel):
     """Ответ `POST /auth/firebase`."""
 
@@ -1088,9 +1122,23 @@ class AuthFirebaseResponseSchema(BaseModel):
                 {
                     'user_created': True,
                     'mutual_follow_user_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                    'guest_merged_reservations': 0,
+                    'guest_followed_owner_ids': [],
                 },
-                {'user_created': True, 'mutual_follow_user_id': None},
-                {'user_created': False, 'mutual_follow_user_id': None},
+                {
+                    'user_created': True,
+                    'mutual_follow_user_id': None,
+                    'guest_merged_reservations': 2,
+                    'guest_followed_owner_ids': [
+                        '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+                    ],
+                },
+                {
+                    'user_created': False,
+                    'mutual_follow_user_id': None,
+                    'guest_merged_reservations': 0,
+                    'guest_followed_owner_ids': [],
+                },
             ]
         }
     )
@@ -1105,6 +1153,15 @@ class AuthFirebaseResponseSchema(BaseModel):
     mutual_follow_user_id: UUID | None = Field(
         description=_MUTUAL_FOLLOW_USER_ID_DESCRIPTION,
         examples=['7c9e6679-7425-40de-944b-e07fc1f90ae7', None],
+    )
+    guest_merged_reservations: int = Field(
+        ge=0,
+        description=_GUEST_MERGED_RESERVATIONS_DESCRIPTION,
+        examples=[2, 0],
+    )
+    guest_followed_owner_ids: list[UUID] = Field(
+        description=_GUEST_FOLLOWED_OWNER_IDS_DESCRIPTION,
+        examples=[['3fa85f64-5717-4562-b3fc-2c963f66afa6'], []],
     )
 
 
@@ -1306,12 +1363,18 @@ class ResponseVkAuthMobileSchema(BaseModel):
                     'firebase_token': 'eyJhbGciOi...firebase-custom-token',
                     'user_created': True,
                     'mutual_follow_user_id': '7c9e6679-7425-40de-944b-e07fc1f90ae7',
+                    'guest_merged_reservations': 0,
+                    'guest_followed_owner_ids': [],
                 },
                 {
                     'firebase_uid': 'firebase-uid-abc123',
                     'firebase_token': 'eyJhbGciOi...firebase-custom-token',
                     'user_created': False,
                     'mutual_follow_user_id': None,
+                    'guest_merged_reservations': 1,
+                    'guest_followed_owner_ids': [
+                        '3fa85f64-5717-4562-b3fc-2c963f66afa6'
+                    ],
                 },
             ]
         }
@@ -1337,6 +1400,15 @@ class ResponseVkAuthMobileSchema(BaseModel):
     mutual_follow_user_id: UUID | None = Field(
         description=_MUTUAL_FOLLOW_USER_ID_DESCRIPTION,
         examples=['7c9e6679-7425-40de-944b-e07fc1f90ae7', None],
+    )
+    guest_merged_reservations: int = Field(
+        ge=0,
+        description=_GUEST_MERGED_RESERVATIONS_DESCRIPTION,
+        examples=[2, 0],
+    )
+    guest_followed_owner_ids: list[UUID] = Field(
+        description=_GUEST_FOLLOWED_OWNER_IDS_DESCRIPTION,
+        examples=[['3fa85f64-5717-4562-b3fc-2c963f66afa6'], []],
     )
 
 
