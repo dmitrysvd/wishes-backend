@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.status import HTTP_404_NOT_FOUND
 
 from app.config import settings
-from app.constants import FollowAction
+from app.constants import FollowAction, FollowEventSource
 from app.db import FollowEvent, User
 from app.dependencies import USERS_TAG, get_current_user, get_db, get_store_client
 from app.firebase import delete_firebase_user
@@ -325,7 +325,9 @@ def follow_user(
             actor_id=user.id,
             target_id=follow_user.id,
             action=FollowAction.follow,
-            source=body.source if body else None,
+            source=FollowEventSource(body.source.value)
+            if body and body.source
+            else None,
         )
     )
     db.commit()
@@ -375,7 +377,9 @@ def unfollow_user(
             actor_id=user.id,
             target_id=unfollow_user.id,
             action=FollowAction.unfollow,
-            source=body.source if body else None,
+            source=FollowEventSource(body.source.value)
+            if body and body.source
+            else None,
         )
     )
     db.commit()

@@ -3,6 +3,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy import select
 
+from app.config import settings
 from app.constants import FollowAction
 from app.db import (
     FollowEvent,
@@ -91,10 +92,8 @@ async def test_send_reservation_notifications(
 
 @pytest.mark.anyio
 async def test_send_wish_creation_notifications(
-    db, user_with_token, user_without_token, mocker, fcm
+    db, user_with_token, user_without_token, fcm
 ):
-    mocker.patch('app.notifications.get_user_deep_link', return_value='http://link')
-
     # user_without_token follows user_with_token
     user_without_token.follows.append(user_with_token)
     # user_with_token follows user_without_token
@@ -167,10 +166,7 @@ def _user(db, name: str, token: str | None) -> User:
     return user
 
 
-def test_new_follower_single(db, fcm, mocker):
-    mocker.patch(
-        'app.notifications.get_user_deep_link', side_effect=lambda u: f'link:{u.id}'
-    )
+def test_new_follower_single(db, fcm):
     target = _user(db, 'Target', 'token-target')
     follower = _user(db, 'Follower', None)
     event = _follow(db, follower, target)
@@ -180,13 +176,18 @@ def test_new_follower_single(db, fcm, mocker):
     (message,) = fcm.messages
     assert message.token == 'token-target'
     assert message.android.notification.body == 'На вас подписался Follower'
-    assert message.data['link'] == f'link:{follower.id}'
+    # Профиль подписчика с маркером пуша; delivery_id — для `POST /push/opened`.
+    assert message.data['link'] == (
+        f'{settings.FRONTEND_URL}/user?userId={follower.id}&via=push#'
+    )
+    assert message.data['type'] == 'new_follower'
     db.refresh(event)
     assert event.is_notification_sent is True
     log = db.scalars(
         select(PushSendingLog).where(PushSendingLog.reason == PushReason.NEW_FOLLOWER)
     ).one()
     assert log.reason_user_id == follower.id
+    assert message.data['delivery_id'] == str(log.id)
 
     # Повторный прогон — событие уже отмечено, пуша нет.
     fcm.clear()
@@ -194,10 +195,7 @@ def test_new_follower_single(db, fcm, mocker):
     assert fcm.calls == []
 
 
-def test_new_follower_many_in_one_push(db, fcm, mocker):
-    mocker.patch(
-        'app.notifications.get_user_deep_link', side_effect=lambda u: f'link:{u.id}'
-    )
+def test_new_follower_many_in_one_push(db, fcm):
     target = _user(db, 'Target', 'token-target')
     first = _user(db, 'First', None)
     second = _user(db, 'Second', None)
@@ -208,7 +206,9 @@ def test_new_follower_many_in_one_push(db, fcm, mocker):
 
     (message,) = fcm.messages
     assert message.android.notification.body == 'На вас подписались First и ещё 1'
-    assert message.data['link'] == f'link:{target.id}'
+    assert message.data['link'] == (
+        f'{settings.FRONTEND_URL}/followers?userId={target.id}&followedBy=true#'
+    )
 
 
 def test_new_follower_skips_unfollowed_and_no_token(db, fcm):

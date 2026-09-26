@@ -7,8 +7,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.constants import PriceObservationStatus, PriceSource, TestPersona
-from app.db import User, Wish, WishPriceObservation, user_following_table
+from app.constants import (
+    FollowEventSource,
+    PriceObservationStatus,
+    PriceSource,
+    TestPersona,
+)
+from app.db import FollowEvent, User, Wish, WishPriceObservation, user_following_table
 from app.main import app, get_db
 from app.test_auth import build_test_token, get_or_create_test_user
 
@@ -98,10 +103,11 @@ def test_get_or_create_rich_builds_graph(db: Session):
     assert user.is_test
     assert user.vk_id == '2000000001'
     assert user.vk_friends_data is not None and len(user.vk_friends_data) == 3
-    # 2 друга в подписках, 1 остаётся в «возможных друзьях» (followed=False).
-    assert len(user.follows) == 2
-    # Один друг подписан на богатого юзера.
-    assert len(user.followed_by) == 1
+    # 2 друга + новичок по инвайту в подписках, 1 друг остаётся в «возможных
+    # друзьях» (followed=False).
+    assert len(user.follows) == 3
+    # Подписчики: друг и новичок (взаимно) + подписчица без ответа (0024).
+    assert len(user.followed_by) == 3
     # Свои желания (2 обычных + 4 WB во всех состояниях склада) + один
     # зарезервированный чужой.
     own = db.scalars(select(Wish).where(Wish.user_id == user.id)).all()
@@ -124,6 +130,23 @@ def test_get_or_create_rich_builds_graph(db: Session):
     assert db.scalar(select(func.count()).select_from(WishPriceObservation)) == 6
     # Все сателлиты — тоже сид-юзеры.
     assert all(friend.is_test for friend in user.follows)
+
+
+def test_rich_covers_graph_entry_states(db: Session):
+    """0024: новичок по инвайту (взаимно, `source=invite`), подписчица без
+    ответа, список подписчиков со смешанными `followed_by_me`."""
+    user = get_or_create_test_user(db, TestPersona.rich)
+    followers = {f.display_name: f in user.follows for f in user.followed_by}
+    assert followers == {
+        'Аня Тестовая': True,
+        'Гоша Новичков': True,
+        'Дина Подписчикова': False,
+    }
+    invite_events = db.scalars(
+        select(FollowEvent).where(FollowEvent.source == FollowEventSource.invite)
+    ).all()
+    assert len(invite_events) == 2
+    assert all(event.is_notification_sent for event in invite_events)
 
 
 def test_get_or_create_rich_idempotent(db: Session):

@@ -145,13 +145,27 @@ def get_user_deep_link(user: User, ref: User | None = None) -> str:
     """Deep link на страницу списка пользователя.
 
     Если передан `ref` (пригласивший) — ссылка несёт реф-метку `ref={ref.id}`,
-    основу реферальной атрибуции (фича 0003). Без `ref` — обычный deep link
-    (пуши, шеринг чужого списка), метку не добавляем.
+    основу реферальной атрибуции (фича 0003). Для пушей — `get_push_deep_link`.
     """
     link = f'{settings.FRONTEND_URL}/user?userId={user.id}'
     if ref is not None:
         link += f'&ref={ref.id}'
     return f'{link}#'
+
+
+def get_push_deep_link(user: User) -> str:
+    """Deep link на список юзера для пуша: с маркером `via=push`.
+
+    По маркеру клиент отличает профиль из пуша от ссылки шеринга (`ref`): без
+    него на профиле из пуша показался бы CTA-блок подписки, а подписка ушла бы
+    в лог с `source=deeplink` вместо `push` (фича 0024).
+    """
+    return f'{settings.FRONTEND_URL}/user?userId={user.id}&via=push#'
+
+
+def get_followers_push_link(user: User) -> str:
+    """Ссылка пуша на свой список подписчиков (`followers_page`)."""
+    return f'{settings.FRONTEND_URL}/followers?userId={user.id}&followedBy=true#'
 
 
 def delete_user_image(user: User, db: Session):

@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.constants import (
+    FollowAction,
+    FollowEventSource,
     Gender,
     PriceObservationStatus,
     PriceSource,
@@ -21,6 +23,7 @@ from app.constants import (
     TestPersona,
 )
 from app.db import (
+    FollowEvent,
     PushInstallation,
     User,
     Wish,
@@ -140,6 +143,7 @@ def get_or_create_test_user(db: Session, persona: TestPersona) -> User:
     if persona == TestPersona.rich:
         user = _get_or_create_rich(db)
         _ensure_rich_store_wishes(db, user)
+        _ensure_rich_graph_entry(db, user)
         _ensure_recommendations(db)
         return user
     return _get_or_create_empty(db)
@@ -245,6 +249,44 @@ def _get_or_create_rich(db: Session) -> User:
 
     db.commit()
     return user
+
+
+# Вход в граф (0024): новичок, зарегистрированный по инвайт-ссылке rich (взаимные
+# подписки с `source=invite`), и подписчик, на которого rich не подписан в ответ.
+# Вместе с «Аней» (взаимная обычная) список подписчиков rich — со смешанными
+# `followed_by_me`, а профиль Дины — с «Подписаться в ответ».
+_RICH_INVITEE_UID = 'test-invitee-rich'
+_RICH_FOLLOWER_UID = 'test-follower-no-back'
+
+
+def _ensure_rich_graph_entry(db: Session, user: User) -> None:
+    """Состояния графа 0024 у rich, дописываются и уже существующему rich (стенд),
+    идемпотентно по firebase_uid."""
+    if _find_test_user(db, _RICH_INVITEE_UID) is None:
+        invitee = _new_test_user(_RICH_INVITEE_UID, 'Гоша Новичков', gender=Gender.male)
+        db.add(invitee)
+        user.follows.append(invitee)
+        invitee.follows.append(user)
+        db.flush()
+        # Как у настоящей регистрации по инвайту; пуш уже «отправлен» — сид не
+        # должен порождать пушей на стенде.
+        db.add_all(
+            FollowEvent(
+                actor_id=actor.id,
+                target_id=target.id,
+                action=FollowAction.follow,
+                source=FollowEventSource.invite,
+                is_notification_sent=True,
+            )
+            for actor, target in ((user, invitee), (invitee, user))
+        )
+    if _find_test_user(db, _RICH_FOLLOWER_UID) is None:
+        follower = _new_test_user(
+            _RICH_FOLLOWER_UID, 'Дина Подписчикова', gender=Gender.female
+        )
+        db.add(follower)
+        follower.follows.append(user)
+    db.commit()
 
 
 def _ensure_rich_store_wishes(db: Session, user: User) -> None:

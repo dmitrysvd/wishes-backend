@@ -48,13 +48,15 @@ def send_push(
     link: str | None = None,
     trigger: PriceAlertTrigger | None = None,
     with_delivery_id: bool = False,
+    kind: str | None = None,
 ) -> PushSendOutcome:
     """Единственная точка отправки пушей; сама пишет `PushSendingLog`.
 
     `trigger` — тип триггера пуша по складу (0013), уходит в лог и в
     `data.trigger`. `with_delivery_id` — положить в `data.delivery_id` id
     будущей строки лога: по нему клиент сообщает об открытии
-    (`POST /push/opened`), поэтому id генерится ДО отправки. `title`/`body`
+    (`POST /push/opened`), поэтому id генерится ДО отправки. `kind` — вид пуша
+    в `data.type` по контракту (`x-push-payload`). `title`/`body`
     дублируются в `data` для тоста в foreground.
 
     Лог — источник правды для дедупа (крон-пуши читают его перед отправкой) и
@@ -82,6 +84,8 @@ def send_push(
     if trigger is not None:
         data['type'] = 'price_alert'
         data['trigger'] = trigger.value
+    if kind is not None:
+        data['type'] = kind
     android_notification = messaging.AndroidNotification(
         title=title,
         body=body,

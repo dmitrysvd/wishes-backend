@@ -42,7 +42,7 @@ from sqlalchemy.sql import false, func
 from app.config import settings
 from app.constants import (
     FollowAction,
-    FollowSource,
+    FollowEventSource,
     Gender,
     NotificationGroup,
     PriceAlertTrigger,
@@ -420,6 +420,9 @@ class PushReason(enum.Enum):
     RESERVATION = enum.auto()
     WISH_CREATION = enum.auto()
     NEW_FOLLOWER = enum.auto()
+    # Пригласившему: по его ссылке зарегистрировались, вы подписаны друг на друга
+    # (фича 0024). Заменяет NEW_FOLLOWER для этого ребра.
+    INVITE_JOINED = enum.auto()
     # Дайджест по складу (фича 0013): подешевело / вернулось в наличие. Один
     # пуш на юзера в календарные сутки UTC; тип триггера — в `trigger`.
     PRICE_ALERT = enum.auto()
@@ -484,7 +487,8 @@ class FollowEvent(Base):
 
     В отличие от таблицы рёбер `user_following` (хранит только текущее состояние
     и теряет строку при отписке), лог копит и follow, и unfollow во времени —
-    это даёт динамику графа и сигнал оттока связей. `source` проставляет клиент.
+    это даёт динамику графа и сигнал оттока связей. `source` проставляет клиент,
+    кроме серверных путей (`invite` — взаимные подписки по инвайт-ссылке).
     """
 
     __tablename__ = 'follow_event'
@@ -497,8 +501,8 @@ class FollowEvent(Base):
         ForeignKey('user.id', ondelete='CASCADE'), nullable=False
     )
     action: Mapped[FollowAction] = mapped_column(Enum(FollowAction), nullable=False)
-    source: Mapped[FollowSource | None] = mapped_column(
-        Enum(FollowSource), nullable=True
+    source: Mapped[FollowEventSource | None] = mapped_column(
+        Enum(FollowEventSource, name='followsource'), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

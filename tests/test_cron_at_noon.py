@@ -117,7 +117,7 @@ async def test_send_upcoming_birthday_of_current_user_notification(db, mocker, f
 @pytest.mark.anyio
 async def test_send_upcoming_birthday_of_followed_user_notification(db, mocker, fcm):
     mocker.patch(
-        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://link'
+        'app.cron_scripts.at_noon.get_push_deep_link', return_value='http://link'
     )
 
     bday = date.today() + timedelta(days=10)
@@ -208,7 +208,7 @@ def test_is_in_campaign_window():
 @pytest.mark.anyio
 async def test_seasonal_sent_in_window(db, mocker, fcm):
     mocker.patch(
-        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://own'
+        'app.cron_scripts.at_noon.get_push_deep_link', return_value='http://own'
     )
     mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
     user = User(
@@ -238,7 +238,7 @@ async def test_seasonal_sent_in_window(db, mocker, fcm):
 async def test_seasonal_targets_only_matching_gender(db, mocker, fcm):
     # Гендерный сегмент (8 марта = female) шлём только женщинам; мужчина и
     # unknown-пол отсекаются SQL-фильтром (NULL == female → не проходит).
-    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    mocker.patch('app.cron_scripts.at_noon.get_push_deep_link', return_value='x')
     campaign = SeasonalCampaign(
         key='mar8',
         month=3,
@@ -291,7 +291,7 @@ async def test_seasonal_targets_only_matching_gender(db, mocker, fcm):
 
 @pytest.mark.anyio
 async def test_seasonal_dedup_same_season(db, mocker, fcm):
-    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    mocker.patch('app.cron_scripts.at_noon.get_push_deep_link', return_value='x')
     mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
     user = User(
         display_name='Dedup User',
@@ -313,7 +313,7 @@ async def test_seasonal_dedup_same_season(db, mocker, fcm):
 
 @pytest.mark.anyio
 async def test_seasonal_skips_user_without_token(db, mocker, fcm):
-    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    mocker.patch('app.cron_scripts.at_noon.get_push_deep_link', return_value='x')
     mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
     # «Нет токена» = NULL (пустая строка на уровне БД запрещена констрейнтом,
     # см. test_push_token_empty_string_rejected) — такого юзера пропускаем.
@@ -404,7 +404,7 @@ def _seasonal_user(uid: str, token_age_days: int = 0, **kwargs) -> User:
 
 @pytest.mark.anyio
 async def test_seasonal_excludes_test_users(db, mocker, fcm):
-    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    mocker.patch('app.cron_scripts.at_noon.get_push_deep_link', return_value='x')
     campaign = _today_campaign()
     real = _seasonal_user('real')
     db.add_all([real, _seasonal_user('test', is_test=True)])
@@ -458,7 +458,7 @@ def test_seasonal_dry_run_out_of_window(db, mocker):
 
 @pytest.mark.anyio
 async def test_seasonal_rehearsal_uses_suffixed_key(db, mocker, fcm):
-    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    mocker.patch('app.cron_scripts.at_noon.get_push_deep_link', return_value='x')
     mocker.patch('app.cron_scripts.at_noon.SEASONAL_CAMPAIGNS', (_today_campaign(),))
     tester = _seasonal_user('tester')
     db.add_all([tester, _seasonal_user('bystander')])
@@ -576,7 +576,7 @@ async def test_current_user_no_push_when_birthday_far(db, mocker, fcm):
 async def test_followed_user_no_push_when_birthday_outside_window(db, mocker, fcm):
     # ДР подписки вне окна 3..14 дней -> подписчикам не отправляется.
     mocker.patch(
-        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://link'
+        'app.cron_scripts.at_noon.get_push_deep_link', return_value='http://link'
     )
     bday = date.today() + timedelta(days=30)
     followed = User(
@@ -605,7 +605,7 @@ async def test_followed_user_no_push_when_birthday_outside_window(db, mocker, fc
 async def test_empty_list_reactivation_sends_and_dedups(db, mocker, fcm):
     # Пустой список + живой токен -> шлём ровно один пуш, лог записан.
     mocker.patch(
-        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://link'
+        'app.cron_scripts.at_noon.get_push_deep_link', return_value='http://link'
     )
     user = User(
         display_name='Empty List User',
@@ -660,7 +660,7 @@ async def test_empty_list_reactivation_skips_non_archived_wish(db, mocker, fcm):
 async def test_empty_list_reactivation_sends_when_only_archived(db, mocker, fcm):
     # Только архивные хотелки -> публичный список пуст, шлём.
     mocker.patch(
-        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://link'
+        'app.cron_scripts.at_noon.get_push_deep_link', return_value='http://link'
     )
     user = User(
         display_name='Only Archived',
@@ -722,7 +722,7 @@ async def test_empty_list_reactivation_no_token_skipped(db, mocker, fcm):
 @pytest.mark.anyio
 async def test_empty_list_reactivation_skips_old_registrant(db, mocker, fcm):
     # Давний регистрант с пустым списком не трогается — шлём только недавним.
-    mocker.patch('app.cron_scripts.at_noon.get_user_deep_link', return_value='x')
+    mocker.patch('app.cron_scripts.at_noon.get_push_deep_link', return_value='x')
     user = User(
         display_name='Old Empty',
         firebase_uid='old_empty_uid',

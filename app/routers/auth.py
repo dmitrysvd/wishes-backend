@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -26,7 +27,12 @@ from app.schemas import (
     ResponseVkAuthMobileSchema,
     SavePushTokenSchema,
 )
-from app.utils import new_user_handler, save_registration_attribution, utc_now
+from app.utils import (
+    create_invite_mutual_follow,
+    new_user_handler,
+    save_registration_attribution,
+    utc_now,
+)
 from app.vk import (
     VkUserExtraData,
     exchange_vk_code,
@@ -149,15 +155,14 @@ def auth_vk_via_code(
         request_data.device_id,
         request_data.redirect_uri,
     )
-    firebase_uid, firebase_token, is_new_user = auth_vk(
+    firebase_uid, firebase_token, is_new_user, mutual_follow_user_id = auth_vk(
         access_token, vk_extra_data, db, request_data.attribution
     )
     return ResponseVkAuthMobileSchema(
         firebase_uid=firebase_uid,
         firebase_token=firebase_token,
         user_created=is_new_user,
-        # Контракт 0024 до agreed: авто-подписки ещё нет, поле всегда null.
-        mutual_follow_user_id=None,
+        mutual_follow_user_id=mutual_follow_user_id,
     )
 
 
@@ -166,7 +171,7 @@ def auth_vk(
     vk_extra_data: VkUserExtraData,
     db: Session,
     attribution: RegistrationAttributionSchema | None = None,
-) -> tuple[str, str, bool]:
+) -> tuple[str, str, bool, UUID | None]:
     """Завести/найти юзера по VK-профилю и выдать firebase custom token.
 
     `access_token` и `vk_extra_data` — только из серверного обмена VK ID
@@ -236,13 +241,16 @@ def auth_vk(
     # photo_url не сохраняем — только своя /media. См. refresh_avatar_on_login.
     refresh_avatar_on_login(user, vk_basic_data.photo_url, db)
 
+    mutual_follow_user_id = None
     if is_new_user:
         new_user_handler(user)
-        # first-touch атрибуция — только для нового юзера, best-effort
+        # first-touch атрибуция и взаимные подписки по инвайту — только для
+        # нового юзера, best-effort
         save_registration_attribution(db, user, attribution)
+        mutual_follow_user_id = create_invite_mutual_follow(db, user, attribution)
 
     firebase_token = create_custom_firebase_token(firebase_uid)
-    return firebase_uid, firebase_token, is_new_user
+    return firebase_uid, firebase_token, is_new_user, mutual_follow_user_id
 
 
 LEGACY_VK_MOBILE_GONE_DETAIL = (
@@ -390,14 +398,17 @@ def auth_firebase(
     # Свежую соц-аватарку (Google) перекачиваем на диск в высоком разрешении.
     refresh_avatar_on_login(user, firebase_user.photo_url, db)
 
+    mutual_follow_user_id = None
     if is_new_user:
         new_user_handler(user)
-        # first-touch атрибуция — только для нового юзера, best-effort
-        save_registration_attribution(db, user, firebase_auth_schema.attribution)
+        # first-touch атрибуция и взаимные подписки по инвайту — только для
+        # нового юзера, best-effort
+        attribution = firebase_auth_schema.attribution
+        save_registration_attribution(db, user, attribution)
+        mutual_follow_user_id = create_invite_mutual_follow(db, user, attribution)
 
-    # Контракт 0024 до agreed: авто-подписки ещё нет, поле всегда null.
     return AuthFirebaseResponseSchema(
-        user_created=is_new_user, mutual_follow_user_id=None
+        user_created=is_new_user, mutual_follow_user_id=mutual_follow_user_id
     )
 
 

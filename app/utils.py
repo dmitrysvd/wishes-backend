@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import insert, or_, select
 from sqlalchemy.orm import Session
 
-from app.constants import UTM_SOURCE_MAX_LENGTH
-from app.db import User, UserAttribution
+from app.constants import UTM_SOURCE_MAX_LENGTH, FollowAction, FollowEventSource
+from app.db import FollowEvent, User, UserAttribution, user_following_table
 from app.logging import logger
 from app.schemas import RegistrationAttributionSchema
 
@@ -104,3 +104,89 @@ def save_registration_attribution(
             exc=exc,
         )
         db.rollback()
+
+
+def create_invite_mutual_follow(
+    db: Session,
+    user: User,
+    attribution: RegistrationAttributionSchema | None,
+) -> UUID | None:
+    """Регистрация по инвайт-ссылке: подписать новичка и пригласившего друг на
+    друга (фича 0024). Вызывать только для нового юзера (first-touch).
+
+    Пригласивший — та же метка, что у атрибуции 0003, с теми же правилами:
+    битая, несуществующая (в т.ч. удалённый юзер) или self-метка — рёбер нет.
+    Возвращает id пригласившего, если теперь оба подписаны друг на друга, иначе
+    `None` — это `mutual_follow_user_id` ответа auth.
+    """
+    if attribution is None:
+        return None
+    referrer_id = _resolve_referrer_id(db, user, attribution.referrer_id)
+    if referrer_id is None:
+        return None
+    return follow_each_other_by_invite(db, user, referrer_id)
+
+
+def follow_each_other_by_invite(
+    db: Session, newbie: User, inviter_id: UUID
+) -> UUID | None:
+    """Создать недостающие рёбра новичок ⇄ пригласивший, best-effort.
+
+    Существующее ребро не трогаем, на каждое созданное — событие лога графа с
+    `source=invite`. Пуш пригласившему (`INVITE_JOINED`) шлёт крон по событию
+    «пригласивший → новичок»: его нет, если эта подписка уже была, — тогда нет
+    и пуша. Событие «новичок → пригласивший» сразу помечено отправленным: оно не
+    должно дать пригласившему второй пуш «новый подписчик» про то же самое.
+    Любая ошибка БД откатывается и логируется — регистрацию не валит.
+    """
+    newbie_id = newbie.id
+    try:
+        existing = set(
+            db.execute(
+                select(
+                    user_following_table.c.follower_id,
+                    user_following_table.c.followed_id,
+                ).where(
+                    or_(
+                        (user_following_table.c.follower_id == newbie_id)
+                        & (user_following_table.c.followed_id == inviter_id),
+                        (user_following_table.c.follower_id == inviter_id)
+                        & (user_following_table.c.followed_id == newbie_id),
+                    )
+                )
+            ).tuples()
+        )
+        for follower_id, followed_id in (
+            (newbie_id, inviter_id),
+            (inviter_id, newbie_id),
+        ):
+            if (follower_id, followed_id) in existing:
+                continue
+            db.execute(
+                insert(user_following_table).values(
+                    follower_id=follower_id, followed_id=followed_id
+                )
+            )
+            db.add(
+                FollowEvent(
+                    actor_id=follower_id,
+                    target_id=followed_id,
+                    action=FollowAction.follow,
+                    source=FollowEventSource.invite,
+                    is_notification_sent=follower_id == newbie_id,
+                )
+            )
+        db.commit()
+    except Exception as exc:
+        logger.error(
+            'Не удалось подписать новичка {newbie_id} и пригласившего '
+            '{inviter_id} друг на друга: {exc}',
+            newbie_id=newbie_id,
+            inviter_id=inviter_id,
+            exc=exc,
+        )
+        db.rollback()
+        return None
+    # Рёбра вставлены мимо relationship — сбрасываем закэшированные списки.
+    db.expire(newbie)
+    return inviter_id

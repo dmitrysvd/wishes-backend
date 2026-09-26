@@ -47,6 +47,7 @@ GROUP_TEXTS: dict[NotificationGroup, GroupTexts] = {
 PUSH_REASON_GROUP: dict[PushReason, NotificationGroup] = {
     PushReason.RESERVATION: NotificationGroup.reservation,
     PushReason.NEW_FOLLOWER: NotificationGroup.friends,
+    PushReason.INVITE_JOINED: NotificationGroup.friends,
     PushReason.WISH_CREATION: NotificationGroup.friends,
     PushReason.CURRENT_USER_BIRTHDAY: NotificationGroup.birthdays,
     PushReason.FOLLOWER_BIRTHDAY: NotificationGroup.birthdays,

@@ -2,12 +2,13 @@ from datetime import timedelta
 from uuid import UUID
 
 from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
-from app.constants import FollowAction, Gender
+from app.constants import FollowAction, FollowEventSource, Gender
 from app.db import FollowEvent, PushReason, SessionLocal, User, Wish
 from app.firebase import send_push
+from app.helpers.user_helpers import get_followers_push_link, get_push_deep_link
 from app.logging import logger
-from app.main import get_user_deep_link
 from app.utils import utc_now
 
 
@@ -84,7 +85,7 @@ def send_wish_creation_notifications():
                     body=f'Узнайте, что {user.display_name} хочет получить в подарок',
                     reason=PushReason.WISH_CREATION,
                     reason_user=user,
-                    link=get_user_deep_link(user),
+                    link=get_push_deep_link(user),
                 )
 
 
@@ -93,9 +94,12 @@ def send_new_follower_notifications():
 
     Пуш на каждое событие подписки давал N пушей за N подписок (единственный
     пуш без дедупа). Теперь события собираются за прогон: у одного подписчика —
-    его имя и ссылка на его список, у нескольких — имя первого и счётчик, ссылка
-    на свой список. Считаем только тех, кто к моменту прогона всё ещё подписан:
-    подписался-и-отписался за час — не событие для пуша.
+    его имя и ссылка на его профиль, у нескольких — имя первого и счётчик, ссылка
+    на свой список подписчиков. Считаем только тех, кто к моменту прогона всё ещё
+    подписан: подписался-и-отписался за час — не событие для пуша.
+
+    Подписка пригласившего на новичка по инвайт-ссылке (`source=invite`) идёт не
+    в дайджест, а отдельным пушем пригласившему «присоединился по вашей ссылке».
     """
     with SessionLocal() as db:
         pending_cond = (FollowEvent.action == FollowAction.follow) & (
@@ -110,6 +114,9 @@ def send_new_follower_notifications():
         db.commit()
         events_by_target: dict[UUID, list[FollowEvent]] = {}
         for event in events:
+            if event.source == FollowEventSource.invite:
+                _send_invite_joined(db, event)
+                continue
             events_by_target.setdefault(event.target_id, []).append(event)
         for target_id, target_events in events_by_target.items():
             target = db.get(User, target_id)
@@ -127,13 +134,13 @@ def send_new_follower_notifications():
             first = followers[0]
             if len(followers) == 1:
                 body = f'На вас подписался {first.display_name}'
-                link = get_user_deep_link(first)
+                link = get_push_deep_link(first)
             else:
                 body = (
                     f'На вас подписались {first.display_name} '
                     f'и ещё {len(followers) - 1}'
                 )
-                link = get_user_deep_link(target)
+                link = get_followers_push_link(target)
             send_push(
                 target_users=[target],
                 title='У вас новый подписчик',
@@ -141,4 +148,30 @@ def send_new_follower_notifications():
                 reason=PushReason.NEW_FOLLOWER,
                 reason_user=first,
                 link=link,
+                with_delivery_id=True,
+                kind='new_follower',
             )
+
+
+def _send_invite_joined(db: Session, event: FollowEvent) -> None:
+    """Пуш пригласившему (`actor`) о новичке (`target`), зарегистрированном по
+    его ссылке. Не шлём, если кто-то из них удалён или пригласивший успел
+    отписаться: «теперь вы подписаны друг на друга» было бы неправдой."""
+    inviter = db.get(User, event.actor_id)
+    newbie = db.get(User, event.target_id)
+    # None — юзера удалили между выборкой событий и отправкой (гонка с кроном).
+    if not (inviter and newbie and inviter.can_receive_push):
+        return
+    if newbie not in inviter.follows:
+        return
+    verb = 'присоединилась' if newbie.gender == Gender.female else 'присоединился'
+    send_push(
+        target_users=[inviter],
+        title=f'{newbie.display_name} {verb} по вашей ссылке',
+        body='Теперь вы подписаны друг на друга',
+        reason=PushReason.INVITE_JOINED,
+        reason_user=newbie,
+        link=get_push_deep_link(newbie),
+        with_delivery_id=True,
+        kind='invite_joined',
+    )
