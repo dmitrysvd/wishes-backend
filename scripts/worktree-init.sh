@@ -17,12 +17,12 @@ if [ "$(realpath "$WORKTREE")" = "$(realpath "$MAIN")" ]; then
   exit 0
 fi
 
-link() {  # link <имя> <target>
+link() {  # link <имя> <target> [ln-флаги]
   local name="$1" target="$2" path="$WORKTREE/$1"
   if [ -e "$path" ] || [ -L "$path" ]; then
     echo "  $name: уже есть, не трогаю"
   else
-    ln -s "$target" "$path"
+    ln -s ${3:-} "$target" "$path"
     echo "  $name -> $target"
   fi
 }
@@ -34,9 +34,11 @@ if [ -L "$MAIN/wishes-product" ]; then
 else
   echo "  wishes-product: в основном чекауте нет симлинка — пропускаю"
 fi
-# .env — ссылка на основной, а не копия.
+# .env — ссылка на основной, а не копия. Относительная (-r): worktree лежит
+# внутри основного чекаута, и абсолютная ссылка сломается при переименовании
+# папки репо. wishes-product снаружи репо — ему нужна абсолютная.
 if [ -f "$MAIN/.env" ]; then
-  link .env "$MAIN/.env"
+  link .env "$MAIN/.env" -r
 else
   echo "  .env: в основном чекауте нет — пропускаю"
 fi
