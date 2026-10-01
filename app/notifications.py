@@ -12,8 +12,8 @@ from app.constants import (
 )
 from app.db import FollowEvent, PushReason, PushSendingLog, SessionLocal, User, Wish
 from app.firebase import send_push
+from app.helpers.user_helpers import get_user_deep_link
 from app.logging import logger
-from app.main import get_user_deep_link
 from app.utils import utc_now
 
 

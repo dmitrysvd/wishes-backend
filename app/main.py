@@ -19,11 +19,7 @@ from app.db import engine
 
 # Реэкспорт для обратной совместимости
 from app.dependencies import get_current_user, get_db
-from app.helpers import (
-    get_user_deep_link,
-    record_request_activity,
-    set_activity_headers,
-)
+from app.helpers import record_request_activity, set_activity_headers
 from app.logging import logger
 from app.routers import (
     auth,
@@ -38,7 +34,7 @@ from app.routers import (
     wishes,
 )
 
-__all__ = ['app', 'get_db', 'get_current_user', 'get_user_deep_link']
+__all__ = ['app', 'get_db', 'get_current_user']
 
 BASE_DIR = Path(__file__).parent.parent
 APP_DIR = BASE_DIR / 'app'
