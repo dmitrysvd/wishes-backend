@@ -344,25 +344,30 @@ def select_seasonal_recipients(
     )
 
 
-def _active_segments(today: date) -> list[tuple[SeasonalCampaign, SeasonalSegment]]:
+def _active_segments(
+    today: date, campaigns: tuple[SeasonalCampaign, ...]
+) -> list[tuple[SeasonalCampaign, SeasonalSegment]]:
     return [
         (campaign, segment)
-        for campaign in SEASONAL_CAMPAIGNS
+        for campaign in campaigns
         if is_in_campaign_window(campaign, today)
         for segment in campaign.segments
     ]
 
 
-def send_seasonal_notifications(today: date | None = None) -> None:
+def send_seasonal_notifications(
+    today: date | None = None,
+    campaigns: tuple[SeasonalCampaign, ...] = SEASONAL_CAMPAIGNS,
+) -> None:
     """Сезонные глобальные пуши по сегментам кампаний.
 
     Для каждой активной сегодня кампании и каждого её сегмента шлём получателям
     из `select_seasonal_recipients`. Один юзер за сезон получает не более
-    одного пуша на сегмент. `today` параметризован ради тестируемости без
-    подмены системного времени.
+    одного пуша на сегмент. `today` и `campaigns` — параметры, чтобы тест
+    задавал дату и набор кампаний без подмены системного времени и модуля.
     """
     today = today or date.today()
-    for campaign, segment in _active_segments(today):
+    for campaign, segment in _active_segments(today, campaigns):
         campaign_key = seasonal_campaign_key(campaign, segment, today)
         with SessionLocal() as db:
             users = select_seasonal_recipients(db, campaign, segment, today)
@@ -378,7 +383,10 @@ def send_seasonal_notifications(today: date | None = None) -> None:
         logger.info(f'Сезонная кампания {campaign_key}: отправлено {len(users)} пушей')
 
 
-def seasonal_dry_run(today: date | None = None) -> list[str]:
+def seasonal_dry_run(
+    today: date | None = None,
+    campaigns: tuple[SeasonalCampaign, ...] = SEASONAL_CAMPAIGNS,
+) -> list[str]:
     """Сухой прогон: кто получил бы сезонный пуш на дату `today` и какой это
     срез — без отправки и без записи в БД (ни лога, ни гвардов).
 
@@ -389,7 +397,7 @@ def seasonal_dry_run(today: date | None = None) -> list[str]:
     today = today or date.today()
     now = utc_now()
     lines: list[str] = []
-    active = _active_segments(today)
+    active = _active_segments(today, campaigns)
     if not active:
         lines.append(f'{today}: ни одна сезонная кампания не в окне')
     with SessionLocal() as db:
@@ -442,7 +450,11 @@ def seasonal_dry_run(today: date | None = None) -> list[str]:
     return lines
 
 
-def send_seasonal_rehearsal(user_ids: list[UUID], today: date | None = None) -> int:
+def send_seasonal_rehearsal(
+    user_ids: list[UUID],
+    today: date | None = None,
+    campaigns: tuple[SeasonalCampaign, ...] = SEASONAL_CAMPAIGNS,
+) -> int:
     """Репетиция: реальная отправка активных на `today` сегментов только
     указанным юзерам, с ключом `<боевой ключ>-rehearsal`.
 
@@ -458,7 +470,7 @@ def send_seasonal_rehearsal(user_ids: list[UUID], today: date | None = None) -> 
         missing = set(user_ids) - {u.id for u in users}
         if missing:
             raise SystemExit(f'Юзеры не найдены: {sorted(map(str, missing))}')
-        for campaign, segment in _active_segments(today):
+        for campaign, segment in _active_segments(today, campaigns):
             campaign_key = seasonal_campaign_key(campaign, segment, today)
             rehearsal_key = f'{campaign_key}-rehearsal'
             for user in users:

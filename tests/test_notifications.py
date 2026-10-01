@@ -18,6 +18,7 @@ from app.db import (
     User,
     Wish,
 )
+from app.helpers.user_helpers import get_user_deep_link
 from app.notifications import (
     send_new_follower_notifications,
     send_reservation_notifincations,
@@ -56,7 +57,7 @@ def user_without_token(db):
 
 @pytest.mark.anyio
 async def test_send_reservation_notifications(
-    db, user_with_token, user_without_token, mocker, fcm
+    db, user_with_token, user_without_token, fcm
 ):
 
     # Wish for user_with_token, reserved by someone
@@ -133,9 +134,8 @@ def _wish_flags(db, author: User) -> dict[str, bool]:
 
 @pytest.mark.anyio
 async def test_send_wish_creation_notifications(
-    db, followed_author, user_without_token, mocker, fcm
+    db, followed_author, user_without_token, fcm
 ):
-    mocker.patch('app.notifications.get_user_deep_link', return_value='http://link')
 
     # Подписчик без установок: пуша нет, но созревшая хотелка помечена.
     send_wish_creation_notifications(now=IN_WINDOW)
@@ -170,9 +170,8 @@ async def test_send_wish_creation_notifications_outside_window(
 
 @pytest.mark.anyio
 async def test_send_wish_creation_notifications_rate_limit(
-    db, followed_author, user_without_token, mocker, fcm
+    db, followed_author, user_without_token, fcm
 ):
-    mocker.patch('app.notifications.get_user_deep_link', return_value='http://link')
     user_without_token.push_installations = [PushInstallation(push_token='token2')]
     db.add(user_without_token)
     db.commit()
@@ -225,10 +224,7 @@ def _user(db, name: str, token: str | None) -> User:
     return user
 
 
-def test_new_follower_single(db, fcm, mocker):
-    mocker.patch(
-        'app.notifications.get_user_deep_link', side_effect=lambda u: f'link:{u.id}'
-    )
+def test_new_follower_single(db, fcm):
     target = _user(db, 'Target', 'token-target')
     follower = _user(db, 'Follower', None)
     event = _follow(db, follower, target)
@@ -238,7 +234,7 @@ def test_new_follower_single(db, fcm, mocker):
     (message,) = fcm.messages
     assert message.token == 'token-target'
     assert message.android.notification.body == 'На вас подписался Follower'
-    assert message.data['link'] == f'link:{follower.id}'
+    assert message.data['link'] == get_user_deep_link(follower)
     db.refresh(event)
     assert event.is_notification_sent is True
     log = db.scalars(
@@ -252,10 +248,7 @@ def test_new_follower_single(db, fcm, mocker):
     assert fcm.calls == []
 
 
-def test_new_follower_many_in_one_push(db, fcm, mocker):
-    mocker.patch(
-        'app.notifications.get_user_deep_link', side_effect=lambda u: f'link:{u.id}'
-    )
+def test_new_follower_many_in_one_push(db, fcm):
     target = _user(db, 'Target', 'token-target')
     first = _user(db, 'First', None)
     second = _user(db, 'Second', None)
@@ -266,7 +259,7 @@ def test_new_follower_many_in_one_push(db, fcm, mocker):
 
     (message,) = fcm.messages
     assert message.android.notification.body == 'На вас подписались First и ещё 1'
-    assert message.data['link'] == f'link:{target.id}'
+    assert message.data['link'] == get_user_deep_link(target)
 
 
 def test_new_follower_skips_unfollowed_and_no_token(db, fcm):
