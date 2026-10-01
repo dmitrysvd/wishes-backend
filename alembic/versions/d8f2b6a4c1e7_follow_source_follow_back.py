@@ -6,7 +6,7 @@
 меняем.
 
 Revision ID: d8f2b6a4c1e7
-Revises: a7c3e5f1b9d2
+Revises: b3d9f2a6c8e1
 Create Date: 2026-09-26 12:00:00.000000
 
 """
@@ -17,7 +17,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = 'd8f2b6a4c1e7'
-down_revision: str | None = 'a7c3e5f1b9d2'
+down_revision: str | None = 'b3d9f2a6c8e1'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

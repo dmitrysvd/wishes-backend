@@ -69,6 +69,10 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+    # `Mapped[datetime]` без явного типа — `timestamptz`. Колонка без пояса при
+    # сравнении молча приводится через TimeZone сессии/процесса, и дедупы по
+    # времени съезжают при смене TZ. Гарантирует тест `test_db.py`.
+    type_annotation_map = {datetime: DateTime(timezone=True)}
 
 
 user_following_table = Table(
@@ -432,7 +436,7 @@ class PushSendingLog(Base):
     __tablename__ = 'push_sending_log'
 
     id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
-    sent_at: Mapped[datetime] = mapped_column(DateTime(), nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(nullable=False)
     reason_user_id: Mapped[UUID] = mapped_column(
         ForeignKey('user.id', ondelete='CASCADE'), nullable=False
     )

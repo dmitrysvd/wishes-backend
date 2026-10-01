@@ -1,6 +1,5 @@
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -14,6 +13,7 @@ from app.constants import PriceAlertTrigger
 from app.db import PushInstallation, PushReason, PushSendingLog, SessionLocal, User
 from app.logging import logger
 from app.notification_settings import disabled_user_ids
+from app.utils import utc_now
 
 cred = firebase_admin.credentials.Certificate(settings.FIREBASE_KEY_PATH)
 
@@ -176,7 +176,7 @@ def send_push(
                 error_type=type(resp.exception).__name__,
                 error=resp.exception,
             )
-    sent_at = datetime.now()
+    sent_at = utc_now()
     with SessionLocal() as db:
         db.add_all(
             PushSendingLog(

@@ -3,7 +3,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.config import settings
 from app.constants import (
     WISH_CREATION_PUSH_DELAY,
     WISH_CREATION_PUSH_HOURS_UTC,
@@ -19,6 +18,7 @@ from app.db import (
     User,
     Wish,
 )
+from app.helpers.user_helpers import get_followers_push_link, get_push_deep_link
 from app.notifications import (
     send_new_follower_notifications,
     send_reservation_notifincations,
@@ -57,7 +57,7 @@ def user_without_token(db):
 
 @pytest.mark.anyio
 async def test_send_reservation_notifications(
-    db, user_with_token, user_without_token, mocker, fcm
+    db, user_with_token, user_without_token, fcm
 ):
 
     # Wish for user_with_token, reserved by someone
@@ -233,10 +233,7 @@ def test_new_follower_single(db, fcm):
     (message,) = fcm.messages
     assert message.token == 'token-target'
     assert message.android.notification.body == 'На вас подписался Follower'
-    # Профиль подписчика с маркером пуша; delivery_id — для `POST /push/opened`.
-    assert message.data['link'] == (
-        f'{settings.FRONTEND_URL}/user?userId={follower.id}&via=push#'
-    )
+    assert message.data['link'] == get_push_deep_link(follower)
     assert message.data['type'] == 'new_follower'
     db.refresh(event)
     assert event.is_notification_sent is True
@@ -263,9 +260,7 @@ def test_new_follower_many_in_one_push(db, fcm):
 
     (message,) = fcm.messages
     assert message.android.notification.body == 'На вас подписались First и ещё 1'
-    assert message.data['link'] == (
-        f'{settings.FRONTEND_URL}/followers?userId={target.id}&followedBy=true#'
-    )
+    assert message.data['link'] == get_followers_push_link(target)
 
 
 def test_new_follower_skips_unfollowed_and_no_token(db, fcm):
