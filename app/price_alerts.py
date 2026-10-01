@@ -8,7 +8,7 @@
 """
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import ROUND_DOWN, Decimal
 from uuid import UUID
 
@@ -229,11 +229,8 @@ def build_message(
 
 
 def already_sent_today(db: Session, user_id: UUID, today: date) -> bool:
-    """Один пуш по складу в календарные сутки UTC — по логу отправок.
-
-    `sent_at` в логе — naive `datetime.now()` (сервер живёт в UTC), поэтому и
-    граница суток naive."""
-    day_start = datetime.combine(today, datetime.min.time())
+    """Один пуш по складу в календарные сутки UTC — по логу отправок."""
+    day_start = datetime.combine(today, datetime.min.time(), tzinfo=UTC)
     return (
         db.scalars(
             select(PushSendingLog.id).where(

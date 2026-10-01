@@ -56,8 +56,11 @@ ignore = ["B008"]
 
 # FCM доступен только через `app.firebase.send_push`: она пишет `PushSendingLog`,
 # на котором держатся дедуп и метрика пушей. Прямой импорт — путь в обход лога.
+# `app.main` — точка сборки веб-приложения (роутеры, админка, мидлвари): импорт
+# из него тянет всё это в scheduler, и падение веб-инициализации роняет пуши.
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "firebase_admin.messaging".msg = "Пуши только через app.firebase.send_push (пишет PushSendingLog)"
+"app.main".msg = "Не импортируй сборку веб-приложения; бери нужное из исходного модуля"
 
 [tool.ruff.lint.per-file-ignores]
 "app/firebase.py" = ["TID251"]
