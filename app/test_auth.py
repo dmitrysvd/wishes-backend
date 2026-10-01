@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.constants import (
+    RESERVATION_PUSH_MAX_AGE,
     FollowAction,
     FollowEventSource,
     Gender,
@@ -330,6 +331,8 @@ def _ensure_guest_reservations(db: Session, rich: User) -> None:
     guest.merged_user_id = None
     guest.merged_at = None
     db.flush()
+    # Сид не должен порождать пушей «резерв» на стенде: брони старше предела пуша.
+    reserved_at = utc_now() - RESERVATION_PUSH_MAX_AGE - timedelta(days=1)
     anya = _find_test_user(db, _RICH_FRIENDS[0].uid)
     assert anya is not None
     by_name = {wish.name: wish for wish in anya.wishes}
@@ -341,9 +344,7 @@ def _ensure_guest_reservations(db: Session, rich: User) -> None:
         wish.is_archived = False
         wish.reserved_by_id = rich.id if holder == 'rich' else None
         wish.reserved_by_guest_id = guest.id if holder == 'guest' else None
-        wish.reserved_at = utc_now() if holder else None
-        # Сид не должен порождать пушей «резерв» на стенде.
-        wish.is_reservation_notification_sent = True
+        wish.reserved_at = reserved_at if holder else None
     archived = next(
         (w for w in rich.wishes if w.name == _RICH_ARCHIVED_GUEST_WISH), None
     )
@@ -353,8 +354,7 @@ def _ensure_guest_reservations(db: Session, rich: User) -> None:
     archived.is_archived = True
     archived.reserved_by_id = None
     archived.reserved_by_guest_id = guest.id
-    archived.reserved_at = utc_now()
-    archived.is_reservation_notification_sent = True
+    archived.reserved_at = reserved_at
     db.commit()
 
 

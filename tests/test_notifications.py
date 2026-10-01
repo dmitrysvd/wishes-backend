@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import select
 
 from app.constants import (
+    RESERVATION_PUSH_MAX_AGE,
     WISH_CREATION_PUSH_DELAY,
     WISH_CREATION_PUSH_HOURS_UTC,
     WISH_CREATION_PUSH_MIN_INTERVAL,
@@ -60,22 +61,23 @@ async def test_send_reservation_notifications(
     db, user_with_token, user_without_token, fcm
 ):
 
-    # Wish for user_with_token, reserved by someone
-    wish1 = Wish(
-        name='Wish 1',
-        user_id=user_with_token.id,
-        reserved_by_id=user_without_token.id,
-        is_reservation_notification_sent=False,
+    # Владельцу без установок пуш не шлём.
+    db.add_all(
+        [
+            Wish(
+                name='Wish 1',
+                user_id=user_with_token.id,
+                reserved_by_id=user_without_token.id,
+                reserved_at=utc_now(),
+            ),
+            Wish(
+                name='Wish 2',
+                user_id=user_without_token.id,
+                reserved_by_id=user_with_token.id,
+                reserved_at=utc_now(),
+            ),
+        ]
     )
-    # Wish for user_without_token, reserved by someone
-    wish2 = Wish(
-        name='Wish 2',
-        user_id=user_without_token.id,
-        reserved_by_id=user_with_token.id,
-        is_reservation_notification_sent=False,
-    )
-
-    db.add_all([wish1, wish2])
     db.commit()
 
     send_reservation_notifincations()
@@ -85,14 +87,68 @@ async def test_send_reservation_notifications(
     assert fcm.messages[0].android.notification.title
     assert fcm.messages[0].android.notification.body
 
-    # Flags should be updated for both if they were matched by the query
-    # Actually, the code updates only for users_to_send_pushes (those with tokens)
-    db.refresh(wish1)
-    db.refresh(wish2)
-    assert wish1.is_reservation_notification_sent is True
-    assert (
-        wish2.is_reservation_notification_sent is False
-    )  # No token, no notification sent/marked
+
+def _reserve(db, wish: Wish, by: User) -> None:
+    wish.reserved_by_id = by.id
+    wish.reserved_at = utc_now()
+    db.commit()
+
+
+def test_reservation_push_once_per_reservation(
+    db, user_with_token, user_without_token, fcm
+):
+    wish = Wish(name='Wish', user_id=user_with_token.id)
+    db.add(wish)
+    db.commit()
+    _reserve(db, wish, user_without_token)
+
+    send_reservation_notifincations()
+    send_reservation_notifincations()
+
+    assert len(fcm.messages) == 1
+
+
+def test_reservation_push_for_each_new_reservation(
+    db, user_with_token, user_without_token, fcm
+):
+    """Вторая бронь после пуша — снова пуш: другой хотелки и той же после снятия."""
+    first, second = (
+        Wish(name='A', user_id=user_with_token.id),
+        Wish(name='B', user_id=user_with_token.id),
+    )
+    db.add_all([first, second])
+    db.commit()
+
+    _reserve(db, first, user_without_token)
+    send_reservation_notifincations()
+    _reserve(db, second, user_without_token)
+    send_reservation_notifincations()
+    first.reserved_by_id = None
+    first.reserved_at = None
+    db.commit()
+    _reserve(db, first, user_without_token)
+    send_reservation_notifincations()
+
+    assert len(fcm.messages) == 3
+
+
+def test_no_reservation_push_for_old_reservation(
+    db, user_with_token, user_without_token, fcm
+):
+    now = utc_now()
+    db.add(
+        Wish(
+            name='Wish',
+            user_id=user_with_token.id,
+            reserved_by_id=user_without_token.id,
+            reserved_at=now - RESERVATION_PUSH_MAX_AGE - timedelta(minutes=1),
+        )
+    )
+    db.commit()
+
+    send_reservation_notifincations(now)
+
+    assert fcm.messages == []
 
 
 # Сегодня 12:00 UTC — внутри окна отправки. Привязано к реальным суткам, потому
