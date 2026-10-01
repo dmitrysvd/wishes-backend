@@ -1,9 +1,10 @@
 from uuid import UUID
 
 import pytest
+from sqlalchemy import DateTime
 from sqlalchemy.exc import IntegrityError
 
-from app.db import PushInstallation, User, Wish
+from app.db import Base, PushInstallation, User, Wish
 from app.utils import utc_now
 
 
@@ -63,3 +64,15 @@ def test_db_events(mocker):
     mock_engine_conn = mocker.Mock()
     do_begin(mock_engine_conn)
     mock_engine_conn.exec_driver_sql.assert_called_with('BEGIN')
+
+
+def test_all_datetime_columns_are_tz_aware():
+    # Колонка без пояса сравнивается через TimeZone сессии/процесса — дедуп
+    # пушей тихо съезжает при смене TZ. Ловим по итоговому типу, а не по тексту.
+    naive = [
+        f'{table.name}.{column.name}'
+        for table in Base.metadata.tables.values()
+        for column in table.columns
+        if isinstance(column.type, DateTime) and not column.type.timezone
+    ]
+    assert naive == []
