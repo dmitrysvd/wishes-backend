@@ -6,6 +6,7 @@
 войти в реальный аккаунт. Включённость гейтится наличием `TEST_AUTH_SECRET`.
 """
 
+import hashlib
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -24,6 +25,7 @@ from app.constants import (
 )
 from app.db import (
     FollowEvent,
+    Guest,
     PushInstallation,
     User,
     Wish,
@@ -144,6 +146,7 @@ def get_or_create_test_user(db: Session, persona: TestPersona) -> User:
         user = _get_or_create_rich(db)
         _ensure_rich_store_wishes(db, user)
         _ensure_rich_graph_entry(db, user)
+        _ensure_guest_reservations(db, user)
         _ensure_recommendations(db)
         return user
     return _get_or_create_empty(db)
@@ -286,6 +289,72 @@ def _ensure_rich_graph_entry(db: Session, user: User) -> None:
         )
         db.add(follower)
         follower.follows.append(user)
+    db.commit()
+
+
+# Гостевой резерв (0018). Сид-гость держит бронь в списке Ани (свою для гостя)
+# рядом с бронью rich (чужой для гостя) и свободной хотелкой; у самого rich —
+# архивная хотелка с бронью гостя (резерв переживает архив). Куку гостя стенд не
+# выдаёт — её значение известно тестам: `build_test_guest_token()`.
+_GUEST_LIST_WISHES = (
+    # (название, чья бронь: 'guest' | 'rich' | None)
+    ('Гостевая бронь', 'guest'),
+    ('Бронь Рича', 'rich'),
+    ('Свободная для гостя', None),
+)
+_RICH_ARCHIVED_GUEST_WISH = 'Архивная с бронью гостя'
+
+
+def build_test_guest_token() -> str | None:
+    """Значение куки `guest_id` сид-гостя: sha256(`<секрет>:guest`) в hex.
+
+    Выводится из секрета байпаса, как и bearer сид-юзера: без секрета куку не
+    угадать, со секретом e2e кладёт её в браузер сам. `None` — байпас выключен.
+    """
+    if settings.TEST_AUTH_SECRET is None:
+        return None
+    return hashlib.sha256(f'{settings.TEST_AUTH_SECRET}:guest'.encode()).hexdigest()
+
+
+def _ensure_guest_reservations(db: Session, rich: User) -> None:
+    """Состояния 0018 на стенде; пересобираются при каждом вызове, чтобы e2e,
+    снявший или слишком занявший бронь, снова видел исходную картину."""
+    token = build_test_guest_token()
+    if token is None:
+        return
+    guest = db.scalar(select(Guest).where(Guest.token == token))
+    if guest is None:
+        guest = Guest(token=token)
+        db.add(guest)
+    # Сид-гостя не сливали: e2e должен видеть его гостем.
+    guest.merged_user_id = None
+    guest.merged_at = None
+    db.flush()
+    anya = _find_test_user(db, _RICH_FRIENDS[0].uid)
+    assert anya is not None
+    by_name = {wish.name: wish for wish in anya.wishes}
+    for name, holder in _GUEST_LIST_WISHES:
+        wish = by_name.get(name)
+        if wish is None:
+            wish = Wish(name=name)
+            anya.wishes.append(wish)
+        wish.is_archived = False
+        wish.reserved_by_id = rich.id if holder == 'rich' else None
+        wish.reserved_by_guest_id = guest.id if holder == 'guest' else None
+        wish.reserved_at = utc_now() if holder else None
+        # Сид не должен порождать пушей «резерв» на стенде.
+        wish.is_reservation_notification_sent = True
+    archived = next(
+        (w for w in rich.wishes if w.name == _RICH_ARCHIVED_GUEST_WISH), None
+    )
+    if archived is None:
+        archived = Wish(name=_RICH_ARCHIVED_GUEST_WISH)
+        rich.wishes.append(archived)
+    archived.is_archived = True
+    archived.reserved_by_id = None
+    archived.reserved_by_guest_id = guest.id
+    archived.reserved_at = utc_now()
+    archived.is_reservation_notification_sent = True
     db.commit()
 
 

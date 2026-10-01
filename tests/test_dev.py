@@ -13,9 +13,20 @@ from app.constants import (
     PriceSource,
     TestPersona,
 )
-from app.db import FollowEvent, User, Wish, WishPriceObservation, user_following_table
+from app.db import (
+    FollowEvent,
+    Guest,
+    User,
+    Wish,
+    WishPriceObservation,
+    user_following_table,
+)
 from app.main import app, get_db
-from app.test_auth import build_test_token, get_or_create_test_user
+from app.test_auth import (
+    build_test_guest_token,
+    build_test_token,
+    get_or_create_test_user,
+)
 from app.utils import utc_now
 
 
@@ -109,11 +120,12 @@ def test_get_or_create_rich_builds_graph(db: Session):
     assert len(user.follows) == 3
     # Подписчики: друг и новичок (взаимно) + подписчица без ответа (0024).
     assert len(user.followed_by) == 3
-    # Свои желания (2 обычных + 4 WB во всех состояниях склада) + один
-    # зарезервированный чужой.
+    # Свои желания (2 обычных + 4 WB во всех состояниях склада + архивная с
+    # бронью сид-гостя, 0018) + зарезервированные чужие: у Бориса и «Бронь Рича»
+    # в списке Ани (0018).
     own = db.scalars(select(Wish).where(Wish.user_id == user.id)).all()
-    assert len(own) == 6
-    assert len(user.reserved_wishes) == 1
+    assert len(own) == 7
+    assert len(user.reserved_wishes) == 2
     store = {w.name: w for w in own if w.link}
     assert {
         (w.price_source, w.store_availability, w.price_is_minimum)
@@ -131,6 +143,42 @@ def test_get_or_create_rich_builds_graph(db: Session):
     assert db.scalar(select(func.count()).select_from(WishPriceObservation)) == 6
     # Все сателлиты — тоже сид-юзеры.
     assert all(friend.is_test for friend in user.follows)
+
+
+def test_rich_covers_guest_reservation_states(db: Session, mocker):
+    """0018: сид-гость с бронью в списке Ани рядом с бронью rich и свободной;
+    у rich — архивная хотелка с бронью гостя. Пересобирается при каждом вызове."""
+    mocker.patch('app.config.settings.TEST_AUTH_SECRET', 'dev-secret')
+    user = get_or_create_test_user(db, TestPersona.rich)
+    guest = db.scalars(select(Guest)).one()
+    assert guest.token == build_test_guest_token()
+    assert len(guest.token) == 64
+    anya = db.scalars(select(User).where(User.display_name == 'Аня Тестовая')).one()
+    by_name = {w.name: w for w in anya.wishes}
+    assert by_name['Гостевая бронь'].reserved_by_guest_id == guest.id
+    assert by_name['Бронь Рича'].reserved_by_id == user.id
+    assert not by_name['Свободная для гостя'].is_reserved
+    archived = next(w for w in user.wishes if w.name == 'Архивная с бронью гостя')
+    assert archived.is_archived
+    assert archived.reserved_by_guest_id == guest.id
+
+    # e2e снял бронь и слил гостя — следующий вызов возвращает исходное.
+    by_name['Гостевая бронь'].reserved_by_guest_id = None
+    guest.merged_user_id = user.id
+    db.commit()
+    get_or_create_test_user(db, TestPersona.rich)
+    db.refresh(by_name['Гостевая бронь'])
+    db.refresh(guest)
+    assert by_name['Гостевая бронь'].reserved_by_guest_id == guest.id
+    assert guest.merged_user_id is None
+    assert len(db.scalars(select(Guest)).all()) == 1
+
+
+def test_guest_seed_needs_secret(db: Session, mocker):
+    mocker.patch('app.config.settings.TEST_AUTH_SECRET', None)
+    get_or_create_test_user(db, TestPersona.rich)
+    assert build_test_guest_token() is None
+    assert db.scalars(select(Guest)).all() == []
 
 
 def test_rich_covers_graph_entry_states(db: Session):

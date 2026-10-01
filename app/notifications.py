@@ -23,7 +23,10 @@ def send_reservation_notifincations():
     with SessionLocal() as db:
         users_with_reserved_wishes_q = select(User).where(
             User.wishes.any(
-                Wish.reserved_by_id.is_not(None)
+                (
+                    Wish.reserved_by_id.is_not(None)
+                    | Wish.reserved_by_guest_id.is_not(None)
+                )
                 & ~Wish.is_reservation_notification_sent
             ),
             # Фильтр по установкам — в SQL: дальше юзеры отвязаны от сессии.
@@ -51,6 +54,7 @@ def send_reservation_notifincations():
         title='Кто-то хочет сделать Вам подарок!',
         body='Одно из ваших желаний было зарезервировано',
         reason=PushReason.RESERVATION,
+        kind='reservation',
     )
 
 
