@@ -202,13 +202,10 @@ def test_send_push_all_opted_out_returns_zero(db: Session, fcm):
 
 
 def test_followers_birthday_guard_not_consumed_when_follower_opted_out(
-    db: Session, mocker, fcm
+    db: Session, fcm
 ):
     # Единственный подписчик выключил «Дни рождения» → гвард именинника не
     # сжигается: включит обратно в окне — получит пуш этого года.
-    mocker.patch(
-        'app.cron_scripts.at_noon.get_user_deep_link', return_value='http://link'
-    )
     followed = User(
         display_name='Followed',
         firebase_uid='followed_uid',
