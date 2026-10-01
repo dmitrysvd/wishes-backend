@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,13 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.status import HTTP_410_GONE
 
+from app.constants import GUEST_COOKIE_NAME
 from app.db import User
-from app.dependencies import AUTH_TAG, get_current_user, get_db
+from app.dependencies import AUTH_TAG, GuestCookie, get_current_user, get_db
 from app.firebase import (
     create_custom_firebase_token,
     create_firebase_user,
     get_firebase_user_data,
 )
+from app.guests import MergeResult, merge_guest
 from app.helpers import refresh_avatar_on_login
 from app.logging import logger
 from app.push_installations import upsert_push_installation
@@ -43,7 +45,23 @@ from app.vk import (
 router = APIRouter(tags=[AUTH_TAG])
 
 # Коды ответов для VK ID Confidential Flow (обмен `code` на сервере) — /auth/vk/vkid.
+_CLEAR_GUEST_COOKIE_HEADER: dict[str, Any] = {
+    'Set-Cookie': {
+        'description': (
+            'Только если запрос пришёл с кукой гостя: '
+            f'`{GUEST_COOKIE_NAME}=""; Path=/; Max-Age=0; HttpOnly; Secure; '
+            'SameSite=Lax` — кука снята, гость слит с аккаунтом (или устарел). '
+            'Клиенту делать ничего не нужно.'
+        ),
+        'schema': {'type': 'string'},
+    },
+}
+
 _VK_CODE_AUTH_RESPONSES: dict[int | str, dict[str, Any]] = {
+    200: {
+        'description': 'Вход выполнен.',
+        'headers': _CLEAR_GUEST_COOKIE_HEADER,
+    },
     401: {
         'description': (
             'VK ID отклонил обмен `code`: код невалиден, истёк, уже использован, '
@@ -134,15 +152,70 @@ _INVITE_JOINED_PUSH_PAYLOAD = {
     },
 }
 
-_INVITE_OPENAPI_EXTRA: dict[str, Any] = {
-    'x-workflow': _INVITE_WORKFLOW,
+# Вход после гостевого резерва (фича 0018): что клиент делает с полями слияния.
+_GUEST_MERGE_WORKFLOW = [
+    'Слияние гостя делает бэк сам по куке гостя этого браузера — клиенту '
+    'ничего слать не нужно; кука снимается в этом же ответе (`Set-Cookie`).',
+    'Слияние — только при ответе `200`. Пришёл не-2xx (`401`/`403`/`409`/`5xx`): '
+    'ничего не слито, кука гостя остаётся, резервы гостевые; на S5a ничего не '
+    'перезапрашивать. Повторный успешный вход сольёт.',
+    'Ответа нет (обрыв сети, таймаут): состояние неизвестно — бэк мог успеть '
+    'слить. Перезапросить `GET /public/users/{user_id}/wishlist` и рисовать по '
+    'нему. Вход можно повторить: если слияние уже было, повторный успешный вход '
+    'вернёт `guest_merged_reservations = 0` и `guest_followed_owner_ids = []` — '
+    'пре-промпт от слияния в этом случае не показывается (принято продуктом).',
+    'Только VK: `200` от `POST /auth/vk/vkid` получен, но `signInWithCustomToken` '
+    'на клиенте упал — слияние уже сделано, кука гостя снята, а клиент остался '
+    'без сессии. Перезапросить публичный список (карточки станут «зарезервировано» '
+    'без «Снять резерв»), пре-промпт не показывать; юзер может войти снова — '
+    'резервы уже на его аккаунте.',
+    '`guest_followed_owner_ids` непустой → повод «подписался» пре-промпта пушей '
+    '(0014). Имя в тексте: если вход был на S5a и владелец открытого списка есть '
+    'в `guest_followed_owner_ids` — его `display_name` с экрана (запрос не нужен); '
+    'иначе — владелец `guest_followed_owner_ids[0]`, имя из '
+    '`GET /users/{id}`; если тот ответил `404` или не ответил (сеть) — '
+    'пре-промпт всё равно показать, текстом без имени: «Напомним о днях рождения '
+    'и покажем новые хотелки». Пустой → повода от слияния нет.',
+    'Вход на S5a собственного списка (владелец бронировал свои хотелки гостем): '
+    'такие резервы снимаются, а не переносятся — хотелки снова свободны; в '
+    '`guest_merged_reservations` они не входят, себя в `guest_followed_owner_ids` '
+    'нет. Экран становится своим списком (S2); остальные резервы гостя '
+    '(в чужих списках) переносятся как обычно.',
+    'Если ненулевые и `mutual_follow_user_id`, и `guest_followed_owner_ids` — '
+    'повод один (пре-промпт показывается один раз), с именем из '
+    '`mutual_follow_user_id`.',
+    '`guest_merged_reservations > 0` → резервы уже на аккаунте: вкладка «резерв» '
+    '(`GET /reserved_wishes`) и хотелки владельца (`GET /users/{id}/wishes`) с '
+    'первого запроса показывают их как «зарезервировано мной». Отдельного '
+    'уведомления юзеру не требуется.',
+]
+
+_AUTH_OPENAPI_EXTRA: dict[str, Any] = {
+    'x-workflow': _INVITE_WORKFLOW + _GUEST_MERGE_WORKFLOW,
     'x-push-payload': _INVITE_JOINED_PUSH_PAYLOAD,
 }
+
+
+class VkAuthResult(NamedTuple):
+    firebase_uid: str
+    firebase_token: str
+    is_new_user: bool
+    mutual_follow_user_id: UUID | None
+    guest_merge: MergeResult
+
+
+def clear_guest_cookie(response: Response, guest_token: str | None) -> None:
+    """Снять куку гостя после входа — только если браузер её прислал."""
+    if guest_token:
+        response.delete_cookie(
+            GUEST_COOKIE_NAME, path='/', secure=True, httponly=True, samesite='lax'
+        )
 
 
 def auth_vk_via_code(
     request_data: RequestVkAuthVkidSchema,
     db: Session,
+    guest_token: str | None = None,
 ) -> ResponseVkAuthMobileSchema:
     """Обмен VK ID authorization `code` на сессию (Confidential Flow).
 
@@ -156,14 +229,16 @@ def auth_vk_via_code(
         request_data.device_id,
         request_data.redirect_uri,
     )
-    firebase_uid, firebase_token, is_new_user, mutual_follow_user_id = auth_vk(
-        access_token, vk_extra_data, db, request_data.attribution
+    result = auth_vk(
+        access_token, vk_extra_data, db, request_data.attribution, guest_token
     )
     return ResponseVkAuthMobileSchema(
-        firebase_uid=firebase_uid,
-        firebase_token=firebase_token,
-        user_created=is_new_user,
-        mutual_follow_user_id=mutual_follow_user_id,
+        firebase_uid=result.firebase_uid,
+        firebase_token=result.firebase_token,
+        user_created=result.is_new_user,
+        mutual_follow_user_id=result.mutual_follow_user_id,
+        guest_merged_reservations=result.guest_merge.merged_reservations,
+        guest_followed_owner_ids=result.guest_merge.followed_owner_ids,
     )
 
 
@@ -172,7 +247,8 @@ def auth_vk(
     vk_extra_data: VkUserExtraData,
     db: Session,
     attribution: RegistrationAttributionSchema | None = None,
-) -> tuple[str, str, bool, UUID | None]:
+    guest_token: str | None = None,
+) -> VkAuthResult:
     """Завести/найти юзера по VK-профилю и выдать firebase custom token.
 
     `access_token` и `vk_extra_data` — только из серверного обмена VK ID
@@ -251,7 +327,12 @@ def auth_vk(
         mutual_follow_user_id = create_invite_mutual_follow(db, user, attribution)
 
     firebase_token = create_custom_firebase_token(firebase_uid)
-    return firebase_uid, firebase_token, is_new_user, mutual_follow_user_id
+    # Слияние гостя — последним: всё, что может упасть раньше, уже прошло, и
+    # не-2xx гарантированно значит «ничего не слито» (контракт 0018).
+    guest_merge = merge_guest(db, user, guest_token)
+    return VkAuthResult(
+        firebase_uid, firebase_token, is_new_user, mutual_follow_user_id, guest_merge
+    )
 
 
 LEGACY_VK_MOBILE_GONE_DETAIL = (
@@ -289,11 +370,13 @@ def auth_vk_mobile_gone() -> None:
 @router.post(
     '/auth/vk/vkid',
     # Публичный вход: токена у клиента ещё нет — снимаем глобальное требование ApiKey.
-    openapi_extra={'security': [], **_INVITE_OPENAPI_EXTRA},
+    openapi_extra={'security': [], **_AUTH_OPENAPI_EXTRA},
     responses=_VK_CODE_AUTH_RESPONSES,
 )
 def auth_vk_vkid(
     request_data: RequestVkAuthVkidSchema,
+    response: Response,
+    guest_id: GuestCookie = None,
     db: Session = Depends(get_db),
 ) -> ResponseVkAuthMobileSchema:
     """
@@ -322,15 +405,28 @@ def auth_vk_vkid(
     ответе. Best-effort: подписки не создались — регистрация всё равно успешна,
     поле `null`. Пригласившему уходит пуш — `x-push-payload`; поведение клиента
     после входа — `x-workflow` (Swagger UI расширений не показывает — читайте спек).
+
+    Сайд-эффект (гостевой резерв, фича 0018): если браузер прислал куку гостя,
+    бэк ДО ответа переносит все живые резервы гостя на аккаунт (новый или
+    существующий) и подписывает аккаунт на владельца каждого такого списка —
+    одностороннее ребро, владелец пуша «новый подписчик» не получает. Итог —
+    `guest_merged_reservations` и `guest_followed_owner_ids`; кука снимается.
+    Вход успешен и тогда, когда переносить нечего.
     """
-    return auth_vk_via_code(request_data, db)
+    result = auth_vk_via_code(request_data, db, guest_id)
+    clear_guest_cookie(response, guest_id)
+    return result
 
 
 @router.post(
     '/auth/firebase',
     # Публичный вход: Firebase ID-токен приходит в теле, а не в `Authorization`.
-    openapi_extra={'security': [], **_INVITE_OPENAPI_EXTRA},
+    openapi_extra={'security': [], **_AUTH_OPENAPI_EXTRA},
     responses={
+        200: {
+            'description': 'Вход выполнен.',
+            'headers': _CLEAR_GUEST_COOKIE_HEADER,
+        },
         403: {
             'description': (
                 'Firebase отклонил `id_token`: битый, истёк или выпущен не нашим '
@@ -344,6 +440,8 @@ def auth_vk_vkid(
 )
 def auth_firebase(
     firebase_auth_schema: RequestFirebaseAuthSchema,
+    response: Response,
+    guest_id: GuestCookie = None,
     db: Session = Depends(get_db),
 ) -> AuthFirebaseResponseSchema:
     """
@@ -365,6 +463,13 @@ def auth_firebase(
     ответе. Best-effort: подписки не создались — регистрация всё равно успешна,
     поле `null`. Пригласившему уходит пуш — `x-push-payload`; поведение клиента
     после входа — `x-workflow` (Swagger UI расширений не показывает — читайте спек).
+
+    Сайд-эффект (гостевой резерв, фича 0018): если браузер прислал куку гостя,
+    бэк ДО ответа переносит все живые резервы гостя на аккаунт (новый или
+    существующий) и подписывает аккаунт на владельца каждого такого списка —
+    одностороннее ребро, владелец пуша «новый подписчик» не получает. Итог —
+    `guest_merged_reservations` и `guest_followed_owner_ids`; кука снимается.
+    Вход успешен и тогда, когда переносить нечего.
     """
     id_token = firebase_auth_schema.id_token
     try:
@@ -408,8 +513,13 @@ def auth_firebase(
         save_registration_attribution(db, user, attribution)
         mutual_follow_user_id = create_invite_mutual_follow(db, user, attribution)
 
+    guest_merge = merge_guest(db, user, guest_id)
+    clear_guest_cookie(response, guest_id)
     return AuthFirebaseResponseSchema(
-        user_created=is_new_user, mutual_follow_user_id=mutual_follow_user_id
+        user_created=is_new_user,
+        mutual_follow_user_id=mutual_follow_user_id,
+        guest_merged_reservations=guest_merge.merged_reservations,
+        guest_followed_owner_ids=guest_merge.followed_owner_ids,
     )
 
 

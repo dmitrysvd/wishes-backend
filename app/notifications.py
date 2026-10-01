@@ -1,10 +1,11 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import func, literal, select, update
 from sqlalchemy.orm import Session
 
 from app.constants import (
+    RESERVATION_PUSH_MAX_AGE,
     WISH_CREATION_PUSH_DELAY,
     WISH_CREATION_PUSH_HOURS_UTC,
     WISH_CREATION_PUSH_MIN_INTERVAL,
@@ -19,31 +20,39 @@ from app.logging import logger
 from app.utils import utc_now
 
 
-def send_reservation_notifincations():
-    with SessionLocal() as db:
-        users_with_reserved_wishes_q = select(User).where(
-            User.wishes.any(
-                Wish.reserved_by_id.is_not(None)
-                & ~Wish.is_reservation_notification_sent
-            ),
-            # Фильтр по установкам — в SQL: дальше юзеры отвязаны от сессии.
-            User.can_receive_push,
+def send_reservation_notifincations(now: datetime | None = None) -> None:
+    """Пуш «резерв» владельцам, у которых появилась бронь после их прошлого
+    такого пуша (по `PushSendingLog`); пуша не было — любая бронь новая.
+
+    `reserved_at` ставит каждая новая бронь (обычная и гостевая), снятие его
+    обнуляет, а слияние гостя не трогает — бронь та же, владелец о ней знает.
+    Поэтому отдельного флага «уведомлён» нет. `now` — для тестов предела
+    `RESERVATION_PUSH_MAX_AGE`; в проде — текущее UTC.
+    """
+    now = now or utc_now()
+    last_push_at = (
+        select(func.max(PushSendingLog.sent_at))
+        .where(
+            PushSendingLog.target_user_id == User.id,
+            PushSendingLog.reason == PushReason.RESERVATION,
         )
-        users_to_send_pushes = list(db.scalars(users_with_reserved_wishes_q))
-    user_ids_to_send_pushes = {user.id for user in users_to_send_pushes}
+        .correlate(User)
+        .scalar_subquery()
+    )
+    never = literal(datetime.min.replace(tzinfo=UTC))
     with SessionLocal() as db:
-        db.execute(
-            update(Wish)
-            .where(
-                Wish.id.in_(
-                    select(Wish.id)
-                    .join(Wish.user)
-                    .where(User.id.in_(user_ids_to_send_pushes))
+        users_to_send_pushes = list(
+            db.scalars(
+                select(User).where(
+                    User.wishes.any(
+                        (Wish.reserved_at > func.coalesce(last_push_at, never))
+                        & (Wish.reserved_at > now - RESERVATION_PUSH_MAX_AGE)
+                    ),
+                    # Фильтр по установкам — в SQL: дальше юзеры отвязаны от сессии.
+                    User.can_receive_push,
                 )
             )
-            .values(is_reservation_notification_sent=True)
         )
-        db.commit()
     # Один пуш на владельца за прогон, сколько бы хотелок ни зарезервировали;
     # резервировавших может быть несколько — виновник не указывается.
     send_push(
@@ -51,6 +60,7 @@ def send_reservation_notifincations():
         title='Кто-то хочет сделать Вам подарок!',
         body='Одно из ваших желаний было зарезервировано',
         reason=PushReason.RESERVATION,
+        kind='reservation',
     )
 
 

@@ -296,16 +296,73 @@ STORE_AVAILABILITY_BY_STATUS = {
 }
 
 
+class Guest(Base):
+    """Гость публичной страницы, забронировавший хотелку без аккаунта (фича 0018).
+
+    Создаётся первым успешным гостевым резервом, узнаётся по httpOnly-куке с
+    `token`. При входе в том же браузере его резервы переходят на аккаунт; строка
+    остаётся с `merged_user_id` — по ней считается конверсия гость → аккаунт и
+    срок до неё. Гость без резервов и без слияния — мусор, его чистит крон.
+    """
+
+    __tablename__ = 'guest'
+
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    # Значение куки: непредсказуемая строка, а не id — id светится в логах/админке.
+    token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    merged_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey('user.id', ondelete='SET NULL'), nullable=True
+    )
+    merged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class GuestReservationEvent(Base):
+    """Append-only лог успешных гостевых резервов (фича 0018).
+
+    Источник лимита «не больше N гостевых резервов в минуту с одного IP» и
+    аналитики доли гостевых резервов. Снятие и слияние сюда не пишутся.
+    """
+
+    __tablename__ = 'guest_reservation_event'
+
+    id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
+    guest_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey('guest.id', ondelete='SET NULL'), nullable=True
+    )
+    wish_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey('wish.id', ondelete='SET NULL'), nullable=True
+    )
+    ip: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class Wish(Base):
     __tablename__ = 'wish'
     __table_args__ = (
         CheckConstraint('user_id <> reserved_by_id', name='user_not_equal_reserved_by'),
+        # Резерв держит либо юзер, либо гость — не оба сразу.
+        CheckConstraint(
+            'reserved_by_id IS NULL OR reserved_by_guest_id IS NULL',
+            name='single_reserver',
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid(), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(ForeignKey('user.id'))
     reserved_by_id: Mapped[UUID | None] = mapped_column(
         ForeignKey('user.id'), nullable=True
+    )
+    # Гостевой резерв с публичной страницы (фича 0018). Гость удаляется кроном
+    # только без резервов, поэтому SET NULL на практике не срабатывает.
+    reserved_by_guest_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey('guest.id', ondelete='SET NULL'), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(250))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -328,9 +385,6 @@ class Wish(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    is_reservation_notification_sent: Mapped[bool] = mapped_column(
-        default=False, nullable=False
-    )
     is_creation_notification_sent: Mapped[bool] = mapped_column(
         default=False, nullable=False
     )
@@ -384,7 +438,7 @@ class Wish(Base):
 
     @property
     def is_reserved(self) -> bool:
-        return bool(self.reserved_by_id)
+        return bool(self.reserved_by_id or self.reserved_by_guest_id)
 
     @property
     def shop(self) -> Shop | None:

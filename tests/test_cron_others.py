@@ -4,7 +4,7 @@ from app.cron_scripts.every_hour import main as every_hour_main
 from app.cron_scripts.every_minute import main as every_minute_main
 
 
-def test_every_hour_main(mocker):
+def test_every_hour_main(mocker, db):
     mock_res = mocker.patch(
         'app.cron_scripts.every_hour.send_reservation_notifincations'
     )
@@ -37,7 +37,7 @@ def test_every_hour_main_exception(mocker):
         every_hour_main()
 
 
-def test_scripts_main_execution(mocker):
+def test_scripts_main_execution(mocker, db):
     import os
     import runpy
 

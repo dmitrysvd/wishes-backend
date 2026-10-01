@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     # они не нужны.
     MYTRACKER_API_USER_ID: str | None = None
     MYTRACKER_API_SECRET: str | None = None
+    # Лимиты гостевого резерва (фича 0018) — ручка без релиза. Гость: не больше
+    # N резервов в одном списке. Список: гости вместе держат не больше доли
+    # активных хотелок, но не меньше MIN (короткий список тоже можно занять).
+    # IP: не больше N гостевых резервов в минуту (скрипт по перебору userId).
+    GUEST_RESERVE_PER_GUEST_PER_LIST: int = 3
+    GUEST_RESERVE_LIST_SHARE: float = 0.5
+    GUEST_RESERVE_LIST_MIN: int = 3
+    GUEST_RESERVE_PER_IP_PER_MINUTE: int = 10
     # DATABASE_URL: str = 'sqlite:///db.sqlite'
     DATABASE_URL: str
     TEST_DATABASE_URL: str = 'sqlite://'

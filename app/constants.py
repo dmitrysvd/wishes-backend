@@ -64,6 +64,8 @@ class FollowEventSource(enum.Enum):
     other = 'other'
     # взаимные подписки при регистрации по инвайт-ссылке (фича 0024)
     invite = 'invite'
+    # подписка дарителя на владельца при слиянии гостевых резервов (фича 0018)
+    guest_reservation = 'guest_reservation'
 
 
 class TestPersona(enum.Enum):
@@ -237,6 +239,11 @@ WISH_CREATION_PUSH_MIN_INTERVAL = timedelta(hours=24)
 # и уходят первым прогоном внутри окна. 6–17 UTC = 9–20 МСК: не будить ночью.
 WISH_CREATION_PUSH_HOURS_UTC = range(6, 18)
 
+# Пуш «резерв» владельцу — только о брони не старше этого: иначе включивший
+# пуши обратно или поставивший приложение получил бы пуш о давней брони.
+# С запасом на простой ежечасного крона.
+RESERVATION_PUSH_MAX_AGE = timedelta(days=3)
+
 
 class NotificationGroup(enum.Enum):
     """Группа пуш-уведомлений — единица включения/выключения на экране
@@ -286,3 +293,9 @@ RECOMMENDATION_CATEGORY_TITLES: dict[RecommendationCategory, str] = {
     RecommendationCategory.clothes: 'Одежда и аксессуары',
     RecommendationCategory.kids: 'Детям',
 }
+
+# Гостевой резерв (фича 0018): httpOnly-кука, которой бэк узнаёт гостя на
+# публичной странице и при входе сливает его резервы в аккаунт. Имя — часть
+# контракта (параметр `in: cookie` в спеке); клиент её не читает и не пишет.
+GUEST_COOKIE_NAME = 'guest_id'
+GUEST_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60
