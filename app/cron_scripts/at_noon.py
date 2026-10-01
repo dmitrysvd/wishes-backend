@@ -189,7 +189,7 @@ def send_upcoming_birthday_of_current_user_notification():
                 select(PushSendingLog).where(
                     (PushSendingLog.reason == PushReason.CURRENT_USER_BIRTHDAY)
                     & (PushSendingLog.reason_user_id == user.id)
-                    & (PushSendingLog.sent_at > datetime.now() - timedelta(days=30))
+                    & (PushSendingLog.sent_at > utc_now() - timedelta(days=30))
                 )
             ).first():
                 continue
@@ -208,10 +208,7 @@ def send_upcoming_birthday_of_current_user_notification():
 def followers_push_recently_sent(last_sent: datetime | None) -> bool:
     if last_sent is None:
         return False
-    # Колонка хранит naive-время; приводим к naive на случай aware-значения.
-    if last_sent.tzinfo is not None:
-        last_sent = last_sent.replace(tzinfo=None)
-    return last_sent > datetime.now() - timedelta(days=NO_REPEAT_FOLLOWERS_PUSH_DAYS)
+    return last_sent > utc_now() - timedelta(days=NO_REPEAT_FOLLOWERS_PUSH_DAYS)
 
 
 def send_upcoming_birthday_of_followed_user_notification():
@@ -273,7 +270,7 @@ def send_empty_list_reactivation_notifications():
                 & ~User.wishes.any(~Wish.is_archived)
                 & (
                     User.registered_at
-                    > datetime.now() - timedelta(days=RECENT_REGISTRANT_DAYS)
+                    > utc_now() - timedelta(days=RECENT_REGISTRANT_DAYS)
                 )
             )
         ).all()
@@ -285,7 +282,7 @@ def send_empty_list_reactivation_notifications():
                     & (PushSendingLog.target_user_id == user.id)
                     & (
                         PushSendingLog.sent_at
-                        > datetime.now()
+                        > utc_now()
                         - timedelta(days=NO_REPEAT_EMPTY_LIST_REACTIVATION_DAYS)
                     )
                 )

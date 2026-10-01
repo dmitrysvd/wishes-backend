@@ -29,8 +29,8 @@ declare -A TABLES=(
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
 DROP SCHEMA IF EXISTS prod_snapshot CASCADE;
 CREATE SCHEMA prod_snapshot;
-CREATE TABLE prod_snapshot."user" (id uuid primary key, registered_at timestamp, last_login_at timestamp, gender text, is_test boolean);
-CREATE TABLE prod_snapshot.push_sending_log (id uuid primary key, sent_at timestamp, reason text, reason_user_id uuid, target_user_id uuid, campaign_key text, trigger text, opened_at timestamp);
+CREATE TABLE prod_snapshot."user" (id uuid primary key, registered_at timestamptz, last_login_at timestamptz, gender text, is_test boolean);
+CREATE TABLE prod_snapshot.push_sending_log (id uuid primary key, sent_at timestamptz, reason text, reason_user_id uuid, target_user_id uuid, campaign_key text, trigger text, opened_at timestamptz);
 CREATE TABLE prod_snapshot.user_activity_day (user_id uuid, activity_date date, first_seen_at timestamptz, last_seen_at timestamptz, request_count int, radar_open_count int, primary key (user_id, activity_date));
 CREATE TABLE prod_snapshot.push_installation (id uuid primary key, user_id uuid, saved_at timestamptz, has_fid boolean);
 CREATE TABLE prod_snapshot.user_following (follower_id uuid, followed_id uuid, created_at timestamptz);

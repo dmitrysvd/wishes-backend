@@ -161,15 +161,13 @@ async def test_send_upcoming_birthday_of_followed_user_notification(db, mocker, 
 
 def test_followers_push_recently_sent():
     assert followers_push_recently_sent(None) is False
-    # aware-время приводится к naive перед сравнением
     assert followers_push_recently_sent(datetime.now(UTC)) is True
-    assert followers_push_recently_sent(datetime(2000, 1, 1)) is False
+    assert followers_push_recently_sent(datetime(2000, 1, 1, tzinfo=UTC)) is False
 
 
 @pytest.mark.anyio
 async def test_followed_user_push_skipped_when_recently_sent(db, mocker, fcm):
-    # Уведомление подписчикам не шлётся повторно, если уже отправляли недавно
-    # (last_sent — aware-время, проверяется ветка приведения к naive).
+    # Уведомление подписчикам не шлётся повторно, если уже отправляли недавно.
     bday = date.today() + timedelta(days=10)
     followed = User(
         display_name='Recently Notified',

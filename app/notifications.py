@@ -66,8 +66,7 @@ def send_wish_creation_notifications(now: datetime | None = None) -> None:
         logger.info('Пуши о новых хотелках вне окна отправки, час UTC {h}', h=now.hour)
         return
     created_not_later_than = now - WISH_CREATION_PUSH_DELAY
-    # `sent_at` в логе — naive UTC (`datetime.now()` в `send_push`).
-    interval_start = (now - WISH_CREATION_PUSH_MIN_INTERVAL).replace(tzinfo=None)
+    interval_start = now - WISH_CREATION_PUSH_MIN_INTERVAL
     with SessionLocal() as db:
         wishes_filter_cond = ~Wish.is_creation_notification_sent & (
             Wish.created_at < created_not_later_than
