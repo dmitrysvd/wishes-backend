@@ -38,8 +38,32 @@ class FollowSource(enum.Enum):
     search = 'search'  # результаты текстового поиска людей
     possible_friends = 'possible_friends'  # блок «возможные друзья» (VK-сидинг)
     followers_list = 'followers_list'  # экран подписчиков/подписок
-    deeplink = 'deeplink'  # профиль открыт по расшаренной ссылке
+    # профиль открыт по ссылке шеринга (URL с `ref`), в т.ч. тап по CTA на нём
+    deeplink = 'deeplink'
+    push = 'push'  # профиль открыт по ссылке из пуша (URL с `via=push`)
+    # кнопка «В ответ» в строке своего списка подписчиков
+    followers_follow_back = 'followers_follow_back'
     other = 'other'  # прочее/неизвестно
+
+
+class FollowEventSource(enum.Enum):
+    """Источник ребра в логе графа (`FollowEvent.source`, PG-тип `followsource`).
+
+    Надмножество публичного `FollowSource`: всё, что шлёт клиент, плюс пути,
+    которые создаёт сам бэк. Серверные значения в `FollowSource` не кладём —
+    иначе они попадут в контракт и клиент сможет их прислать. Совпадение
+    значений с `FollowSource` проверяет тест.
+    """
+
+    search = 'search'
+    possible_friends = 'possible_friends'
+    followers_list = 'followers_list'
+    deeplink = 'deeplink'
+    push = 'push'
+    followers_follow_back = 'followers_follow_back'
+    other = 'other'
+    # взаимные подписки при регистрации по инвайт-ссылке (фича 0024)
+    invite = 'invite'
 
 
 class TestPersona(enum.Enum):

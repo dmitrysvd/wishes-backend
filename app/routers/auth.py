@@ -1,4 +1,5 @@
 from typing import Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -19,13 +20,19 @@ from app.helpers import refresh_avatar_on_login
 from app.logging import logger
 from app.push_installations import upsert_push_installation
 from app.schemas import (
+    AuthFirebaseResponseSchema,
     RegistrationAttributionSchema,
     RequestFirebaseAuthSchema,
     RequestVkAuthVkidSchema,
     ResponseVkAuthMobileSchema,
     SavePushTokenSchema,
 )
-from app.utils import new_user_handler, save_registration_attribution, utc_now
+from app.utils import (
+    create_invite_mutual_follow,
+    new_user_handler,
+    save_registration_attribution,
+    utc_now,
+)
 from app.vk import (
     VkUserExtraData,
     exchange_vk_code,
@@ -65,6 +72,74 @@ _VK_CODE_AUTH_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
+# Регистрация по инвайту (фича 0024): поведение клиента после входа и пуш
+# пригласившему. Структурно, для аудитора и кодгена фронта (PROTOCOL.md §7);
+# общее у обеих живых auth-ручек.
+_INVITE_WORKFLOW = [
+    'Ответ с `mutual_follow_user_id != null`: новичок и этот юзер подписаны друг '
+    'на друга с момента регистрации. Когда новичок на user_page (S5) этого юзера '
+    '(обычно сразу: маршрут deep link переживает логин), один раз показать '
+    'ненавязчивую плашку «Вы и {display_name} подписаны друг на друга: напомним о '
+    'дне рождения» (имя не склоняется — конструкция «Вы и …»); имя — из '
+    '`GET /users/{mutual_follow_user_id}`. «Один раз» '
+    'помнит клиент; повторно ответ с этим id не придёт — поле ненулевое только '
+    'в ответе, создавшем аккаунт.',
+    '`mutual_follow_user_id == null` — плашки нет, ничего не делать.',
+    'Кнопка подписки на S5 пригласившего берёт состояние из свежего профиля '
+    '(`followed_by_me == true` — «вы подписаны»); CTA-блок подписки при этом не '
+    'показывается (см. `x-workflow` у `GET /users/{user_id}`).',
+    'Пригласившему бэк сам шлёт пуш «{имя} присоединился по вашей ссылке», '
+    'payload — `x-push-payload` этой операции. Он заменяет пуш «новый подписчик» '
+    'для этого ребра и подчиняется группе «Друзья» настроек уведомлений.',
+]
+
+# Пуш пригласившему о регистрации по его ссылке (фича 0024). Формат как у
+# остальных пушей: `notification` рисует ОС, `data` — роутинг и тост в foreground.
+_INVITE_JOINED_PUSH_PAYLOAD = {
+    'kind': 'invite_joined',
+    'notification': {
+        'title': 'Анна присоединилась по вашей ссылке',
+        'body': 'Теперь вы подписаны друг на друга',
+    },
+    'data': {
+        'click_action': 'FLUTTER_NOTIFICATION_CLICK',
+        'type': 'invite_joined',
+        'delivery_id': '5c1c9a2e-7b1d-4e3a-9f0a-2d6b8c4e1a77',
+        'link': (
+            'https://hotelki.pro/user'
+            '?userId=9b2d5e4a-1c3f-4a2b-8d6e-0f1a2b3c4d5e&via=push#'
+        ),
+        'title': 'Анна присоединилась по вашей ссылке',
+        'body': 'Теперь вы подписаны друг на друга',
+    },
+    'fields': {
+        'type': 'Вид пуша, `invite_joined`; клиенту для роутинга не нужен.',
+        'link': (
+            'Профиль новичка (S5): `{FRONTEND_URL}/user?userId=<uuid>&via=push#`. '
+            'Открывать через роутер, как остальные пуши. `via=push` — маркер '
+            '«открыт из пуша»: CTA-блок подписки не показывается, подписка с этого '
+            'профиля идёт с `source=push`.'
+        ),
+        'delivery_id': (
+            'UUID строки лога отправки — тело `POST /push/opened` при открытии.'
+        ),
+    },
+    'texts': {
+        'title': '{display_name} присоединился по вашей ссылке',
+        'body': 'Теперь вы подписаны друг на друга',
+        'rules': (
+            '«присоединилась» — если у новичка `gender = female`, иначе '
+            '«присоединился». Имя — `display_name` новичка как есть.'
+        ),
+    },
+}
+
+_INVITE_OPENAPI_EXTRA: dict[str, Any] = {
+    'x-workflow': _INVITE_WORKFLOW,
+    'x-push-payload': _INVITE_JOINED_PUSH_PAYLOAD,
+}
+
+
 def auth_vk_via_code(
     request_data: RequestVkAuthVkidSchema,
     db: Session,
@@ -81,13 +156,14 @@ def auth_vk_via_code(
         request_data.device_id,
         request_data.redirect_uri,
     )
-    firebase_uid, firebase_token, is_new_user = auth_vk(
+    firebase_uid, firebase_token, is_new_user, mutual_follow_user_id = auth_vk(
         access_token, vk_extra_data, db, request_data.attribution
     )
     return ResponseVkAuthMobileSchema(
         firebase_uid=firebase_uid,
         firebase_token=firebase_token,
         user_created=is_new_user,
+        mutual_follow_user_id=mutual_follow_user_id,
     )
 
 
@@ -96,7 +172,7 @@ def auth_vk(
     vk_extra_data: VkUserExtraData,
     db: Session,
     attribution: RegistrationAttributionSchema | None = None,
-) -> tuple[str, str, bool]:
+) -> tuple[str, str, bool, UUID | None]:
     """Завести/найти юзера по VK-профилю и выдать firebase custom token.
 
     `access_token` и `vk_extra_data` — только из серверного обмена VK ID
@@ -166,13 +242,16 @@ def auth_vk(
     # photo_url не сохраняем — только своя /media. См. refresh_avatar_on_login.
     refresh_avatar_on_login(user, vk_basic_data.photo_url, db)
 
+    mutual_follow_user_id = None
     if is_new_user:
         new_user_handler(user)
-        # first-touch атрибуция — только для нового юзера, best-effort
+        # first-touch атрибуция и взаимные подписки по инвайту — только для
+        # нового юзера, best-effort
         save_registration_attribution(db, user, attribution)
+        mutual_follow_user_id = create_invite_mutual_follow(db, user, attribution)
 
     firebase_token = create_custom_firebase_token(firebase_uid)
-    return firebase_uid, firebase_token, is_new_user
+    return firebase_uid, firebase_token, is_new_user, mutual_follow_user_id
 
 
 LEGACY_VK_MOBILE_GONE_DETAIL = (
@@ -210,7 +289,7 @@ def auth_vk_mobile_gone() -> None:
 @router.post(
     '/auth/vk/vkid',
     # Публичный вход: токена у клиента ещё нет — снимаем глобальное требование ApiKey.
-    openapi_extra={'security': []},
+    openapi_extra={'security': [], **_INVITE_OPENAPI_EXTRA},
     responses=_VK_CODE_AUTH_RESPONSES,
 )
 def auth_vk_vkid(
@@ -235,26 +314,57 @@ def auth_vk_vkid(
     `RegistrationAttributionSchema`). Best-effort: невалидная атрибуция тихо
     игнорируется, регистрацию не валит. Для существующего юзера атрибуция
     игнорируется (first-touch).
+
+    Сайд-эффект (регистрация по инвайту, фича 0024): если юзер создаётся впервые и
+    `attribution.referrer_id` принят (см. `RegistrationAttributionSchema`), новичок
+    и пригласивший сразу подписаны друг на друга — без подтверждения; обычная
+    отписка работает как для любой подписки. Итог — `mutual_follow_user_id` в
+    ответе. Best-effort: подписки не создались — регистрация всё равно успешна,
+    поле `null`. Пригласившему уходит пуш — `x-push-payload`; поведение клиента
+    после входа — `x-workflow` (Swagger UI расширений не показывает — читайте спек).
     """
     return auth_vk_via_code(request_data, db)
 
 
-@router.post('/auth/firebase', response_class=Response)
+@router.post(
+    '/auth/firebase',
+    # Публичный вход: Firebase ID-токен приходит в теле, а не в `Authorization`.
+    openapi_extra={'security': [], **_INVITE_OPENAPI_EXTRA},
+    responses={
+        403: {
+            'description': (
+                'Firebase отклонил `id_token`: битый, истёк или выпущен не нашим '
+                'проектом. Нужен новый вход в Firebase и повтор.'
+            ),
+            'content': {
+                'application/json': {'example': {'detail': 'Not authenticated'}}
+            },
+        },
+    },
+)
 def auth_firebase(
     firebase_auth_schema: RequestFirebaseAuthSchema,
     db: Session = Depends(get_db),
-):
+) -> AuthFirebaseResponseSchema:
     """
-    Аутентификация через firebase Google trololo.
+    Аутентификация через Firebase (Google).
 
-    Клиент уже должен быть залогинен в firebase.
-    Если пользователя с email из firebase нет в БД, создаст его.
-    Если пользователь уже есть, ничего не делает.
+    Клиент уже должен быть залогинен в Firebase и передаёт его ID-токен.
+    Если пользователя с этим Firebase-аккаунтом (или подтверждённым email) нет,
+    создаёт его (`user_created = true`); иначе — вход в существующий аккаунт.
 
     Сайд-эффект (атрибуция): если передан `attribution` и юзер создаётся впервые,
     бэк фиксирует реферера и канал установки (см. `RegistrationAttributionSchema`).
     Best-effort: невалидная атрибуция тихо игнорируется, регистрацию не валит. Для
     существующего юзера атрибуция игнорируется (first-touch).
+
+    Сайд-эффект (регистрация по инвайту, фича 0024): если юзер создаётся впервые и
+    `attribution.referrer_id` принят (см. `RegistrationAttributionSchema`), новичок
+    и пригласивший сразу подписаны друг на друга — без подтверждения; обычная
+    отписка работает как для любой подписки. Итог — `mutual_follow_user_id` в
+    ответе. Best-effort: подписки не создались — регистрация всё равно успешна,
+    поле `null`. Пригласившему уходит пуш — `x-push-payload`; поведение клиента
+    после входа — `x-workflow` (Swagger UI расширений не показывает — читайте спек).
     """
     id_token = firebase_auth_schema.id_token
     try:
@@ -289,10 +399,18 @@ def auth_firebase(
     # Свежую соц-аватарку (Google) перекачиваем на диск в высоком разрешении.
     refresh_avatar_on_login(user, firebase_user.photo_url, db)
 
+    mutual_follow_user_id = None
     if is_new_user:
         new_user_handler(user)
-        # first-touch атрибуция — только для нового юзера, best-effort
-        save_registration_attribution(db, user, firebase_auth_schema.attribution)
+        # first-touch атрибуция и взаимные подписки по инвайту — только для
+        # нового юзера, best-effort
+        attribution = firebase_auth_schema.attribution
+        save_registration_attribution(db, user, attribution)
+        mutual_follow_user_id = create_invite_mutual_follow(db, user, attribution)
+
+    return AuthFirebaseResponseSchema(
+        user_created=is_new_user, mutual_follow_user_id=mutual_follow_user_id
+    )
 
 
 @router.post(

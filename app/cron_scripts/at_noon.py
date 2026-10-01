@@ -20,7 +20,7 @@ from app.db import (
     Wish,
 )
 from app.firebase import send_push
-from app.helpers.user_helpers import get_user_deep_link
+from app.helpers.user_helpers import get_push_deep_link
 from app.logging import logger
 from app.price_alerts import send_price_alerts
 from app.utils import utc_now
@@ -237,7 +237,7 @@ def send_upcoming_birthday_of_followed_user_notification():
                     ),
                     reason=PushReason.FOLLOWER_BIRTHDAY,
                     reason_user=user,
-                    link=get_user_deep_link(user),
+                    link=get_push_deep_link(user),
                 )
                 sent_any = sent_any or bool(sent.sent_user_ids)
             # Гвард обновляем только если реально хоть кому-то отправили (по
@@ -295,7 +295,7 @@ def send_empty_list_reactivation_notifications():
             title='Твой список желаний пуст 🎁',
             body=('Заполни его, чтобы близкие знали, что подарить тебе на праздник'),
             reason=PushReason.EMPTY_LIST_REACTIVATION,
-            link=get_user_deep_link(user),
+            link=get_push_deep_link(user),
         )
 
 
@@ -378,7 +378,7 @@ def send_seasonal_notifications(
                 body=segment.body,
                 reason=PushReason.SEASONAL,
                 campaign_key=campaign_key,
-                link=get_user_deep_link(user),
+                link=get_push_deep_link(user),
             )
         logger.info(f'Сезонная кампания {campaign_key}: отправлено {len(users)} пушей')
 
@@ -480,7 +480,7 @@ def send_seasonal_rehearsal(
                     body=segment.body,
                     reason=PushReason.SEASONAL,
                     campaign_key=rehearsal_key,
-                    link=get_user_deep_link(user),
+                    link=get_push_deep_link(user),
                 )
                 sent += 1
             logger.info(f'Репетиция {rehearsal_key}: отправлено {len(users)} пушей')

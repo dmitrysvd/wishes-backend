@@ -18,7 +18,7 @@ from app.db import (
     User,
     Wish,
 )
-from app.helpers.user_helpers import get_user_deep_link
+from app.helpers.user_helpers import get_followers_push_link, get_push_deep_link
 from app.notifications import (
     send_new_follower_notifications,
     send_reservation_notifincations,
@@ -136,7 +136,6 @@ def _wish_flags(db, author: User) -> dict[str, bool]:
 async def test_send_wish_creation_notifications(
     db, followed_author, user_without_token, fcm
 ):
-
     # Подписчик без установок: пуша нет, но созревшая хотелка помечена.
     send_wish_creation_notifications(now=IN_WINDOW)
     assert fcm.calls == []
@@ -234,13 +233,15 @@ def test_new_follower_single(db, fcm):
     (message,) = fcm.messages
     assert message.token == 'token-target'
     assert message.android.notification.body == 'На вас подписался Follower'
-    assert message.data['link'] == get_user_deep_link(follower)
+    assert message.data['link'] == get_push_deep_link(follower)
+    assert message.data['type'] == 'new_follower'
     db.refresh(event)
     assert event.is_notification_sent is True
     log = db.scalars(
         select(PushSendingLog).where(PushSendingLog.reason == PushReason.NEW_FOLLOWER)
     ).one()
     assert log.reason_user_id == follower.id
+    assert message.data['delivery_id'] == str(log.id)
 
     # Повторный прогон — событие уже отмечено, пуша нет.
     fcm.clear()
@@ -259,7 +260,7 @@ def test_new_follower_many_in_one_push(db, fcm):
 
     (message,) = fcm.messages
     assert message.android.notification.body == 'На вас подписались First и ещё 1'
-    assert message.data['link'] == get_user_deep_link(target)
+    assert message.data['link'] == get_followers_push_link(target)
 
 
 def test_new_follower_skips_unfollowed_and_no_token(db, fcm):

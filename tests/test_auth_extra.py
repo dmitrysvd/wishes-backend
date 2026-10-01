@@ -63,7 +63,7 @@ def test_auth_vk_keeps_friends_snapshot_when_refresh_fails(mocker, db):
     )
     mocker.patch('app.routers.auth.create_custom_firebase_token', return_value='tok')
 
-    _, _, is_new = auth_vk('token', VkUserExtraData(email=None, phone=None), db)
+    _, _, is_new, _ = auth_vk('token', VkUserExtraData(email=None, phone=None), db)
     assert is_new is False
     db.refresh(existing)
     assert existing.vk_friends_data == [{'id': 'keep'}]

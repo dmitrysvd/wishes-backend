@@ -14,6 +14,7 @@ from app.constants import (
     HIDDEN_RESERVER_ID,
     UPLOAD_IMAGE_MAX_BYTES,
     FollowAction,
+    FollowEventSource,
     FollowSource,
     Gender,
     RecommendationCategory,
@@ -592,9 +593,82 @@ class TestAuth:
             json={'id_token': 'id_token'},
         )
         assert response.status_code == 200
-        assert response.content == b''
+        assert response.json() == {'user_created': True, 'mutual_follow_user_id': None}
         user = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
         assert user.display_name == 'Иванов Иван'
+
+    def test_auth_firebase_existing_user(
+        self, api_client: TestClient, db: Session, user: User
+    ):
+        """Повторный вход: `user_created=false`, плашки новичку нет."""
+        user.firebase_uid = 'uid'
+        db.add(user)
+        db.commit()
+        response = api_client.post('/auth/firebase', json={'id_token': 'id_token'})
+        assert response.status_code == 200
+        assert response.json() == {
+            'user_created': False,
+            'mutual_follow_user_id': None,
+        }
+
+    def test_auth_firebase_invite_mutual_follow(
+        self, api_client: TestClient, other_user: User, db: Session
+    ):
+        response = api_client.post(
+            '/auth/firebase',
+            json={
+                'id_token': 'id_token',
+                'attribution': {'referrer_id': str(other_user.id)},
+            },
+        )
+        assert response.json() == {
+            'user_created': True,
+            'mutual_follow_user_id': str(other_user.id),
+        }
+        newbie = db.scalars(select(User).where(User.firebase_uid == 'uid')).one()
+        db.refresh(other_user)
+        assert newbie in other_user.follows
+        assert newbie in other_user.followed_by
+        events = {(e.actor_id, e.target_id): e for e in db.scalars(select(FollowEvent))}
+        assert {e.source for e in events.values()} == {FollowEventSource.invite}
+        # Пуш пригласившему — по его подписке на новичка; встречная подписка
+        # «новым подписчиком» пригласившему не станет.
+        assert events[(other_user.id, newbie.id)].is_notification_sent is False
+        assert events[(newbie.id, other_user.id)].is_notification_sent is True
+
+    @pytest.mark.parametrize('referrer_id', ['missing', 'garbage', None])
+    def test_auth_firebase_invite_ignored(
+        self, api_client: TestClient, db: Session, referrer_id: str | None
+    ):
+        """Битая, несуществующая метка или её отсутствие — рёбер нет."""
+        if referrer_id == 'missing':
+            referrer_id = str(uuid4())
+        response = api_client.post(
+            '/auth/firebase',
+            json={'id_token': 'id_token', 'attribution': {'referrer_id': referrer_id}},
+        )
+        assert response.json()['mutual_follow_user_id'] is None
+        assert db.scalars(select(FollowEvent)).all() == []
+
+    def test_auth_firebase_existing_user_with_ref_no_edges(
+        self, api_client: TestClient, db: Session, user: User, other_user: User
+    ):
+        """Повторный вход по инвайт-ссылке: first-touch, рёбер нет."""
+        user.firebase_uid = 'uid'
+        db.add(user)
+        db.commit()
+        response = api_client.post(
+            '/auth/firebase',
+            json={
+                'id_token': 'id_token',
+                'attribution': {'referrer_id': str(other_user.id)},
+            },
+        )
+        assert response.json() == {
+            'user_created': False,
+            'mutual_follow_user_id': None,
+        }
+        assert db.scalars(select(FollowEvent)).all() == []
 
     def test_auth_vk_vkid_saves_attribution(
         self,
@@ -630,6 +704,11 @@ class TestAuth:
         ).one()
         assert row.referrer_id == third_user.id
         assert row.utm_source == 'telegram'
+        # Регистрация по инвайту (0024): подписаны друг на друга.
+        assert response.json()['mutual_follow_user_id'] == str(third_user.id)
+        db.refresh(third_user)
+        assert user in third_user.follows
+        assert user in third_user.followed_by
 
     def test_auth_firebase_saves_attribution(
         self,
@@ -729,6 +808,8 @@ class TestAuth:
         assert response.is_success, response.json()
         body = response.json()
         assert body['user_created'] is True
+        # Без `attribution` взаимных подписок по инвайту нет — поле есть и null.
+        assert body['mutual_follow_user_id'] is None
         assert body['firebase_token']
         # Ответ веб-версии НЕ содержит vk_access_token (Confidential Flow).
         assert 'vk_access_token' not in body
@@ -932,7 +1013,28 @@ class TestFollowUnfollow:
             select(FollowEvent).where(FollowEvent.actor_id == user.id)
         ).one()
         assert event.action == FollowAction.follow
-        assert event.source == FollowSource.possible_friends
+        assert event.source == FollowEventSource.possible_friends
+
+    @pytest.mark.parametrize(
+        'source', [FollowSource.push, FollowSource.followers_follow_back]
+    )
+    def test_follow_user_with_follow_back_source(
+        self,
+        auth_client: TestClient,
+        db: Session,
+        user: User,
+        other_user: User,
+        source: FollowSource,
+    ):
+        """Источники «в ответ» (0024) принимаются и пишутся в лог графа."""
+        response = auth_client.post(
+            f'/follow/{other_user.id}', json={'source': source.value}
+        )
+        assert response.status_code == 200
+        event = db.scalars(
+            select(FollowEvent).where(FollowEvent.actor_id == user.id)
+        ).one()
+        assert event.source == FollowEventSource(source.value)
 
     def test_follow_user_no_immediate_push(
         self, auth_client: TestClient, db: Session, user: User, other_user: User, fcm
@@ -966,7 +1068,7 @@ class TestFollowUnfollow:
         ).one()
         assert event.actor_id == user.id
         assert event.target_id == other_user.id
-        assert event.source == FollowSource.followers_list
+        assert event.source == FollowEventSource.followers_list
 
     def test_unfollow_user_no_body(
         self, auth_client: TestClient, db: Session, user: User, other_user: User

@@ -31,7 +31,7 @@ from app.db import (
     User,
     Wish,
 )
-from app.helpers.user_helpers import get_user_deep_link
+from app.helpers.user_helpers import get_push_deep_link
 from app.utils import utc_now
 
 
@@ -214,7 +214,7 @@ async def test_seasonal_sent_in_window(db, fcm):
 
     assert len(fcm.calls) == 1
     (message,) = fcm.messages
-    assert message.data['link'] == get_user_deep_link(user)
+    assert message.data['link'] == get_push_deep_link(user)
     log = db.scalars(
         select(PushSendingLog).where(PushSendingLog.reason == PushReason.SEASONAL)
     ).first()
@@ -594,7 +594,7 @@ async def test_empty_list_reactivation_sends_and_dedups(db, fcm):
     assert len(fcm.calls) == 1
     (message,) = fcm.messages
     assert message.token == 'token_empty'
-    assert message.data['link'] == get_user_deep_link(user)
+    assert message.data['link'] == get_push_deep_link(user)
     log = db.scalars(
         select(PushSendingLog).where(
             PushSendingLog.reason == PushReason.EMPTY_LIST_REACTIVATION
