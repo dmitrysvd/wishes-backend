@@ -385,9 +385,6 @@ class Wish(Base):
         DateTime(timezone=True), nullable=True
     )
 
-    is_reservation_notification_sent: Mapped[bool] = mapped_column(
-        default=False, nullable=False
-    )
     is_creation_notification_sent: Mapped[bool] = mapped_column(
         default=False, nullable=False
     )

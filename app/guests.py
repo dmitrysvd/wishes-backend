@@ -159,7 +159,8 @@ def guest_reserve(
         db.add(guest)
         db.flush()
     wish.reserved_by_guest_id = guest.id
-    # Как у обычного резерва: момент нужен аналитике, флаг пуша не трогаем.
+    # Как у обычного резерва: по этому моменту крон шлёт владельцу пуш «резерв»,
+    # он же нужен аналитике.
     wish.reserved_at = utc_now()
     db.add(GuestReservationEvent(guest_id=guest.id, wish_id=wish.id, ip=ip))
     db.commit()

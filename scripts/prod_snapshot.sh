@@ -23,7 +23,7 @@ declare -A TABLES=(
   [user_activity_day]='select user_id, activity_date, first_seen_at, last_seen_at, request_count, radar_open_count from user_activity_day'
   [push_installation]='select id, user_id, saved_at, fid is not null as has_fid from push_installation'
   [user_following]='select follower_id, followed_id, created_at from user_following'
-  [wish]='select id, user_id, reserved_by_id, is_active, is_archived, created_at, reserved_at, is_reservation_notification_sent, price_source::text as price_source from wish'
+  [wish]='select id, user_id, reserved_by_id, is_active, is_archived, created_at, reserved_at, price_source::text as price_source from wish'
 )
 
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q <<'SQL'
@@ -34,7 +34,7 @@ CREATE TABLE prod_snapshot.push_sending_log (id uuid primary key, sent_at timest
 CREATE TABLE prod_snapshot.user_activity_day (user_id uuid, activity_date date, first_seen_at timestamptz, last_seen_at timestamptz, request_count int, radar_open_count int, primary key (user_id, activity_date));
 CREATE TABLE prod_snapshot.push_installation (id uuid primary key, user_id uuid, saved_at timestamptz, has_fid boolean);
 CREATE TABLE prod_snapshot.user_following (follower_id uuid, followed_id uuid, created_at timestamptz);
-CREATE TABLE prod_snapshot.wish (id uuid primary key, user_id uuid, reserved_by_id uuid, is_active boolean, is_archived boolean, created_at timestamptz, reserved_at timestamptz, is_reservation_notification_sent boolean, price_source text);
+CREATE TABLE prod_snapshot.wish (id uuid primary key, user_id uuid, reserved_by_id uuid, is_active boolean, is_archived boolean, created_at timestamptz, reserved_at timestamptz, price_source text);
 SQL
 
 for table in "${!TABLES[@]}"; do
