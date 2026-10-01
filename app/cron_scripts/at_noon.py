@@ -20,8 +20,8 @@ from app.db import (
     Wish,
 )
 from app.firebase import send_push
+from app.helpers.user_helpers import get_user_deep_link
 from app.logging import logger
-from app.main import get_user_deep_link
 from app.price_alerts import send_price_alerts
 from app.utils import utc_now
 
